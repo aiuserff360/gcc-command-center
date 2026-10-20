@@ -10,13 +10,13 @@ import { seedMilestones, seedRaid, seedDependencies, type Milestone, type RaidIt
 import { seedInitiatives, seedWsSettings, extraRaid, KEY_MILESTONE, type Initiative, type WsSettings } from '../data/workstreams'
 import { MONTHS, fmtDate, CHART_COLORS, TODAY, type Workstream } from '../data/common'
 import { Kpi, WsIcon, PctBar, STATUS_COLOR, type WsRow } from '../components/workstreams/common'
-import { useWsRows, InitiativesView, MilestonesView, ResourcesView, TeamView, RisksView, BudgetView, DependenciesView, DocumentsView } from '../components/workstreams/views'
+import { useWsRows, InitiativesView, MilestonesView, RisksView, BudgetView, DependenciesView, DocumentsView } from '../components/workstreams/views'
 import { DeliverablesView } from '../components/workstreams/Deliverables'
 import { DrillDown } from '../components/workstreams/DrillDown'
 import { WorkstreamForm, SettingsForm } from '../components/workstreams/forms'
 import { useMoney } from '../data/money'
 
-const TABS = ['Workstream Overview', 'Initiatives & Milestones', 'Team & Resources', 'Risks & Issues', 'Budget & Costs', 'Dependencies', 'Deliverables', 'Documents']
+const TABS = ['Workstream Overview', 'Initiatives & Milestones', 'Risks & Issues', 'Budget & Costs', 'Dependencies', 'Deliverables', 'Documents']
 
 export default function Workstreams() {
   const wssC = useWsRows()
@@ -125,7 +125,6 @@ export default function Workstreams() {
         </div>
       )}
       {tab === 'Initiatives & Milestones' && <div className="space-y-4"><InitiativesView /><MilestonesView /></div>}
-      {tab === 'Team & Resources' && <div className="space-y-4"><ResourcesView /><TeamView /></div>}
       {tab === 'Risks & Issues' && <RisksView />}
       {tab === 'Budget & Costs' && <BudgetView onEditWorkstream={(w) => setEditWs({ item: w, isNew: false })} />}
       {tab === 'Dependencies' && <DependenciesView />}

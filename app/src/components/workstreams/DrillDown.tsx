@@ -10,10 +10,11 @@ import { seedInitiatives, seedTeamMembers, seedWsBudgetLines, seedWsDocuments, r
 import { fmtDate, CHART_COLORS, TODAY, type Workstream } from '../../data/common'
 import { WsIcon, wsIcon, progressColor, fmtMoneyShort, byDate, shortWs, type WsRow } from './common'
 import { useMoney } from '../../data/money'
-import { InitiativesView, MilestonesView, ResourcesView, TeamView, RisksView, BudgetView, DependenciesView, DocumentsView } from './views'
+import { InitiativesView, MilestonesView, RisksView, BudgetView, DependenciesView, DocumentsView } from './views'
+import { PeopleView } from './People'
 import { DeliverablesView } from './Deliverables'
 
-export const SUB_TABS = ['Executive Summary', 'Milestones', 'Initiatives', 'Resources', 'Budget', 'Risks & Issues', 'Dependencies', 'Deliverables', 'Team', 'Documents']
+export const SUB_TABS = ['Executive Summary', 'People & Roles', 'Milestones', 'Initiatives', 'Budget', 'Risks & Issues', 'Dependencies', 'Deliverables', 'Documents']
 
 export function DrillDown({ wss, selected, onSelect, onEditWorkstream, initialTab }: { wss: WsRow[]; selected: string; onSelect: (n: string) => void; onEditWorkstream: (w: WsRow) => void; initialTab?: string }) {
   const [tab, setTab] = useState(initialTab && SUB_TABS.includes(initialTab) ? initialTab : SUB_TABS[0])
@@ -45,12 +46,11 @@ export function DrillDown({ wss, selected, onSelect, onEditWorkstream, initialTa
       {tab === 'Executive Summary' && <ExecutiveSummary w={w} onTab={setTab} onEdit={() => onEditWorkstream(w)} />}
       {tab === 'Milestones' && <MilestonesView ws={ws} />}
       {tab === 'Initiatives' && <InitiativesView ws={ws} />}
-      {tab === 'Resources' && <ResourcesView ws={ws} />}
       {tab === 'Budget' && <BudgetView ws={ws} />}
       {tab === 'Risks & Issues' && <RisksView ws={ws} />}
       {tab === 'Dependencies' && <DependenciesView ws={ws} />}
       {tab === 'Deliverables' && <DeliverablesView ws={ws} />}
-      {tab === 'Team' && <TeamView ws={ws} />}
+      {tab === 'People & Roles' && <PeopleView ws={ws} />}
       {tab === 'Documents' && <DocumentsView ws={ws} />}
       {full && <FullWorkstream w={w} onClose={() => setFull(false)} />}
     </div>

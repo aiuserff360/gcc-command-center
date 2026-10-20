@@ -159,7 +159,78 @@ export interface TeamMember {
   allocation: number // %
   startDate: string
   type: MemberType
+  /** Function / discipline the person belongs to (groups the roster) */
+  functionArea: string
+  /** What they are doing on this workstream */
+  responsibilities: string
+  /** Name of the person they report to within the workstream */
+  reportsTo?: string
+  /** Workstream lead */
+  isLead?: boolean
 }
+
+/** Full names behind the short owner labels used across the demo. */
+export const OWNER_FULL_NAME: Record<string, string> = { 'A. Sharma': 'Anita Sharma', 'R. Mehta': 'Rohit Mehta', 'S. Iyer': 'Sanjana Iyer', 'P. Rao': 'Priya Rao', 'K. Nair': 'Kiran Nair', 'M. Khan': 'Mohammed Khan', 'V. Reddy': 'Vikram Reddy', 'D. Singh': 'Deepak Singh' }
+export const shortName = (full: string) => { const p = full.trim().split(/\s+/); return p.length > 1 ? `${p[0][0]}. ${p[p.length - 1]}` : full }
+
+/** Role -> function area and typical responsibilities (used for the seed and as defaults in the form). */
+export const ROLE_PROFILE: Record<string, { fn: string; duties: string }> = {
+  'Talent Lead': { fn: 'Talent Acquisition', duties: 'Owns the hiring plan and waves; runs weekly hiring forecast; escalates critical gaps to the steering committee' },
+  Recruiter: { fn: 'Talent Acquisition', duties: 'Sources, screens and schedules candidates for assigned requisitions; tracks offers and joining dates' },
+  'Sourcing Specialist': { fn: 'Talent Acquisition', duties: 'Builds candidate pipelines for niche skills; manages agency partners and job boards' },
+  'HR Business Partner': { fn: 'HR & Policy', duties: 'Organization design, grades and role architecture; approves new positions with global HR' },
+  'Onboarding Coordinator': { fn: 'Onboarding', duties: 'Pre-joining documents, day-one schedule, device and access requests for each cohort' },
+  'Campus Hiring Manager': { fn: 'Talent Acquisition', duties: 'Campus programme, assessment events and offer conversion for graduate hires' },
+  'Compensation Analyst': { fn: 'HR & Policy', duties: 'Salary benchmarking, pay ranges and offer approvals; benefits budget tracking' },
+  'HRMS Analyst': { fn: 'HR Systems & Payroll', duties: 'HRMS configuration, employee master data and payroll parallel testing' },
+  'L&D Specialist': { fn: 'Onboarding', duties: 'Induction curriculum and learning paths for new joiners' },
+  'IT Lead': { fn: 'IT Leadership', duties: 'Owns the India IT scope, budget and delivery schedule aligned to joining cohorts; interface to global CIO office' },
+  'Network Engineer': { fn: 'Network & Connectivity', duties: 'Primary and backup connectivity, LAN and Wi-Fi configuration, secure links to global systems' },
+  'Systems Engineer': { fn: 'Infrastructure', duties: 'Server room build, identity and directory services, monitoring' },
+  'Cloud Engineer': { fn: 'Infrastructure', duties: 'Cloud landing zone, environments and infrastructure as code' },
+  'Security Engineer': { fn: 'Cybersecurity', duties: 'Role-based access, multifactor authentication and endpoint compliance controls' },
+  'Security Analyst': { fn: 'Cybersecurity', duties: 'Risk assessment, ISO 27001 control evidence and security validation testing' },
+  'Endpoint Engineer': { fn: 'End-user Technology', duties: 'Laptop image, device management and allocation to joining cohorts' },
+  'Service Desk Analyst': { fn: 'End-user Technology', duties: 'Day-one support, access issues and the IT asset register' },
+  'Collaboration Engineer': { fn: 'End-user Technology', duties: 'Email, collaboration and meeting-room technology setup' },
+  'IT Project Manager': { fn: 'IT Leadership', duties: 'Tracks IT deliverables, vendor lead times and cut-over readiness' },
+  'DR Specialist': { fn: 'Infrastructure', duties: 'Backup and disaster-recovery design and readiness tests' },
+  'Legal Lead': { fn: 'Legal', duties: 'Entity structure, incorporation and intercompany agreements; legal sign-off on contracts and policies' },
+  'Corporate Counsel': { fn: 'Legal', duties: 'Drafts and negotiates leases, vendor and employment agreements' },
+  'Compliance Manager': { fn: 'Compliance', duties: 'Registration and filing calendar, compliance ownership matrix and readiness reviews' },
+  'Company Secretary': { fn: 'Legal', duties: 'Board resolutions, statutory registers and ROC filings' },
+  'Regulatory Analyst': { fn: 'Compliance', duties: 'Tracks central, state and municipal obligations and authority clarifications' },
+  Paralegal: { fn: 'Legal', duties: 'Documentation, KYC packs and contract repository upkeep' },
+  'Facilities Lead': { fn: 'Facilities Leadership', duties: 'Owns office selection, lease, fit-out and handover; facilities budget and vendors' },
+  'Fit-out Project Manager': { fn: 'Fit-out & Design', duties: 'Contractor schedule, site inspections, punch-list closure and occupancy clearances' },
+  'Workplace Designer': { fn: 'Fit-out & Design', duties: 'Layout, seating plan and collaboration-space design' },
+  'Facility Manager': { fn: 'Facilities Operations', duties: 'Housekeeping, maintenance, utilities and helpdesk once the site is live' },
+  'Security Supervisor': { fn: 'Facilities Operations', duties: 'Access control, visitor management and security vendor coordination' },
+  'Admin Executive': { fn: 'Facilities Operations', duties: 'Cafeteria, transport and office supplies arrangements' },
+  'EHS Officer': { fn: 'Facilities Operations', duties: 'Fire safety, evacuation procedures and workplace safety compliance' },
+  'Transition Lead': { fn: 'Transition Leadership', duties: 'Owns transition waves, go/no-go reviews and stabilization; coordinates global process owners' },
+  'Transition Manager': { fn: 'Transition Delivery', duties: 'Runs a wave end to end: plans, readiness checks and cut-over' },
+  'KT Coordinator': { fn: 'Knowledge Transfer', duties: 'Schedules knowledge-transfer sessions, tracks attendance and completion sign-offs' },
+  'Process Analyst': { fn: 'Knowledge Transfer', duties: 'Documents processes, identifies knowledge gaps and remediation actions' },
+  'Change Manager': { fn: 'Change & Communications', duties: 'Stakeholder engagement, change readiness and resistance management' },
+  'SOP Writer': { fn: 'Knowledge Transfer', duties: 'Standard operating procedures for transitioned processes' },
+  'Readiness Analyst': { fn: 'Transition Delivery', duties: 'Readiness assessments by dimension and gap register upkeep' },
+  'Operations Lead': { fn: 'Operations Leadership', duties: 'Day-one operations, vendor management and the operating organization' },
+  'Operations Manager': { fn: 'Workplace Operations', duties: 'Operational ramp-up plan, cohort readiness and support constraints' },
+  'Vendor Manager': { fn: 'Vendor Management', duties: 'Vendor onboarding, service delivery reviews and invoice validation' },
+  'Admin Manager': { fn: 'Workplace Operations', duties: 'Office administration, consumables and asset inventory' },
+  'BCP Coordinator': { fn: 'Workplace Operations', duties: 'Business continuity plan and incident management' },
+  'Communications Manager': { fn: 'Change & Communications', duties: 'Program communications plan, launch communications and FAQs' },
+  'Helpdesk Lead': { fn: 'Workplace Operations', duties: 'Employee support channels and escalation handling' },
+  'Finance Lead': { fn: 'Finance Leadership', duties: 'Owns the finance operating model, banking, budget baseline and executive financial reporting' },
+  'Finance Controller': { fn: 'Accounting & Control', duties: 'Chart of accounts, month-end close and consolidation with global finance' },
+  'Procurement Manager': { fn: 'Procurement', duties: 'RFPs, vendor selection, purchase orders and contract execution' },
+  'Payroll Specialist': { fn: 'Accounting & Control', duties: 'Payroll calendar, statutory deductions and parallel runs' },
+  'Treasury Analyst': { fn: 'Treasury & Tax', duties: 'Bank accounts, funding schedule and cash forecasting' },
+  'Tax Analyst': { fn: 'Treasury & Tax', duties: 'GST, withholding tax and transfer-pricing documentation' },
+  'Accounts Payable Analyst': { fn: 'Accounting & Control', duties: 'Invoice matching to purchase orders and payment tracking' },
+}
+export const FUNCTION_AREAS = Array.from(new Set(Object.values(ROLE_PROFILE).map((r) => r.fn)))
 
 const FIRST = ['Ananya', 'Rahul', 'Priya', 'Vikram', 'Sneha', 'Arjun', 'Kavya', 'Rohan', 'Meera', 'Aditya', 'Divya', 'Karthik', 'Pooja', 'Nikhil', 'Shreya', 'Varun', 'Neha', 'Siddharth', 'Riya', 'Manish', 'Aishwarya', 'Gaurav', 'Lakshmi', 'Harish', 'Nandini', 'Suresh', 'Deepika', 'Akash', 'Ritu', 'Sanjay', 'Tanvi', 'Abhishek', 'Isha', 'Pranav', 'Swati', 'Rajesh', 'Bhavana', 'Mohit', 'Anjali', 'Vivek']
 const LAST = ['Krishnan', 'Verma', 'Nambiar', 'Desai', 'Pillai', 'Kulkarni', 'Bose', 'Menon', 'Chawla', 'Reddy', 'Joshi', 'Iyer', 'Bhat', 'Saxena', 'Gupta', 'Rao', 'Mishra', 'Nair', 'Shetty', 'Agarwal', 'Das', 'Patel', 'Chandran', 'Banerjee', 'Hegde', 'Mehta', 'Sinha', 'Varma', 'Ghosh', 'Raman']
@@ -174,25 +245,35 @@ const ROLES: Record<Workstream, string[]> = {
 }
 const TEAM_SIZE: Record<Workstream, number> = { 'Talent & Hiring': 18, 'Technology & Infrastructure': 25, 'Legal & Compliance': 6, 'Facilities & Workplace': 9, 'Transition Readiness': 12, 'Operations Setup': 10, 'Finance & Procurement': 8 }
 
+const WS_LEAD: Record<Workstream, string> = { 'Talent & Hiring': 'S. Iyer', 'Technology & Infrastructure': 'R. Mehta', 'Legal & Compliance': 'P. Rao', 'Facilities & Workplace': 'K. Nair', 'Transition Readiness': 'A. Sharma', 'Operations Setup': 'M. Khan', 'Finance & Procurement': 'V. Reddy' }
+
 function buildTeam(): TeamMember[] {
   const out: TeamMember[] = []
-  const used = new Set<string>()
+  const used = new Set<string>(Object.values(OWNER_FULL_NAME))
   let n = 0
   WORKSTREAMS.forEach((ws, wi) => {
     const roles = ROLES[ws]
+    const leadName = OWNER_FULL_NAME[WS_LEAD[ws]]
     for (let i = 0; i < TEAM_SIZE[ws]; i++) {
       let name = ''
-      for (let k = 0; ; k++) {
+      if (i === 0) name = leadName
+      else for (let k = 0; ; k++) {
         name = `${FIRST[(n * 7 + k) % FIRST.length]} ${LAST[(n * 11 + k * 3) % LAST.length]}`
         if (!used.has(name)) break
       }
       used.add(name)
+      const role = roles[Math.min(i, roles.length - 1)] ?? roles[roles.length - 1]
+      const profile = ROLE_PROFILE[role] ?? { fn: 'General', duties: '' }
       const month = 1 + ((wi * 2 + i) % 10)
       out.push({
         id: `tm-${wi + 1}-${String(i + 1).padStart(2, '0')}`,
         name,
-        role: roles[Math.min(i, roles.length - 1)] ?? roles[roles.length - 1],
+        role,
         workstream: ws,
+        functionArea: profile.fn,
+        responsibilities: profile.duties,
+        reportsTo: i === 0 ? undefined : leadName,
+        isLead: i === 0,
         location: i % 5 === 4 ? LOCATIONS[1] : i % 7 === 3 ? LOCATIONS[2] : LOCATIONS[0],
         allocation: i === 0 ? 100 : [100, 100, 80, 50, 100, 60, 100][(i + wi) % 7],
         startDate: `2026-${String(month).padStart(2, '0')}-${String(1 + ((i * 5 + wi) % 27)).padStart(2, '0')}`,

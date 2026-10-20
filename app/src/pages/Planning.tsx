@@ -14,7 +14,8 @@ import { seedActivities, WBS_TO_DASHBOARD, type Activity } from '../data/wbs'
 import { useMoney } from '../data/money'
 import { Gantt, type GanttGroup, type GanttScale, type GanttChange } from '../components/planning/Gantt'
 import { MilestoneModal, DependencyModal, DependencyForm, MS_STATUSES, MS_PHASES, IMPACTS, DEP_STATUSES } from '../components/planning/Modals'
-import { useWsRows, DependenciesView, RisksView, TeamView, BudgetView } from '../components/workstreams/views'
+import { useWsRows, DependenciesView, RisksView, BudgetView } from '../components/workstreams/views'
+import { PeopleView } from '../components/workstreams/People'
 import { DeliverablesView, ActivityForm } from '../components/workstreams/Deliverables'
 import { InitiativeForm } from '../components/workstreams/forms'
 import { wsIcon, Strip } from '../components/workstreams/common'
@@ -24,7 +25,7 @@ const fmtDate = (iso: string) => { const d = new Date(iso + 'T00:00:00'); return
 
 const VIEWS = ['Workstream', 'Master Plan', 'Milestones', 'Dependencies'] as const
 type View = (typeof VIEWS)[number]
-const DETAIL_TABS = ['Dependencies', 'Risks & Issues', 'Team', 'Budget', 'Deliverables register'] as const
+const DETAIL_TABS = ['Dependencies', 'Risks & Issues', 'People & Roles', 'Budget', 'Deliverables register'] as const
 
 /* Short workstream labels as used in the mock-up tables */
 const WS_SHORT: Record<string, string> = {
@@ -288,7 +289,7 @@ export default function Planning() {
           {detail === 'Deliverables register' && <DeliverablesView ws={ws} />}
           {detail === 'Dependencies' && <DependenciesView ws={ws} />}
           {detail === 'Risks & Issues' && <RisksView ws={ws} />}
-          {detail === 'Team' && <TeamView ws={ws} />}
+          {detail === 'People & Roles' && <PeopleView ws={ws} />}
           {detail === 'Budget' && <BudgetView ws={ws} />}
         </>
       )}

@@ -3,7 +3,7 @@ import { useFields, SelectKV, FormFooter, Checkbox, type WsRow } from './common'
 import type { Milestone, RaidItem, Dependency } from '../../data/shared'
 import { RISK_CATEGORIES, LIKELIHOOD, IMPACT_SCALE } from '../../data/shared'
 import type { Initiative, TeamMember, WsBudgetLine, WsDocument, WsSettings } from '../../data/workstreams'
-import { INITIATIVE_STATUSES, MEMBER_TYPES, DOC_TYPES, DOC_STATUSES } from '../../data/workstreams'
+import { INITIATIVE_STATUSES, MEMBER_TYPES, DOC_TYPES, DOC_STATUSES, ROLE_PROFILE, FUNCTION_AREAS } from '../../data/workstreams'
 import { OWNERS, LOCATIONS, MONTHS, type Workstream, type Status, type Impact } from '../../data/common'
 import { useMoney } from '../../data/money'
 
@@ -117,18 +117,23 @@ export function MilestoneForm({ initial, isNew, onSave, onDelete, onClose, wsOpt
 }
 
 /* ---------- Team member ---------- */
-export function TeamMemberForm({ initial, isNew, onSave, onDelete, onClose, wsOptions }: FormProps<TeamMember>) {
+export function TeamMemberForm({ initial, isNew, onSave, onDelete, onClose, wsOptions, people = [] }: FormProps<TeamMember> & { people?: string[] }) {
   const { f, set, txt, num } = useFields(initial)
+  const applyRole = (role: string) => { set('role', role); const prof = ROLE_PROFILE[role]; if (prof) { if (!f.functionArea || f.functionArea === 'General') set('functionArea', prof.fn); if (!f.responsibilities) set('responsibilities', prof.duties) } }
   return (
-    <Modal open onClose={onClose} title={isNew ? 'Add team member' : 'Edit team member'} footer={<FormFooter onClose={onClose} onDelete={onDelete} onSave={() => onSave(f)} />}>
-      <FormGrid cols={2}>
+    <Modal open onClose={onClose} title={isNew ? 'Add team member' : `Edit team member – ${initial.name}`} width="max-w-3xl" footer={<FormFooter onClose={onClose} onDelete={onDelete} onSave={() => onSave(f)} />}>
+      <FormGrid cols={3}>
         <Field label="Name"><Input {...txt('name')} /></Field>
-        <Field label="Role"><Input {...txt('role')} /></Field>
+        <Field label="Role"><Input list="tm-roles" value={f.role} onChange={(e) => applyRole(e.target.value)} /><datalist id="tm-roles">{Object.keys(ROLE_PROFILE).map((r) => <option key={r} value={r} />)}</datalist></Field>
+        <Field label="Function"><Input list="tm-functions" {...txt('functionArea')} /><datalist id="tm-functions">{FUNCTION_AREAS.map((r) => <option key={r} value={r} />)}</datalist></Field>
         <Field label="Workstream"><Select options={wsOptions} value={f.workstream} onChange={(e) => set('workstream', e.target.value as Workstream)} /></Field>
+        <Field label="Reports to"><Select options={['—', ...uniq(people.filter((p) => p !== f.name))]} value={f.reportsTo ?? '—'} onChange={(e) => set('reportsTo', e.target.value === '—' ? undefined : e.target.value)} /></Field>
+        <Field label="Type"><Select options={MEMBER_TYPES} value={f.type} onChange={(e) => set('type', e.target.value as TeamMember['type'])} /></Field>
         <Field label="Location"><Select options={uniq([f.location, ...LOCATIONS])} {...txt('location')} /></Field>
         <Field label="Allocation %"><Input {...num('allocation')} min={0} max={100} /></Field>
-        <Field label="Type"><Select options={MEMBER_TYPES} value={f.type} onChange={(e) => set('type', e.target.value as TeamMember['type'])} /></Field>
         <Field label="Start date"><Input type="date" {...txt('startDate')} /></Field>
+        <Field label="What they are doing (responsibilities)" className="col-span-3"><TextArea value={f.responsibilities} onChange={(e) => set('responsibilities', e.target.value)} placeholder="Key responsibilities and current work on this workstream" /></Field>
+        <div className="col-span-3"><Checkbox label="Workstream lead" checked={!!f.isLead} onChange={(e) => set('isLead', e.target.checked)} /></div>
       </FormGrid>
     </Modal>
   )
