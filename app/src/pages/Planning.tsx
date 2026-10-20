@@ -12,9 +12,10 @@ import { initiativeToPlan, milestoneToPlan, activityToPlan, type PlanItem } from
 import { seedInitiatives, seedTeamMembers, seedWsBudgetLines, raidWorkstreamOf, type Initiative, type TeamMember, type WsBudgetLine } from '../data/workstreams'
 import { seedActivities, WBS_TO_DASHBOARD, type Activity } from '../data/wbs'
 import { useMoney } from '../data/money'
-import { Gantt, type GanttGroup, type GanttScale } from '../components/planning/Gantt'
+import { Gantt, type GanttGroup, type GanttScale, type GanttChange } from '../components/planning/Gantt'
+import { PlanEditor, type EditorTab } from '../components/planning/PlanEditor'
 import { MilestoneModal, DependencyModal, DependencyForm, MS_STATUSES, MS_PHASES, IMPACTS, DEP_STATUSES } from '../components/planning/Modals'
-import { useWsRows, MilestonesView, InitiativesView, DependenciesView, RisksView, TeamView, BudgetView } from '../components/workstreams/views'
+import { useWsRows, DependenciesView, RisksView, TeamView, BudgetView } from '../components/workstreams/views'
 import { DeliverablesView, ActivityForm } from '../components/workstreams/Deliverables'
 import { InitiativeForm } from '../components/workstreams/forms'
 import { wsIcon, Strip } from '../components/workstreams/common'
@@ -24,7 +25,7 @@ const fmtDate = (iso: string) => { const d = new Date(iso + 'T00:00:00'); return
 
 const VIEWS = ['Workstream', 'Master Plan', 'Milestones', 'Dependencies'] as const
 type View = (typeof VIEWS)[number]
-const DETAIL_TABS = ['Milestones', 'Initiatives', 'Deliverables', 'Dependencies', 'Risks & Issues', 'Team', 'Budget'] as const
+const DETAIL_TABS = ['Dependencies', 'Risks & Issues', 'Team', 'Budget', 'Deliverables register'] as const
 
 /* Short workstream labels as used in the mock-up tables */
 const WS_SHORT: Record<string, string> = {
@@ -81,7 +82,8 @@ export default function Planning() {
   /* Selected workstream (deep link: /planning?ws=<name>) */
   const [ws, setWs] = useState<Workstream>(() => { const p = params.get('ws'); return (p && WORKSTREAMS.includes(p as Workstream) ? p : 'Technology & Infrastructure') as Workstream })
   useEffect(() => { const p = params.get('ws'); if (p && wss.items.some((w) => w.name === p)) setWs(p as Workstream) }, [params, wss.items])
-  const [detail, setDetail] = useState<(typeof DETAIL_TABS)[number]>('Milestones')
+  const [detail, setDetail] = useState<(typeof DETAIL_TABS)[number]>('Dependencies')
+  const [editorTab, setEditorTab] = useState<EditorTab>('Initiatives')
 
   /* Gantt controls */
   const [scale, setScale] = useState<GanttScale>('Months')
@@ -134,7 +136,7 @@ export default function Planning() {
     const n = gi + 1, name = w.name as Workstream
     const its = inits.items.filter((i) => i.workstream === name).sort(byStart).map((i, idx) => initiativeToPlan(i, n, `${n}.${idx + 1}`, ms.items.find((m) => m.id === i.milestoneId)))
     const keyMs = ms.items.filter((m) => m.workstream === name && m.critical).sort(byDue).map((m, idx) => milestoneToPlan(m, n, `${n}.M${idx + 1}`))
-    return { n, name, icon: wsIcon(name, 12), iconClass: WS_ICON_CLS[name] ?? 'bg-blue-50 text-brand-600', items: [...its, ...keyMs] }
+    return { n, name, icon: wsIcon(name, 12), iconClass: WS_ICON_CLS[name] ?? 'bg-blue-50 text-brand-600', items: [...its, ...keyMs], owner: w.lead }
   }), [wss.items, inits.items, ms.items])
 
   /* ---------- Workstream plan: Initiatives, Milestones, then WBS sub-workstreams with their activities ---------- */
@@ -170,10 +172,15 @@ export default function Planning() {
   }, [inits.items, ms.items, wsActs, raid, deps.items, lines, team, ws])
 
   const dateRange = `${fmtDate(k.timelineStart)} – ${fmtDate(k.timelineEnd)}`
-  const maxStep = scale === 'Months' ? 8 : 0
+  const maxStep = scale === 'Weeks' ? 90 : scale === 'Months' ? 18 : 6
   const wbsOf = (sub: string) => wsActs.find((a) => a.subWorkstream === sub)?.wbsWorkstream ?? Object.keys(WBS_TO_DASHBOARD).find((w) => WBS_TO_DASHBOARD[w] === ws) ?? ''
   const nextActCode = (sub: string) => { const n = wsActs.filter((a) => a.subWorkstream === sub).length + 1; return `${sub.split(' ')[0]}.${n}` }
 
+  const commitDates = (it: PlanItem, c: GanttChange) => {
+    if (it.kind === 'initiative') { const i = inits.items.find((x) => x.id === it.sourceId); if (i) inits.update({ ...i, start: c.start, end: c.end }) }
+    else if (it.kind === 'milestone') { const m = ms.items.find((x) => x.id === it.sourceId); if (m) ms.update({ ...m, dueDate: c.end, startDate: m.startDate ? c.start : m.startDate }) }
+    else { const a = acts.items.find((x) => x.id === it.sourceId); if (a) acts.update({ ...a, forecastStart: c.start, forecastEnd: c.end, lastUpdated: TODAY }) }
+  }
   const openPlanItem = (it: PlanItem) => {
     if (it.kind === 'initiative') { const i = inits.items.find((x) => x.id === it.sourceId); if (i) setInitEdit({ item: i, isNew: false }) }
     else if (it.kind === 'milestone') { const m = ms.items.find((x) => x.id === it.sourceId); if (m) setMsEdit({ item: m, isNew: false }) }
@@ -197,7 +204,7 @@ export default function Planning() {
         <button title="Next" className="px-1.5 py-1 hover:bg-surface cursor-pointer" onClick={() => setScrollStep((s) => Math.min(maxStep, s + 3))}><ChevronRight size={14} /></button>
       </div>
       <select value={scale} onChange={(e) => { setScale(e.target.value as GanttScale); setScrollStep(0) }} className="rounded-md border border-line bg-white px-2 py-1 text-[12px] font-medium outline-none cursor-pointer">
-        <option>Months</option><option>Quarters</option>
+        <option>Weeks</option><option>Months</option><option>Quarters</option>
       </select>
       <label className="flex items-center gap-2 text-[12px] text-ink-700 cursor-pointer select-none">
         Critical Path
@@ -209,12 +216,13 @@ export default function Planning() {
   )
   const legend = (
     <div className="flex items-center gap-4 flex-wrap">
-      <span className="inline-flex items-center gap-1.5"><span className="w-5 h-2.5 rounded-sm bg-navy-900" /> Group summary</span>
-      <span className="inline-flex items-center gap-1.5"><span className="w-5 h-2.5 rounded-sm" style={{ background: '#5B9BF0' }} /> On Track / Completed</span>
-      <span className="inline-flex items-center gap-1.5"><span className="w-5 h-2.5 rounded-sm" style={{ background: '#FBBF24' }} /> At Risk</span>
-      <span className="inline-flex items-center gap-1.5"><span className="w-5 h-2.5 rounded-sm" style={{ background: '#F87171' }} /> Delayed</span>
-      <span className="inline-flex items-center gap-1.5"><span className="w-5 h-2.5 rounded-sm bg-slate-300" /> Not Started / Pending</span>
-      <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rotate-45 bg-green-600" /> Milestone</span>
+      <span className="inline-flex items-center gap-1.5"><span className="w-5 h-1.5 rounded-sm bg-slate-800" /> Summary</span>
+      <span className="inline-flex items-center gap-1.5"><span className="w-5 h-3 rounded-sm" style={{ background: '#3B82F6' }} /> On Track / Completed</span>
+      <span className="inline-flex items-center gap-1.5"><span className="w-5 h-3 rounded-sm" style={{ background: '#F59E0B' }} /> At Risk</span>
+      <span className="inline-flex items-center gap-1.5"><span className="w-5 h-3 rounded-sm" style={{ background: '#EF4444' }} /> Delayed / Critical path</span>
+      <span className="inline-flex items-center gap-1.5"><span className="w-5 h-3 rounded-sm bg-slate-400" /> Not Started / Pending</span>
+      <span className="inline-flex items-center gap-1.5"><span className="w-5 h-[3px] rounded-sm bg-slate-400/70" /> Baseline</span>
+      <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rotate-45 bg-slate-900" /> Milestone</span>
       <span className="inline-flex items-center gap-1.5"><span className="w-5 border-t border-dashed border-red-500" /> Today</span>
     </div>
   )
@@ -274,14 +282,17 @@ export default function Planning() {
 
           <Card title={`${ws} – Plan`} subtitle={`${summary.its.length} initiatives · ${summary.mss.length} milestones · ${wsActs.length} WBS activities in ${subGroupsMeta.length} sub-workstreams`} headerRight={ganttToolbar}>
             <Gantt groups={wsGroups} rangeStart={k.timelineStart} rangeEnd={k.timelineEnd} today={TODAY} scale={scale} criticalPath={critical} scrollStep={scrollStep} defaultCollapsed={collapsedSubs}
-              leftHeader="Initiative / Milestone / Activity" onItemClick={openPlanItem} onAddItem={(g) => addToGroup(g, ws)} />
-            <div className="flex items-center justify-between mt-3 text-[12px] text-ink-500">{legend}<span>click a row to edit · expand a sub-workstream to see its activities</span></div>
+              leftHeader="Task Name" onItemClick={openPlanItem} onAddItem={(g) => addToGroup(g, ws)} onItemChange={commitDates} />
+            <div className="flex items-center justify-between mt-3 text-[12px] text-ink-500">{legend}<span>click a row to open it · drag a bar to move it, drag its edge to change start or finish · expand a sub-workstream for its activities</span></div>
           </Card>
 
+          <PlanEditor ws={ws} wsRow={wsRow} onWsChange={(w) => wss.update(w)} tab={editorTab} onTab={setEditorTab}
+            initiatives={summary.its} onInitChange={(i) => inits.update(i)} onInitAdd={(i) => inits.add(i)} onInitRemove={(id) => inits.remove(id)}
+            milestones={summary.mss} onMsChange={(m) => ms.update(m)} onMsAdd={(m) => ms.add(m)} onMsRemove={(id) => ms.remove(id)}
+            activities={wsActs} onActChange={(a) => acts.update({ ...a, lastUpdated: TODAY })} onActAdd={(a) => acts.add(a)} onActRemove={(id) => acts.remove(id)} subWorkstreams={subGroupsMeta} />
+
           <Tabs tabs={[...DETAIL_TABS]} active={detail} onChange={(t) => setDetail(t as (typeof DETAIL_TABS)[number])} />
-          {detail === 'Milestones' && <MilestonesView ws={ws} />}
-          {detail === 'Initiatives' && <InitiativesView ws={ws} />}
-          {detail === 'Deliverables' && <DeliverablesView ws={ws} />}
+          {detail === 'Deliverables register' && <DeliverablesView ws={ws} />}
           {detail === 'Dependencies' && <DependenciesView ws={ws} />}
           {detail === 'Risks & Issues' && <RisksView ws={ws} />}
           {detail === 'Team' && <TeamView ws={ws} />}
@@ -293,8 +304,8 @@ export default function Planning() {
       {view === 'Master Plan' && (
         <Card title="Program Timeline" subtitle="All workstreams – initiatives and key milestones as entered on the Workstreams page" headerRight={ganttToolbar}>
           <Gantt groups={masterGroups} rangeStart={k.timelineStart} rangeEnd={k.timelineEnd} today={TODAY} scale={scale} criticalPath={critical} scrollStep={scrollStep}
-            leftHeader="Workstream / Initiative / Milestone" onItemClick={openPlanItem} onAddItem={(g) => addToGroup(g, g.name as Workstream)} />
-          <div className="flex items-center justify-between mt-3 text-[12px] text-ink-500">{legend}<span>{masterCount} rows across {masterGroups.length} workstreams · click a row to edit</span></div>
+            leftHeader="Task Name" onItemClick={openPlanItem} onAddItem={(g) => addToGroup(g, g.name as Workstream)} onItemChange={commitDates} />
+          <div className="flex items-center justify-between mt-3 text-[12px] text-ink-500">{legend}<span>{masterCount} rows across {masterGroups.length} workstreams · click a row to open it · drag bars to re-plan</span></div>
         </Card>
       )}
 

@@ -28,6 +28,8 @@ export interface PlanItem {
   kind: PlanKind
   sourceId: string // id of the underlying initiative / milestone / activity
   sub?: string // WBS sub-workstream (activities)
+  baselineStart?: string
+  baselineEnd?: string
 }
 
 const toPlanStatus = (s: string): PlanStatus => (s === 'In Progress' || s === 'Open' ? 'On Track' : (PLAN_STATUSES.includes(s as PlanStatus) ? (s as PlanStatus) : 'On Track'))
@@ -40,15 +42,16 @@ export function milestoneToPlan(m: Milestone, group: number, code: string): Plan
 }
 export function activityToPlan(a: Activity, group: number): PlanItem {
   const end = a.forecastEnd || a.baselineEnd
-  return { id: `pa-${a.id}`, group, code: a.code, name: a.name, workstream: a.workstream, start: a.forecastStart || a.baselineStart, end: end >= (a.forecastStart || a.baselineStart) ? end : a.baselineEnd, status: toPlanStatus(a.status), owner: a.responsible, progress: a.percentComplete, kind: 'activity', sourceId: a.id, sub: a.subWorkstream, predecessor: a.predecessor || undefined, critical: a.criticalPath }
+  return { id: `pa-${a.id}`, group, code: a.code, name: a.name, workstream: a.workstream, start: a.forecastStart || a.baselineStart, end: end >= (a.forecastStart || a.baselineStart) ? end : a.baselineEnd, status: toPlanStatus(a.status), owner: a.responsible, progress: a.percentComplete, kind: 'activity', sourceId: a.id, sub: a.subWorkstream, predecessor: a.predecessor || undefined, critical: a.criticalPath, baselineStart: a.baselineStart, baselineEnd: a.baselineEnd }
 }
 
 /* ---------- Timeline helpers (pure, shared by the Gantt and the page) ---------- */
 export const DAY = 86400000
 export const toDate = (iso: string) => new Date(iso + 'T00:00:00')
+const isoLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 export const addDays = (iso: string, n: number) => {
   const d = toDate(iso)
   d.setDate(d.getDate() + n)
-  return d.toISOString().slice(0, 10)
+  return isoLocal(d) // local calendar date (toISOString would shift a day in timezones ahead of UTC)
 }
 export const daysBetween = (a: string, b: string) => Math.round((toDate(b).getTime() - toDate(a).getTime()) / DAY)
