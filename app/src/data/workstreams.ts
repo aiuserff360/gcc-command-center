@@ -262,7 +262,8 @@ function buildTeam(): TeamMember[] {
         if (!used.has(name)) break
       }
       used.add(name)
-      const role = roles[Math.min(i, roles.length - 1)] ?? roles[roles.length - 1]
+      // first entry is the lead role; extra members cycle through the non-lead roles so no role dominates
+      const role = i < roles.length ? roles[i] : roles[1 + ((i - roles.length) % (roles.length - 1))]
       const profile = ROLE_PROFILE[role] ?? { fn: 'General', duties: '' }
       const month = 1 + ((wi * 2 + i) % 10)
       out.push({
