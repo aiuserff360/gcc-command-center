@@ -51,7 +51,7 @@ export default function Resources() {
 
       {tab === 'Workforce Overview' && <OverviewTab d={d} goTab={setTab} onOpen={setOpenReq} />}
       {tab === 'Hiring Plan & Pipeline' && <HiringTab d={d} onOpen={setOpenReq} />}
-      {tab === 'Resource Allocation' && <AllocationTab d={d} />}
+      {tab === 'Resource Allocation' && <AllocationTab d={d} onOpen={setOpenReq} />}
       {tab === 'Skills & Capability' && <SkillsTab d={d} />}
       {tab === 'Cost Analysis' && <CostTab d={d} />}
       {tab === 'Location Mix' && <LocationTab d={d} />}
