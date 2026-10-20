@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --color-navy-900: #0B2240;
+  --color-navy-800: #10305A;
+  --color-navy-700: #163C70;
+  --color-brand-600: #1E5BBE;
+  --color-brand-500: #2B6FD6;
+  --color-brand-400: #5B9BF0;
+  --color-brand-300: #9CC3F7;
+  --color-brand-100: #E4EEFB;
+  --color-brand-50: #F0F5FD;
+  --color-surface: #F3F6FB;
+  --color-line: #E3E8F0;
+  --color-ink-900: #111827;
+  --color-ink-700: #374151;
+  --color-ink-500: #6B7280;
+  --color-ink-400: #9CA3AF;
+  --color-teal-500: #14B8A6;
+  --color-good: #16A34A;
+  --color-warn: #F59E0B;
+  --color-bad: #DC2626;
+  --color-violet-500: #8B5CF6;
+  --color-orange-500: #F97316;
+}
+
+html, body, #root { height: 100%; }
+body { background: var(--color-surface); color: var(--color-ink-900); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+
+@layer components {
+  .card { @apply bg-white rounded-xl border border-line shadow-[0_1px_2px_rgba(16,24,40,0.04)]; }
+  .card-title { @apply text-[15px] font-semibold text-ink-900; }
+  .link { @apply text-brand-600 text-[12.5px] font-medium hover:underline cursor-pointer; }
+  .btn { @apply inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors cursor-pointer; }
+  .btn-primary { @apply inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors cursor-pointer bg-brand-600 text-white hover:bg-brand-500; }
+  .btn-secondary { @apply inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors cursor-pointer bg-white border border-line text-ink-700 hover:bg-surface; }
+  .btn-danger { @apply inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors cursor-pointer bg-red-50 text-red-700 border border-red-200 hover:bg-red-100; }
+  .input { @apply w-full rounded-lg border border-line bg-white px-3 py-2 text-[13px] text-ink-900 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100; }
+  .label { @apply block text-[12px] font-medium text-ink-700 mb-1; }
+  .th { @apply text-left text-[12px] font-medium text-ink-500 px-3 py-2 bg-surface/70 first:rounded-l-md last:rounded-r-md whitespace-nowrap; }
+  .td { @apply px-3 py-2 text-[13px] text-ink-900 border-b border-line/70 align-middle; }
+  .tbl tr:last-child .td { @apply border-b-0; }
+}
+
+.scroll-thin::-webkit-scrollbar { height: 8px; width: 8px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 8px; }
+
+.recharts-cartesian-grid line { stroke: #EEF2F7; }
+.recharts-text { fill: #6B7280; font-size: 11px; }
+.recharts-tooltip-wrapper { outline: none; }

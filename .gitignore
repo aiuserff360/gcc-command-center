@@ -1,0 +1,19 @@
+# dependencies / build output
+app/node_modules/
+app/dist/
+app/*.tsbuildinfo
+app/node_modules/.vite/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# logs
+*.log
+
+# kept local only (client-specific material and raw originals)
+GCC Control Tower - Requirements Reference.*
+WhatsApp Image *.jpeg
+FutureFactor360 logo.png
