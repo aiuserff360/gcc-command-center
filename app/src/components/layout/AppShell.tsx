@@ -5,14 +5,14 @@ import {
   LayoutDashboard, Target, CalendarRange, Layers, Users, Wallet, ArrowLeftRight, AlertTriangle, Landmark, CheckCircle2,
   TrendingUp, FileBarChart2, FileText, Plug, Settings, Lightbulb, Bell, ChevronDown, Calendar, MoreVertical, Sparkles, RotateCcw, Pencil, LogOut, UserCircle2,
 } from 'lucide-react'
-import { useStore, type Phase } from '../../store/useStore'
-import { PHASES, PROGRAM_NAMES, programDef } from '../../data/common'
+import { useStore } from '../../store/useStore'
+import { PROGRAM_NAMES, programDef } from '../../data/common'
 import { formatMoney } from '../../data/money'
 import { FilterSelect } from '../ui'
 
 export const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/strategy', label: 'Strategy & Business Case', icon: Target },
+  { to: '/strategy', label: 'Target Footprint', icon: Target },
   { to: '/planning', label: 'Program Planning', icon: CalendarRange },
   { to: '/workstreams', label: 'Workstreams', icon: Layers },
   { to: '/resources', label: 'Resource Management', icon: Users },
@@ -170,8 +170,6 @@ export function PageHeader({ title, subtitle, viewLabel = 'View by', viewValue, 
   /** Opens this page's editor (KPIs / settings). Rendered as the standard top-right "Edit" button. */
   onEdit?: () => void; editLabel?: string
 }) {
-  const phase = useStore((s) => s.phase)
-  const setPhase = useStore((s) => s.setPhase)
   const [range, setRange] = useState(dateRange)
   return (
     <div className="flex items-start justify-between gap-4 mb-4">
@@ -182,7 +180,6 @@ export function PageHeader({ title, subtitle, viewLabel = 'View by', viewValue, 
       <div className="flex items-center gap-2.5 shrink-0">
         {right}
         {viewOptions && viewValue !== undefined && onView && <FilterSelect label={viewLabel} value={viewValue} options={viewOptions} onChange={onView} />}
-        <FilterSelect label="Phase" value={phase} options={PHASES} onChange={(v) => setPhase(v as Phase)} />
         <label className="card px-3 py-2 flex items-center gap-2 text-[13px] font-medium text-ink-900">
           <Calendar size={16} className="text-brand-600" />
           <select value={range} onChange={(e) => setRange(e.target.value)} className="bg-transparent outline-none cursor-pointer">

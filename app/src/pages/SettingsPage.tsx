@@ -4,7 +4,7 @@ import { PageHeader } from '../components/layout/AppShell'
 import { Card, Badge, Table, Tabs, Modal, Field, Input, Select, TextArea, FormGrid, ConfirmDelete, SectionTitle, Progress } from '../components/ui'
 import { useCollection, useStore, uid } from '../store/useStore'
 import { seedProgramKpis, seedWorkstreamSummaries, type ProgramKpis, type WorkstreamSummary } from '../data/shared'
-import { PHASES, WORKSTREAMS, OWNERS, fmtDate, TODAY, CHART_COLORS, type Workstream, type Status } from '../data/common'
+import { WORKSTREAMS, OWNERS, fmtDate, TODAY, CHART_COLORS, type Workstream, type Status } from '../data/common'
 import { WBS, WBS_TO_DASHBOARD } from '../data/wbs'
 import { seedUsers, seedLookups, seedNotificationSettings, USER_ROLES, MODULES, PERMISSION_MATRIX, WEEKDAYS, type User, type LookupList, type NotificationSettings } from '../data/settings'
 import { useMoney } from '../data/money'
@@ -45,7 +45,6 @@ function ProgramTab() {
   const k = kpisC.items[0] ?? seedProgramKpis[0]
   const program = useStore((s) => s.program)
   const setProgram = useStore((s) => s.setProgram)
-  const phase = useStore((s) => s.phase)
   const setPhase = useStore((s) => s.setPhase)
   const [f, setF] = useState<ProgramKpis>(k)
   const { saved, flash } = useSaved()
@@ -62,8 +61,7 @@ function ProgramTab() {
       <div className="grid grid-cols-[1fr_340px] gap-4">
         <Card title="Program configuration" subtitle="Core program record used by the Dashboard headline tiles and reports">
           <FormGrid cols={3}>
-            <Field label="Program name" className="col-span-2"><Input value={f.programName} onChange={(e) => setF({ ...f, programName: e.target.value })} /></Field>
-            <Field label="Lifecycle phase"><Select options={PHASES} value={f.lifecyclePhase} onChange={(e) => setF({ ...f, lifecyclePhase: e.target.value as ProgramKpis['lifecyclePhase'] })} /></Field>
+            <Field label="Program name" className="col-span-3"><Input value={f.programName} onChange={(e) => setF({ ...f, programName: e.target.value })} /></Field>
             <Field label="Timeline start"><Input type="date" value={f.timelineStart} onChange={(e) => setF({ ...f, timelineStart: e.target.value })} /></Field>
             <Field label="Timeline end"><Input type="date" value={f.timelineEnd} onChange={(e) => setF({ ...f, timelineEnd: e.target.value })} /></Field>
             <Field label="Go-live target"><Input type="date" value={f.goLiveTarget} onChange={(e) => setF({ ...f, goLiveTarget: e.target.value })} /></Field>
@@ -83,12 +81,6 @@ function ProgramTab() {
           <Card title="Selected program" subtitle="Shown in the top bar; switches the data context">
             <Select options={PROGRAMS} value={program} onChange={(e) => setProgram(e.target.value)} />
             <p className="text-[11.5px] text-ink-500 mt-2">Each program keeps its own data set; switching programs swaps every page to that program's data.</p>
-          </Card>
-          <Card title="Current phase" subtitle="Drives the phase selector on every page">
-            <div className="flex flex-wrap gap-1.5">
-              {PHASES.map((p) => <button key={p} onClick={() => setPhase(p)} className={`rounded-full px-3 py-1 text-[12px] font-medium cursor-pointer ${phase === p ? 'bg-brand-600 text-white' : 'bg-surface text-ink-700 hover:bg-brand-50'}`}>{p}</button>)}
-            </div>
-            <p className="text-[11.5px] text-ink-500 mt-2">Program record phase: <b>{k.lifecyclePhase}</b>{k.lifecyclePhase !== phase && <span className="text-amber-600"> · differs from selected phase ({phase})</span>}</p>
           </Card>
           <Card title="Program snapshot">
             {[['Program completion', `${k.programCompletion}%`], ['Milestone adherence', `${k.milestoneAdherence}%`], ['Talent onboarded', `${k.talentOnboarded} / ${k.talentTarget}`], ['Actual spend', `${m.fmt(k.actualSpendCr)} of ${m.fmt(k.approvedBudgetCr)}`], ['Go-live target', fmtDate(k.goLiveTarget)]].map(([l, v]) => (

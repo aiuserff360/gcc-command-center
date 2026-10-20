@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { Modal, Field, Input, Select, FormGrid } from './ui'
-import { PHASES } from '../data/common'
+import { Modal, Field, Input, FormGrid } from './ui'
 import type { ProgramKpis } from '../data/shared'
 import { useMoney } from '../data/money'
 
@@ -13,7 +12,6 @@ export function ProgramKpiEditor({ open, onClose, value, onSave }: { open: boole
   return (
     <Modal open={open} onClose={onClose} title="Update program KPIs" footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={() => onSave(f)}>Save</button></>}>
       <FormGrid cols={3}>
-        <Field label="Lifecycle phase"><Select options={PHASES} value={f.lifecyclePhase} onChange={(e) => setF({ ...f, lifecyclePhase: e.target.value as ProgramKpis['lifecyclePhase'] })} /></Field>
         <Field label="Timeline start"><Input type="date" value={f.timelineStart} onChange={(e) => setF({ ...f, timelineStart: e.target.value })} /></Field>
         <Field label="Timeline end"><Input type="date" value={f.timelineEnd} onChange={(e) => setF({ ...f, timelineEnd: e.target.value })} /></Field>
         <Field label="Program completion %"><Input {...num('programCompletion')} /></Field>
