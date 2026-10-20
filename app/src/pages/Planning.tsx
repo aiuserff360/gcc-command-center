@@ -13,7 +13,6 @@ import { seedInitiatives, seedTeamMembers, seedWsBudgetLines, raidWorkstreamOf, 
 import { seedActivities, WBS_TO_DASHBOARD, type Activity } from '../data/wbs'
 import { useMoney } from '../data/money'
 import { Gantt, type GanttGroup, type GanttScale, type GanttChange } from '../components/planning/Gantt'
-import { PlanEditor, type EditorTab } from '../components/planning/PlanEditor'
 import { MilestoneModal, DependencyModal, DependencyForm, MS_STATUSES, MS_PHASES, IMPACTS, DEP_STATUSES } from '../components/planning/Modals'
 import { useWsRows, DependenciesView, RisksView, TeamView, BudgetView } from '../components/workstreams/views'
 import { DeliverablesView, ActivityForm } from '../components/workstreams/Deliverables'
@@ -83,7 +82,6 @@ export default function Planning() {
   const [ws, setWs] = useState<Workstream>(() => { const p = params.get('ws'); return (p && WORKSTREAMS.includes(p as Workstream) ? p : 'Technology & Infrastructure') as Workstream })
   useEffect(() => { const p = params.get('ws'); if (p && wss.items.some((w) => w.name === p)) setWs(p as Workstream) }, [params, wss.items])
   const [detail, setDetail] = useState<(typeof DETAIL_TABS)[number]>('Dependencies')
-  const [editorTab, setEditorTab] = useState<EditorTab>('Initiatives')
 
   /* Gantt controls */
   const [scale, setScale] = useState<GanttScale>('Months')
@@ -285,11 +283,6 @@ export default function Planning() {
               leftHeader="Task Name" onItemClick={openPlanItem} onAddItem={(g) => addToGroup(g, ws)} onItemChange={commitDates} />
             <div className="flex items-center justify-between mt-3 text-[12px] text-ink-500">{legend}<span>click a row to open it · drag a bar to move it, drag its edge to change start or finish · expand a sub-workstream for its activities</span></div>
           </Card>
-
-          <PlanEditor ws={ws} wsRow={wsRow} onWsChange={(w) => wss.update(w)} tab={editorTab} onTab={setEditorTab}
-            initiatives={summary.its} onInitChange={(i) => inits.update(i)} onInitAdd={(i) => inits.add(i)} onInitRemove={(id) => inits.remove(id)}
-            milestones={summary.mss} onMsChange={(m) => ms.update(m)} onMsAdd={(m) => ms.add(m)} onMsRemove={(id) => ms.remove(id)}
-            activities={wsActs} onActChange={(a) => acts.update({ ...a, lastUpdated: TODAY })} onActAdd={(a) => acts.add(a)} onActRemove={(id) => acts.remove(id)} subWorkstreams={subGroupsMeta} />
 
           <Tabs tabs={[...DETAIL_TABS]} active={detail} onChange={(t) => setDetail(t as (typeof DETAIL_TABS)[number])} />
           {detail === 'Deliverables register' && <DeliverablesView ws={ws} />}
