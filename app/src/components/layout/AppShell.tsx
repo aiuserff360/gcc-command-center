@@ -12,7 +12,7 @@ import { FilterSelect } from '../ui'
 
 export const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/target-footprint', label: 'Target Footprint', icon: Target },
+  { to: '/strategy', label: 'Strategy & Business Case', icon: Target },
   { to: '/planning', label: 'Program Planning', icon: CalendarRange },
   { to: '/workstreams', label: 'Workstreams', icon: Layers },
   { to: '/resources', label: 'Resource Management', icon: Users },

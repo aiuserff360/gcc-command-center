@@ -3,7 +3,7 @@ import { Routes, Route } from 'react-router-dom'
 import { AppShell } from './components/layout/AppShell'
 import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
-const TargetFootprint = lazy(() => import('./pages/TargetFootprint'))
+const Strategy = lazy(() => import('./pages/Strategy'))
 const Planning = lazy(() => import('./pages/Planning'))
 const Workstreams = lazy(() => import('./pages/Workstreams'))
 const Resources = lazy(() => import('./pages/Resources'))
@@ -25,8 +25,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<Dashboard />} />
-        <Route path="/target-footprint" element={<TargetFootprint />} />
-        <Route path="/strategy" element={<TargetFootprint />} />
+        <Route path="/strategy" element={<Strategy />} />
         <Route path="/planning" element={<Planning />} />
         <Route path="/workstreams" element={<Workstreams />} />
         <Route path="/resources" element={<Resources />} />
