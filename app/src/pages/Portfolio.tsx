@@ -7,22 +7,24 @@ import { Card, KpiTile, Badge, Tabs, Table, Modal, Field, Input, TextArea, Selec
 import { Donut, tooltipStyle } from '../components/charts'
 import { useCollection, useStore, uid } from '../store/useStore'
 import { WORKSTREAMS, WORKSTREAM_META, CHART_COLORS, fmtDate, fmtDateShort, type Workstream } from '../data/common'
+import { useMoney, type Money } from '../data/money'
 import { seedPrograms, seedPortfolioInitiatives, seedProgramBenefits, seedInvestmentYears, PROGRAM_PHASES, PROGRAM_COLORS, PHASE_COLORS, RAG_COLORS, type Program, type PortfolioInitiative, type ProgramBenefit, type InvestmentYear, type ProgramPhase, type Rag } from '../data/portfolio'
 
 const TABS = ['Portfolio Overview', 'Programs', 'Initiatives', 'Roadmap', 'Benefits by Program', 'Capacity & Investment']
 const REGIONS = ['All Regions', 'India', 'Europe', 'APAC', 'Global'] as const
-const fmt = (v: number, d = 1) => `₹ ${v.toFixed(d)} Cr`
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0)
 const T0 = new Date('2026-01-01').getTime(), T1 = new Date('2029-01-01').getTime()
 const xPct = (iso: string) => Math.max(0, Math.min(100, ((new Date(iso).getTime() - T0) / (T1 - T0)) * 100))
 const WS_OPTIONS = [...WORKSTREAMS, 'Program Management'] as const
 
 type Setter<T> = <K extends keyof T>(k: K) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void
-function useForm<T>(initial: T) {
+function useForm<T>(initial: T, money?: Money) {
   const [f, setF] = useState<T>(initial)
   const s: Setter<T> = (k) => (e) => setF({ ...f, [k]: e.target.value })
   const n: Setter<T> = (k) => (e) => setF({ ...f, [k]: parseFloat(e.target.value) || 0 })
-  return { f, setF, s, n }
+  /** Props for a money input: shows the display currency, stores ₹ Cr. */
+  const c = (k: keyof T) => ({ type: 'number' as const, step: 'any', value: money!.inputValue(f[k] as number), onChange: (e: ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: money!.toBase(parseFloat(e.target.value) || 0) }) })
+  return { f, setF, s, n, c }
 }
 function Footer({ onClose, onSave, onDelete, isNew }: { onClose: () => void; onSave: () => void; onDelete?: () => void; isNew: boolean }) {
   return (<>{!isNew && onDelete && <ConfirmDelete onConfirm={onDelete} />}<span className="flex-1" /><button className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={onSave}>Save</button></>)
@@ -35,6 +37,10 @@ export default function Portfolio() {
   const setProgram = useStore((s) => s.setProgram)
   const [tab, setTab] = useState(TABS[0])
   const [region, setRegion] = useState<string>('All Regions')
+  const money = useMoney()
+  const fmt = money.fmt
+  /** ₹ Cr -> rounded number in the display unit (chart series). */
+  const disp = (cr: number) => +money.toDisplay(cr).toFixed(money.digits)
   const programsC = useCollection<Program>('programs', seedPrograms)
   const initC = useCollection<PortfolioInitiative>('portfolioInitiatives', seedPortfolioInitiatives)
   const benefitsC = useCollection<ProgramBenefit>('programBenefits', seedProgramBenefits)
@@ -96,14 +102,14 @@ export default function Portfolio() {
             <Card title="Portfolio Timeline" subtitle="Phase bars by program, 2026 – 2028" headerRight={<Legend items={PROGRAM_PHASES.map((ph) => ({ label: ph, color: PHASE_COLORS[ph] }))} />} action={<ViewAll label="Roadmap" onClick={() => setTab('Roadmap')} />}>
               <Timeline programs={programs} selected={selected} onSelect={(p) => setProgram(p.name)} />
             </Card>
-            <Card title="Budget vs Spend by Program (₹ Cr)" headerRight={<Legend items={[{ label: 'Budget', color: CHART_COLORS.blueFaint }, { label: 'Spend', color: CHART_COLORS.blue }]} />}>
+            <Card title={`Budget vs Spend by Program (${money.unitLabel})`} headerRight={<Legend items={[{ label: 'Budget', color: CHART_COLORS.blueFaint }, { label: 'Spend', color: CHART_COLORS.blue }]} />}>
               <div className="h-[230px]">
                 <ResponsiveContainer>
-                  <BarChart data={programs.map((p) => ({ name: shortName(p.name), Budget: p.budgetCr, Spend: p.spendCr }))} margin={{ top: 14, right: 4, left: -24, bottom: 0 }} barGap={2} barCategoryGap="25%">
+                  <BarChart data={programs.map((p) => ({ name: shortName(p.name), Budget: disp(p.budgetCr), Spend: disp(p.spendCr) }))} margin={{ top: 14, right: 4, left: -24, bottom: 0 }} barGap={2} barCategoryGap="25%">
                     <CartesianGrid vertical={false} />
                     <XAxis dataKey="name" tickLine={false} axisLine={false} interval={0} tick={<WrapTick />} height={32} />
                     <YAxis tickLine={false} axisLine={false} />
-                    <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`₹ ${v} Cr`]} />
+                    <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`${money.symbol} ${v} ${money.unit}`]} />
                     <Bar isAnimationActive={false} dataKey="Budget" fill={CHART_COLORS.blueFaint} radius={[3, 3, 0, 0]}><LabelList dataKey="Budget" position="top" style={{ fontSize: 10.5, fill: '#374151' }} /></Bar>
                     <Bar isAnimationActive={false} dataKey="Spend" fill={CHART_COLORS.blue} radius={[3, 3, 0, 0]}><LabelList dataKey="Spend" position="top" style={{ fontSize: 10.5, fill: '#111827', fontWeight: 600 }} /></Bar>
                   </BarChart>
@@ -198,14 +204,14 @@ export default function Portfolio() {
       {tab === 'Benefits by Program' && (
         <div className="space-y-4">
           <div className="grid grid-cols-[1.4fr_1fr] gap-4">
-            <Card title="Target Benefits by Program (₹ Cr)" subtitle="Annual target by benefit area" headerRight={<Legend items={[{ label: 'Cost Savings', color: CHART_COLORS.blue }, { label: 'Productivity', color: CHART_COLORS.teal }, { label: 'Quality & Efficiency', color: CHART_COLORS.violet }, { label: 'Time to Market', color: CHART_COLORS.amber }]} />}>
+            <Card title={`Target Benefits by Program (${money.unitLabel})`} subtitle="Annual target by benefit area" headerRight={<Legend items={[{ label: 'Cost Savings', color: CHART_COLORS.blue }, { label: 'Productivity', color: CHART_COLORS.teal }, { label: 'Quality & Efficiency', color: CHART_COLORS.violet }, { label: 'Time to Market', color: CHART_COLORS.amber }]} />}>
               <div className="h-[260px]">
                 <ResponsiveContainer>
-                  <BarChart data={programs.map((p) => { const b = benefitOf(p.name); return { name: shortName(p.name), 'Cost Savings': b?.costSavingsCr ?? 0, Productivity: b?.productivityCr ?? 0, 'Quality & Efficiency': b?.qualityCr ?? 0, 'Time to Market': b?.timeToMarketCr ?? 0, total: benefitTotal(b) } })} margin={{ top: 16, right: 4, left: -24, bottom: 0 }} barCategoryGap="30%">
+                  <BarChart data={programs.map((p) => { const b = benefitOf(p.name); return { name: shortName(p.name), 'Cost Savings': disp(b?.costSavingsCr ?? 0), Productivity: disp(b?.productivityCr ?? 0), 'Quality & Efficiency': disp(b?.qualityCr ?? 0), 'Time to Market': disp(b?.timeToMarketCr ?? 0), total: disp(benefitTotal(b)) } })} margin={{ top: 16, right: 4, left: -24, bottom: 0 }} barCategoryGap="30%">
                     <CartesianGrid vertical={false} />
                     <XAxis dataKey="name" tickLine={false} axisLine={false} interval={0} tick={<WrapTick />} height={32} />
                     <YAxis tickLine={false} axisLine={false} />
-                    <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`₹ ${v} Cr`]} />
+                    <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`${money.symbol} ${v} ${money.unit}`]} />
                     <Bar isAnimationActive={false} dataKey="Cost Savings" stackId="b" fill={CHART_COLORS.blue} />
                     <Bar isAnimationActive={false} dataKey="Productivity" stackId="b" fill={CHART_COLORS.teal} />
                     <Bar isAnimationActive={false} dataKey="Quality & Efficiency" stackId="b" fill={CHART_COLORS.violet} />
@@ -228,7 +234,7 @@ export default function Portfolio() {
                     <Stat label="Productivity Gains" value={fmt(+list.reduce((s, b) => s + b.productivityCr, 0).toFixed(1))} />
                     <Stat label="Quality & Efficiency" value={fmt(+list.reduce((s, b) => s + b.qualityCr, 0).toFixed(1))} />
                     <Stat label="Time to Market" value={fmt(+list.reduce((s, b) => s + b.timeToMarketCr, 0).toFixed(1))} />
-                    <Stat label="Benefit per ₹ invested" value={`${(tot / Math.max(0.1, totalBudget)).toFixed(1)}x`} />
+                    <Stat label={`Benefit per ${money.symbol} invested`} value={`${(tot / Math.max(0.1, totalBudget)).toFixed(1)}x`} />
                     <button className="link mt-2 inline-flex items-center gap-1" onClick={() => nav('/value')}>Open Value Realization →</button>
                   </>
                 )
@@ -254,14 +260,14 @@ export default function Portfolio() {
       {tab === 'Capacity & Investment' && (
         <div className="space-y-4">
           <div className="grid grid-cols-[1.3fr_1fr] gap-4">
-            <Card title="Investment by Year (₹ Cr)" subtitle="Planned spend per program · click a bar segment's program in the table to edit" headerRight={<Legend items={programs.map((p) => ({ label: shortName(p.name), color: colorOf(p.name) }))} />}>
+            <Card title={`Investment by Year (${money.unitLabel})`} subtitle="Planned spend per program · click a bar segment's program in the table to edit" headerRight={<Legend items={programs.map((p) => ({ label: shortName(p.name), color: colorOf(p.name) }))} />}>
               <div className="h-[250px]">
                 <ResponsiveContainer>
-                  <BarChart data={(['y2026', 'y2027', 'y2028'] as const).map((y) => { const row: Record<string, number | string> = { year: y.slice(1) }; let t = 0; programs.forEach((p) => { const v = investC.items.find((i) => i.program === p.name)?.[y] ?? 0; row[p.name] = v; t += v }); row.total = +t.toFixed(1); return row })} margin={{ top: 16, right: 4, left: -24, bottom: 0 }} barCategoryGap="35%">
+                  <BarChart data={(['y2026', 'y2027', 'y2028'] as const).map((y) => { const row: Record<string, number | string> = { year: y.slice(1) }; let t = 0; programs.forEach((p) => { const v = disp(investC.items.find((i) => i.program === p.name)?.[y] ?? 0); row[p.name] = v; t += v }); row.total = +t.toFixed(money.digits); return row })} margin={{ top: 16, right: 4, left: -24, bottom: 0 }} barCategoryGap="35%">
                     <CartesianGrid vertical={false} />
                     <XAxis dataKey="year" tickLine={false} axisLine={false} />
                     <YAxis tickLine={false} axisLine={false} />
-                    <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`₹ ${v} Cr`]} />
+                    <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`${money.symbol} ${v} ${money.unit}`]} />
                     {programs.map((p, i) => <Bar isAnimationActive={false} key={p.id} dataKey={p.name} stackId="inv" fill={colorOf(p.name)} radius={i === programs.length - 1 ? [4, 4, 0, 0] : undefined}>{i === programs.length - 1 && <LabelList dataKey="total" position="top" style={{ fontSize: 11, fill: '#111827', fontWeight: 600 }} />}</Bar>)}
                   </BarChart>
                 </ResponsiveContainer>
@@ -283,15 +289,15 @@ export default function Portfolio() {
             </Card>
           </div>
           <div className="grid grid-cols-[1.3fr_1fr] gap-4">
-            <Card title="Investment Plan by Program (₹ Cr)" subtitle="Click a row to edit yearly investment">
+            <Card title={`Investment Plan by Program (${money.unitLabel})`} subtitle="Click a row to edit yearly investment">
               <Table<InvestmentYear> rows={programs.map((p) => investC.items.find((i) => i.program === p.name) ?? { id: `iv-${p.id}`, program: p.name, y2026: 0, y2027: 0, y2028: 0 })} onRowClick={setInvEdit} columns={[
                 { key: 'program', header: 'Program', render: (r) => <span className="font-medium inline-flex items-center gap-2"><span className="w-2 h-2 rounded-full" style={{ background: colorOf(r.program) }} />{r.program}</span> },
-                { key: 'y2026', header: '2026', render: (r) => r.y2026.toFixed(1), className: 'text-right' },
-                { key: 'y2027', header: '2027', render: (r) => r.y2027.toFixed(1), className: 'text-right' },
-                { key: 'y2028', header: '2028', render: (r) => r.y2028.toFixed(1), className: 'text-right' },
-                { key: 'total', header: 'Total', render: (r) => <b>{(r.y2026 + r.y2027 + r.y2028).toFixed(1)}</b>, className: 'text-right' },
+                { key: 'y2026', header: '2026', render: (r) => money.num(r.y2026), className: 'text-right' },
+                { key: 'y2027', header: '2027', render: (r) => money.num(r.y2027), className: 'text-right' },
+                { key: 'y2028', header: '2028', render: (r) => money.num(r.y2028), className: 'text-right' },
+                { key: 'total', header: 'Total', render: (r) => <b>{money.num(r.y2026 + r.y2027 + r.y2028)}</b>, className: 'text-right' },
                 { key: 'budget', header: 'Approved Budget', render: (r) => fmt(programs.find((p) => p.name === r.program)?.budgetCr ?? 0), className: 'text-right' },
-                { key: 'var', header: 'Plan vs Budget', render: (r) => { const b = programs.find((p) => p.name === r.program)?.budgetCr ?? 0; const d = +(r.y2026 + r.y2027 + r.y2028 - b).toFixed(1); return <span className={d > 0 ? 'text-red-600' : 'text-green-700'}>{d > 0 ? '+' : ''}{d.toFixed(1)}</span> }, className: 'text-right' },
+                { key: 'var', header: 'Plan vs Budget', render: (r) => { const b = programs.find((p) => p.name === r.program)?.budgetCr ?? 0; const diff = +(r.y2026 + r.y2027 + r.y2028 - b).toFixed(2); return <span className={diff > 0 ? 'text-red-600' : 'text-green-700'}>{money.signed(diff)}</span> }, className: 'text-right' },
               ]} />
             </Card>
             <Card title="Capacity Summary">
@@ -413,6 +419,8 @@ function Roadmap({ programs, selected, onSelect }: { programs: Program[]; select
 
 /* ---------------- Initiatives tab ---------------- */
 function Initiatives({ initiatives, programs, selected, onEdit, onAdd }: { initiatives: PortfolioInitiative[]; programs: Program[]; selected: string; onEdit: (i: PortfolioInitiative) => void; onAdd: () => void }) {
+  const money = useMoney()
+  const fmt = money.fmt
   const [program, setProgram] = useState('All Programs')
   const [status, setStatus] = useState('All')
   const [type, setType] = useState('All types')
@@ -467,7 +475,8 @@ function Initiatives({ initiatives, programs, selected, onEdit, onAdd }: { initi
 
 /* ---------------- Modals ---------------- */
 function ProgramModal({ value, isNew, onClose, onSave, onDelete }: { value: Program; isNew: boolean; onClose: () => void; onSave: (v: Program) => void; onDelete: () => void }) {
-  const { f, setF, s, n } = useForm(value)
+  const money = useMoney()
+  const { f, setF, s, n, c } = useForm(value, money)
   const setPhaseRange = (ph: ProgramPhase, idx: 0 | 1, v: string) => {
     const cur = f.phasePlan[ph] ?? ['', '']
     const next: [string, string] = idx === 0 ? [v, cur[1]] : [cur[0], v]
@@ -487,8 +496,8 @@ function ProgramModal({ value, isNew, onClose, onSave, onDelete }: { value: Prog
         <Field label="Sponsor"><Input value={f.sponsor} onChange={s('sponsor')} /></Field>
         <Field label="Current phase"><Select options={PROGRAM_PHASES} value={f.phase} onChange={s('phase')} /></Field>
         <Field label="Progress %"><Input type="number" value={f.progress} onChange={n('progress')} /></Field>
-        <Field label="Budget (₹ Cr)"><Input type="number" step="0.1" value={f.budgetCr} onChange={n('budgetCr')} /></Field>
-        <Field label="Spend (₹ Cr)"><Input type="number" step="0.1" value={f.spendCr} onChange={n('spendCr')} /></Field>
+        <Field label={`Budget (${money.unitLabel})`}><Input {...c('budgetCr')} /></Field>
+        <Field label={`Spend (${money.unitLabel})`}><Input {...c('spendCr')} /></Field>
         <Field label="Headcount target"><Input type="number" value={f.headcountTarget} onChange={n('headcountTarget')} /></Field>
         <Field label="Headcount current"><Input type="number" value={f.headcountCurrent} onChange={n('headcountCurrent')} /></Field>
         <Field label="Go-live"><Input type="date" value={f.goLive ?? ''} onChange={(e) => setF({ ...f, goLive: e.target.value || undefined })} /></Field>
@@ -511,7 +520,8 @@ function ProgramModal({ value, isNew, onClose, onSave, onDelete }: { value: Prog
 }
 
 function InitiativeModal({ value, programs, isNew, onClose, onSave, onDelete }: { value: PortfolioInitiative; programs: string[]; isNew: boolean; onClose: () => void; onSave: (v: PortfolioInitiative) => void; onDelete: () => void }) {
-  const { f, s, n } = useForm(value)
+  const money = useMoney()
+  const { f, s, n, c } = useForm(value, money)
   return (
     <Modal open title={isNew ? 'Add initiative' : `Edit ${f.code}`} onClose={onClose} footer={<Footer isNew={isNew} onClose={onClose} onSave={() => onSave(f)} onDelete={onDelete} />}>
       <FormGrid cols={3}>
@@ -523,7 +533,7 @@ function InitiativeModal({ value, programs, isNew, onClose, onSave, onDelete }: 
         <Field label="Owner"><Input value={f.owner} onChange={s('owner')} /></Field>
         <Field label="Status"><Select options={['On Track', 'At Risk', 'Delayed', 'Completed', 'Not Started']} value={f.status} onChange={s('status')} /></Field>
         <Field label="Progress %"><Input type="number" value={f.progress} onChange={n('progress')} /></Field>
-        <Field label="Benefit (₹ Cr, annual)"><Input type="number" step="0.1" value={f.benefitCr} onChange={n('benefitCr')} /></Field>
+        <Field label={`Benefit (${money.unitLabel}, annual)`}><Input {...c('benefitCr')} /></Field>
         <Field label="Due"><Input type="date" value={f.due} onChange={s('due')} /></Field>
       </FormGrid>
     </Modal>
@@ -531,28 +541,30 @@ function InitiativeModal({ value, programs, isNew, onClose, onSave, onDelete }: 
 }
 
 function BenefitModal({ value, onClose, onSave }: { value: ProgramBenefit; onClose: () => void; onSave: (v: ProgramBenefit) => void }) {
-  const { f, n } = useForm(value)
+  const money = useMoney()
+  const { f, c } = useForm(value, money)
   return (
     <Modal open title={`Benefits – ${f.program}`} onClose={onClose} footer={<Footer isNew onClose={onClose} onSave={() => onSave(f)} />}>
       <FormGrid cols={2}>
-        <Field label="Cost Savings (₹ Cr)"><Input type="number" step="0.1" value={f.costSavingsCr} onChange={n('costSavingsCr')} /></Field>
-        <Field label="Productivity Gains (₹ Cr)"><Input type="number" step="0.1" value={f.productivityCr} onChange={n('productivityCr')} /></Field>
-        <Field label="Quality & Efficiency (₹ Cr)"><Input type="number" step="0.1" value={f.qualityCr} onChange={n('qualityCr')} /></Field>
-        <Field label="Time to Market (₹ Cr)"><Input type="number" step="0.1" value={f.timeToMarketCr} onChange={n('timeToMarketCr')} /></Field>
-        <Field label="Realized to date (₹ Cr)"><Input type="number" step="0.1" value={f.realizedCr} onChange={n('realizedCr')} /></Field>
+        <Field label={`Cost Savings (${money.unitLabel})`}><Input {...c('costSavingsCr')} /></Field>
+        <Field label={`Productivity Gains (${money.unitLabel})`}><Input {...c('productivityCr')} /></Field>
+        <Field label={`Quality & Efficiency (${money.unitLabel})`}><Input {...c('qualityCr')} /></Field>
+        <Field label={`Time to Market (${money.unitLabel})`}><Input {...c('timeToMarketCr')} /></Field>
+        <Field label={`Realized to date (${money.unitLabel})`}><Input {...c('realizedCr')} /></Field>
       </FormGrid>
     </Modal>
   )
 }
 
 function InvestmentModal({ value, onClose, onSave }: { value: InvestmentYear; onClose: () => void; onSave: (v: InvestmentYear) => void }) {
-  const { f, n } = useForm(value)
+  const money = useMoney()
+  const { f, c } = useForm(value, money)
   return (
     <Modal open title={`Investment plan – ${f.program}`} onClose={onClose} footer={<Footer isNew onClose={onClose} onSave={() => onSave(f)} />}>
       <FormGrid cols={3}>
-        <Field label="2026 (₹ Cr)"><Input type="number" step="0.1" value={f.y2026} onChange={n('y2026')} /></Field>
-        <Field label="2027 (₹ Cr)"><Input type="number" step="0.1" value={f.y2027} onChange={n('y2027')} /></Field>
-        <Field label="2028 (₹ Cr)"><Input type="number" step="0.1" value={f.y2028} onChange={n('y2028')} /></Field>
+        <Field label={`2026 (${money.unitLabel})`}><Input {...c('y2026')} /></Field>
+        <Field label={`2027 (${money.unitLabel})`}><Input {...c('y2027')} /></Field>
+        <Field label={`2028 (${money.unitLabel})`}><Input {...c('y2028')} /></Field>
       </FormGrid>
     </Modal>
   )

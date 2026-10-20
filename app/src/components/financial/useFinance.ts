@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useCollection } from '../../store/useStore'
+import { useMoney } from '../../data/money'
 import {
   seedBudgetLines, seedMonthlyFinancials, seedPhaseSpend, seedCostCategories, seedFinancialMilestones, seedBenefits, seedRunRate, seedCommitments, seedApprovals, seedScenarios, seedFinanceSettings,
   COST_CATEGORIES, viewShare, sum, r2, pct,
@@ -7,6 +8,8 @@ import {
 } from '../../data/financial'
 
 export function useFinance(view: ViewBy) {
+  /** Currency formatter for the selected top-bar currency; all derived numbers below stay in ₹ Cr. */
+  const m = useMoney()
   const budgetLines = useCollection<BudgetLine>('budgetLines', seedBudgetLines)
   const monthly = useCollection<MonthlyFinancial>('monthlyFinancials', seedMonthlyFinancials)
   const phases = useCollection<PhaseSpend>('phaseSpend', seedPhaseSpend)
@@ -72,7 +75,7 @@ export function useFinance(view: ViewBy) {
     }
   }, [view, budgetLines.items, monthly.items, phases.items, categories.items, benefits.items, runRate.items, commitments.items, settings.runRateYear])
 
-  return { budgetLines, monthly, phases, categories, milestones, benefits, runRate, commitments, approvals, scenarios, settingsC, settings, ...derived }
+  return { m, budgetLines, monthly, phases, categories, milestones, benefits, runRate, commitments, approvals, scenarios, settingsC, settings, ...derived }
 }
 
 export type Fin = ReturnType<typeof useFinance>

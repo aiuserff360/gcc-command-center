@@ -7,6 +7,7 @@ import { seedProgramKpis, seedWorkstreamSummaries, type ProgramKpis, type Workst
 import { PHASES, WORKSTREAMS, OWNERS, fmtDate, TODAY, CHART_COLORS, type Workstream, type Status } from '../data/common'
 import { WBS, WBS_TO_DASHBOARD } from '../data/wbs'
 import { seedUsers, seedLookups, seedNotificationSettings, USER_ROLES, MODULES, PERMISSION_MATRIX, WEEKDAYS, type User, type LookupList, type NotificationSettings } from '../data/settings'
+import { useMoney } from '../data/money'
 
 const TABS = ['Program', 'Workstreams & Owners', 'Users & Roles', 'Lookup Values', 'Notifications', 'Data & Reset']
 const PROGRAMS = ['GCC Program - India', 'GCC Program - Poland', 'GCC Program - Philippines']
@@ -51,6 +52,9 @@ function ProgramTab() {
   const dirty = JSON.stringify(f) !== JSON.stringify(k)
   const save = () => { kpisC.update(f); setPhase(f.lifecyclePhase); flash() }
   const num = (key: keyof ProgramKpis) => ({ type: 'number', step: 'any', value: f[key] as number, onChange: (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [key]: parseFloat(e.target.value) || 0 }) }) as const
+  const m = useMoney()
+  // money fields: shown in the selected currency, stored in ₹ Cr
+  const money = (key: 'approvedBudgetCr' | 'targetBenefitsCr') => ({ type: 'number', step: 'any', value: m.inputValue(f[key]), onChange: (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [key]: m.toBase(parseFloat(e.target.value) || 0) }) }) as const
   const months = Math.round((new Date(f.timelineEnd).getTime() - new Date(f.timelineStart).getTime()) / (30.44 * 86400000))
 
   return (
@@ -64,18 +68,21 @@ function ProgramTab() {
             <Field label="Timeline end"><Input type="date" value={f.timelineEnd} onChange={(e) => setF({ ...f, timelineEnd: e.target.value })} /></Field>
             <Field label="Go-live target"><Input type="date" value={f.goLiveTarget} onChange={(e) => setF({ ...f, goLiveTarget: e.target.value })} /></Field>
             <Field label="Talent target (headcount)"><Input {...num('talentTarget')} /></Field>
-            <Field label="Approved budget (₹ Cr)"><Input {...num('approvedBudgetCr')} /></Field>
-            <Field label="Target benefits – annual (₹ Cr)"><Input {...num('targetBenefitsCr')} /></Field>
+            <Field label={`Approved budget (${m.unitLabel})`}><Input {...money('approvedBudgetCr')} /></Field>
+            <Field label={`Target benefits – annual (${m.unitLabel})`}><Input {...money('targetBenefitsCr')} /></Field>
           </FormGrid>
           <div className="mt-4 rounded-lg bg-surface p-3 text-[12.5px] text-ink-700">
-            <b>Currency & units.</b> All monetary values are entered and displayed in Indian Rupees, Crore (₹ Cr; 1 Cr = 10 million). Activity-level budgets in the WBS register are in Lakh (₹ L; 100 L = 1 Cr). Headcount is in full-time equivalents (FTE). Dates follow DD Mon YYYY; the program calendar runs {months} months from {fmtDate(f.timelineStart)} to {fmtDate(f.timelineEnd)}.
+            <b>Currency & units.</b> {m.currency === 'INR'
+              ? 'Monetary values are stored and shown in Indian Rupees, Crore (₹ Cr; 1 Cr = 10 million). Activity-level budgets in the WBS register are in Lakh (₹ L; 100 L = 1 Cr). Switch the top bar to EUR to view every amount in Euro millions at the rate set under Currency.'
+              : `Monetary values are shown in Euro, millions (€ M), converted at ${m.rate} INR per EUR from the stored Indian Rupee (crore) values. Activity-level budgets in the WBS register are shown in € K (thousands). Switch the top bar to INR to view the stored amounts.`} Headcount is in full-time equivalents (FTE). Dates follow DD Mon YYYY; the program calendar runs {months} months from {fmtDate(f.timelineStart)} to {fmtDate(f.timelineEnd)}.
           </div>
           <div className="mt-4"><SaveBar dirty={dirty} saved={saved} onSave={save} onDiscard={() => setF(k)} /></div>
         </Card>
         <div className="space-y-4">
+          <CurrencyCard />
           <Card title="Selected program" subtitle="Shown in the top bar; switches the data context">
             <Select options={PROGRAMS} value={program} onChange={(e) => setProgram(e.target.value)} />
-            <p className="text-[11.5px] text-ink-500 mt-2">Demo contains data for {PROGRAMS[0]} only; other programs share the same dataset.</p>
+            <p className="text-[11.5px] text-ink-500 mt-2">Each program keeps its own data set; switching programs swaps every page to that program's data.</p>
           </Card>
           <Card title="Current phase" subtitle="Drives the phase selector on every page">
             <div className="flex flex-wrap gap-1.5">
@@ -84,7 +91,7 @@ function ProgramTab() {
             <p className="text-[11.5px] text-ink-500 mt-2">Program record phase: <b>{k.lifecyclePhase}</b>{k.lifecyclePhase !== phase && <span className="text-amber-600"> · differs from selected phase ({phase})</span>}</p>
           </Card>
           <Card title="Program snapshot">
-            {[['Program completion', `${k.programCompletion}%`], ['Milestone adherence', `${k.milestoneAdherence}%`], ['Talent onboarded', `${k.talentOnboarded} / ${k.talentTarget}`], ['Actual spend', `₹ ${k.actualSpendCr.toFixed(1)} Cr of ₹ ${k.approvedBudgetCr.toFixed(1)} Cr`], ['Go-live target', fmtDate(k.goLiveTarget)]].map(([l, v]) => (
+            {[['Program completion', `${k.programCompletion}%`], ['Milestone adherence', `${k.milestoneAdherence}%`], ['Talent onboarded', `${k.talentOnboarded} / ${k.talentTarget}`], ['Actual spend', `${m.fmt(k.actualSpendCr)} of ${m.fmt(k.approvedBudgetCr)}`], ['Go-live target', fmtDate(k.goLiveTarget)]].map(([l, v]) => (
               <div key={l} className="flex justify-between text-[12.5px] py-1 border-b border-line/70 last:border-b-0"><span className="text-ink-500">{l}</span><span className="font-medium">{v}</span></div>
             ))}
             <p className="text-[11.5px] text-ink-500 mt-2">Performance KPIs are maintained from the Dashboard (“Update program KPIs”).</p>
@@ -103,6 +110,7 @@ function WorkstreamsTab() {
   const blank = (): WorkstreamSummary => ({ id: '', name: 'Operations Setup', description: '', progress: 0, status: 'Not Started', owner: 'A. Sharma', lead: 'A. Sharma', executiveSponsor: '', teamSize: 0, activeInitiatives: 0, scheduleHealth: 'Not Started', budgetHealth: 'On Track', approvedBudgetCr: 0, actualSpendCr: 0, forecastAtCompletionCr: 0 })
   const wbsRows = WBS.map((w) => ({ id: w.code, code: w.code, name: w.name, subs: w.subs.length, activities: w.subs.reduce((a, s) => a + s.activities.length, 0), dashboard: WBS_TO_DASHBOARD[w.name] ?? WBS_TO_DASHBOARD[`${w.code}. ${w.name}`] ?? '—' }))
   const STATUSES: Status[] = ['On Track', 'At Risk', 'Delayed', 'Not Started', 'Completed']
+  const m = useMoney()
   return (
     <div className="space-y-4">
       <Card title="Workstreams & Owners" subtitle="Dashboard workstreams with accountable owner, lead and executive sponsor" action={<button className="btn-primary" onClick={() => { setIsNew(true); setEdit(blank()) }}><Plus size={14} /> Add workstream</button>}>
@@ -141,7 +149,7 @@ function WorkstreamsTab() {
             <Field label="Lead"><Select options={OWNERS} value={edit.lead} onChange={(e) => setEdit({ ...edit, lead: e.target.value })} /></Field>
             <Field label="Executive sponsor"><Input value={edit.executiveSponsor} onChange={(e) => setEdit({ ...edit, executiveSponsor: e.target.value })} /></Field>
             <Field label="Team size"><Input type="number" value={edit.teamSize} onChange={(e) => setEdit({ ...edit, teamSize: +e.target.value || 0 })} /></Field>
-            <Field label="Approved budget (₹ Cr)"><Input type="number" step="any" value={edit.approvedBudgetCr} onChange={(e) => setEdit({ ...edit, approvedBudgetCr: parseFloat(e.target.value) || 0 })} /></Field>
+            <Field label={`Approved budget (${m.unitLabel})`}><Input type="number" step="any" value={m.inputValue(edit.approvedBudgetCr)} onChange={(e) => setEdit({ ...edit, approvedBudgetCr: m.toBase(parseFloat(e.target.value) || 0) })} /></Field>
             <Field label="Progress %"><Input type="number" value={edit.progress} onChange={(e) => setEdit({ ...edit, progress: Math.min(100, +e.target.value || 0) })} /></Field>
           </FormGrid>
         </Modal>
@@ -398,5 +406,30 @@ function DataTab() {
         </Card>
       </div>
     </div>
+  )
+}
+
+
+function CurrencyCard() {
+  const currency = useStore((s) => s.currency)
+  const setCurrency = useStore((s) => s.setCurrency)
+  const rate = useStore((s) => s.eurRate)
+  const setEurRate = useStore((s) => s.setEurRate)
+  const [r, setR] = useState(String(rate))
+  return (
+    <Card title="Currency" subtitle="Display currency for every amount in the demo">
+      <div className="flex items-center gap-2 mb-3">
+        {(['INR', 'EUR'] as const).map((c) => (
+          <button key={c} onClick={() => setCurrency(c)} className={currency === c ? 'btn-primary' : 'btn-secondary'}>{c === 'INR' ? '₹ INR (Crore)' : '€ EUR (Millions)'}</button>
+        ))}
+      </div>
+      <Field label="Exchange rate (₹ per €)">
+        <div className="flex gap-2">
+          <Input type="number" step="0.1" min="1" value={r} onChange={(e) => setR(e.target.value)} />
+          <button className="btn-secondary shrink-0" onClick={() => setEurRate(parseFloat(r) || rate)}>Apply</button>
+        </div>
+      </Field>
+      <p className="text-[11.5px] text-ink-500 mt-2">₹ 1.0 Cr = € {((1e7 / rate) / 1e6).toFixed(3)} M at ₹ {rate} per €. The same toggle is in the top bar next to the date.</p>
+    </Card>
   )
 }

@@ -5,6 +5,7 @@ import { RISK_CATEGORIES, LIKELIHOOD, IMPACT_SCALE } from '../../data/shared'
 import type { Initiative, TeamMember, WsBudgetLine, WsDocument, WsSettings } from '../../data/workstreams'
 import { INITIATIVE_STATUSES, MEMBER_TYPES, DOC_TYPES, DOC_STATUSES } from '../../data/workstreams'
 import { OWNERS, LOCATIONS, MONTHS, type Workstream, type Status, type Impact } from '../../data/common'
+import { useMoney } from '../../data/money'
 
 export type FormProps<T> = { initial: T; isNew: boolean; onSave: (v: T) => void; onDelete?: () => void; onClose: () => void; wsOptions: string[] }
 
@@ -18,8 +19,9 @@ const uniq = (a: string[]) => a.filter((v, i) => v && a.indexOf(v) === i)
 
 /* ---------- Workstream ---------- */
 export function WorkstreamForm({ initial, isNew, onSave, onDelete, onClose, milestones }: Omit<FormProps<WsRow>, 'wsOptions'> & { milestones: Milestone[] }) {
-  const { f, set, txt, num } = useFields(initial)
-  const own = milestones.filter((m) => m.workstream === f.name)
+  const { f, set, txt, num, cnv } = useFields(initial)
+  const m = useMoney()
+  const own = milestones.filter((x) => x.workstream === f.name)
   return (
     <Modal open onClose={onClose} title={isNew ? 'Add workstream' : `Edit workstream – ${initial.name}`} width="max-w-3xl"
       footer={<FormFooter onClose={onClose} onDelete={onDelete} onSave={() => onSave({ ...f, name: f.name.trim() as Workstream })} />}>
@@ -38,9 +40,9 @@ export function WorkstreamForm({ initial, isNew, onSave, onDelete, onClose, mile
         <Field label="Key milestone">
           <SelectKV allowEmpty="Auto (earliest open milestone)" options={own.map((m) => ({ value: m.id, label: m.name }))} value={f.keyMilestoneId ?? ''} onChange={(e) => set('keyMilestoneId', e.target.value || undefined)} />
         </Field>
-        <Field label="Approved budget (₹ Cr)"><Input {...num('approvedBudgetCr')} /></Field>
-        <Field label="Actual spend (₹ Cr)"><Input {...num('actualSpendCr')} /></Field>
-        <Field label="Forecast at completion (₹ Cr)"><Input {...num('forecastAtCompletionCr')} /></Field>
+        <Field label={`Approved budget (${m.unitLabel})`}><Input {...cnv('approvedBudgetCr', m.inputValue, m.toBase)} /></Field>
+        <Field label={`Actual spend (${m.unitLabel})`}><Input {...cnv('actualSpendCr', m.inputValue, m.toBase)} /></Field>
+        <Field label={`Forecast at completion (${m.unitLabel})`}><Input {...cnv('forecastAtCompletionCr', m.inputValue, m.toBase)} /></Field>
       </FormGrid>
     </Modal>
   )
@@ -161,14 +163,15 @@ export function RaidForm({ initial, isNew, onSave, onDelete, onClose, wsOptions 
 
 /* ---------- Budget line ---------- */
 export function BudgetLineForm({ initial, isNew, onSave, onDelete, onClose, wsOptions }: FormProps<WsBudgetLine>) {
-  const { f, set, txt, num } = useFields(initial)
+  const { f, set, txt, cnv } = useFields(initial)
+  const m = useMoney()
   return (
     <Modal open onClose={onClose} title={isNew ? 'Add budget line' : 'Edit budget line'} width="max-w-xl" footer={<FormFooter onClose={onClose} onDelete={onDelete} onSave={() => onSave(f)} />}>
       <FormGrid cols={2}>
         <Field label="Workstream" className="col-span-2"><Select options={wsOptions} value={f.workstream} onChange={(e) => set('workstream', e.target.value as Workstream)} /></Field>
         <Field label="Category" className="col-span-2"><Input {...txt('category')} /></Field>
-        <Field label="Planned (₹ Cr)"><Input {...num('plannedCr')} /></Field>
-        <Field label="Actual (₹ Cr)"><Input {...num('actualCr')} /></Field>
+        <Field label={`Planned (${m.unitLabel})`}><Input {...cnv('plannedCr', m.inputValue, m.toBase)} /></Field>
+        <Field label={`Actual (${m.unitLabel})`}><Input {...cnv('actualCr', m.inputValue, m.toBase)} /></Field>
       </FormGrid>
     </Modal>
   )

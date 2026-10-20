@@ -7,7 +7,8 @@ import { useCollection, uid } from '../../store/useStore'
 import { seedMilestones, seedRaid, seedWorkstreamSummaries, seedDependencies, isOpen, daysOpen, type Milestone, type RaidItem, type Dependency } from '../../data/shared'
 import { seedInitiatives, seedTeamMembers, seedWsBudgetLines, seedWsDocuments, raidWorkstreamOf, IMPACT_RANK, STATUS_RANK, type Initiative, type TeamMember, type WsBudgetLine, type WsDocument } from '../../data/workstreams'
 import { fmtDate, CHART_COLORS, TODAY, type Workstream } from '../../data/common'
-import { Toolbar, MiniSelect, SearchBox, Strip, WsIcon, PctBar, shortWs, STATUS_COLOR, fmtCr2, byDate, pct, type WsRow } from './common'
+import { Toolbar, MiniSelect, SearchBox, Strip, WsIcon, PctBar, shortWs, STATUS_COLOR, fmtMoneyShort, byDate, pct, type WsRow } from './common'
+import { useMoney } from '../../data/money'
 import { InitiativeForm, MilestoneForm, TeamMemberForm, RaidForm, BudgetLineForm, DependencyForm, DocumentForm } from './forms'
 
 type Edit<T> = { item: T; isNew: boolean } | null
@@ -294,6 +295,8 @@ export function RisksView({ ws }: { ws?: Workstream }) {
 /* ================================================================== */
 export function BudgetView({ ws, onEditWorkstream }: { ws?: Workstream; onEditWorkstream?: (w: WsRow) => void }) {
   const { items: wss, names } = useWsRows()
+  const m = useMoney()
+  const money = (cr: number) => fmtMoneyShort(cr, m)
   const lines = useCollection<WsBudgetLine>('wsBudgetLines', seedWsBudgetLines)
   const [fWs, setFWs] = useState(ALL)
   const [edit, setEdit] = useState<Edit<WsBudgetLine>>(null)
@@ -302,14 +305,14 @@ export function BudgetView({ ws, onEditWorkstream }: { ws?: Workstream; onEditWo
   const w = wss.find((x) => x.name === ws)
   const sum = (k: 'plannedCr' | 'actualCr') => +scope.reduce((a, l) => a + l[k], 0).toFixed(2)
   const linesTable = (
-    <Card title={ws ? 'Budget Lines (₹ Cr)' : 'Budget Lines by Category (₹ Cr)'} subtitle={`Planned ${fmtCr2(sum('plannedCr'))} · Actual ${fmtCr2(sum('actualCr'))} (${pct(sum('actualCr'), sum('plannedCr'))}% spent)`} action={<button className="btn-primary" onClick={() => setEdit({ item: newItem(), isNew: true })}><Plus size={14} /> Add budget line</button>}>
+    <Card title={ws ? `Budget Lines (${m.unitLabel})` : `Budget Lines by Category (${m.unitLabel})`} subtitle={`Planned ${money(sum('plannedCr'))} · Actual ${money(sum('actualCr'))} (${pct(sum('actualCr'), sum('plannedCr'))}% spent)`} action={<button className="btn-primary" onClick={() => setEdit({ item: newItem(), isNew: true })}><Plus size={14} /> Add budget line</button>}>
       {!ws && <Toolbar><MiniSelect label="Workstream" value={fWs} options={withAll(names)} onChange={setFWs} /></Toolbar>}
       <Table<WsBudgetLine> compact rows={scope} onRowClick={(r) => setEdit({ item: r, isNew: false })} columns={[
         ...(ws ? [] : [{ key: 'workstream', header: 'Workstream', render: (r: WsBudgetLine) => shortWs(r.workstream) }]),
         { key: 'category', header: 'Category', render: (r) => <span className="font-medium">{r.category}</span> },
-        { key: 'plannedCr', header: 'Planned', className: 'text-right', render: (r) => r.plannedCr.toFixed(2) },
-        { key: 'actualCr', header: 'Actual', className: 'text-right', render: (r) => r.actualCr.toFixed(2) },
-        { key: 'var', header: 'Remaining', className: 'text-right', render: (r) => <span className={r.plannedCr - r.actualCr < 0 ? 'text-red-600 font-medium' : ''}>{(r.plannedCr - r.actualCr).toFixed(2)}</span> },
+        { key: 'plannedCr', header: 'Planned', className: 'text-right', render: (r) => m.num(r.plannedCr, 2) },
+        { key: 'actualCr', header: 'Actual', className: 'text-right', render: (r) => m.num(r.actualCr, 2) },
+        { key: 'var', header: 'Remaining', className: 'text-right', render: (r) => <span className={r.plannedCr - r.actualCr < 0 ? 'text-red-600 font-medium' : ''}>{m.num(r.plannedCr - r.actualCr, 2)}</span> },
         { key: 'pct', header: 'Spent %', width: '150px', render: (r) => <PctBar value={pct(r.actualCr, r.plannedCr)} width={80} color={pct(r.actualCr, r.plannedCr) > 100 ? '#DC2626' : '#1E5BBE'} /> },
         { key: 'c', header: '', render: () => <Chevron /> },
       ]} />
@@ -317,22 +320,22 @@ export function BudgetView({ ws, onEditWorkstream }: { ws?: Workstream; onEditWo
   )
   const form = edit && <BudgetLineForm initial={edit.item} isNew={edit.isNew} wsOptions={names} onClose={() => setEdit(null)} onSave={(v) => { lines.update(v); setEdit(null) }} onDelete={edit.isNew ? undefined : () => { lines.remove(edit.item.id); setEdit(null) }} />
   if (ws) {
-    const chart = scope.map((l) => ({ name: l.category, Planned: l.plannedCr, Actual: l.actualCr }))
+    const chart = scope.map((l) => ({ name: l.category, Planned: +m.num(l.plannedCr, 2), Actual: +m.num(l.actualCr, 2) }))
     return (
       <div className="space-y-4">
         <Strip items={[
-          { label: 'Approved budget', value: fmtCr2(w?.approvedBudgetCr ?? 0) }, { label: 'Actual spend', value: fmtCr2(w?.actualSpendCr ?? 0), color: CHART_COLORS.blue }, { label: 'Forecast at completion', value: fmtCr2(w?.forecastAtCompletionCr ?? 0), color: CHART_COLORS.teal },
-          { label: 'Budget health', value: <Badge value={w?.budgetHealth ?? 'On Track'} /> }, { label: 'Lines planned', value: fmtCr2(sum('plannedCr')) }, { label: 'Lines actual', value: fmtCr2(sum('actualCr')), color: CHART_COLORS.blue },
+          { label: 'Approved budget', value: money(w?.approvedBudgetCr ?? 0) }, { label: 'Actual spend', value: money(w?.actualSpendCr ?? 0), color: CHART_COLORS.blue }, { label: 'Forecast at completion', value: money(w?.forecastAtCompletionCr ?? 0), color: CHART_COLORS.teal },
+          { label: 'Budget health', value: <Badge value={w?.budgetHealth ?? 'On Track'} /> }, { label: 'Lines planned', value: money(sum('plannedCr')) }, { label: 'Lines actual', value: money(sum('actualCr')), color: CHART_COLORS.blue },
         ]} />
         <div className="grid grid-cols-[1fr_1.3fr] gap-4">
-          <Card title="Budget Tracking (₹ Cr)" headerRight={<Legend items={[{ label: 'Planned', color: CHART_COLORS.blueFaint }, { label: 'Actual', color: CHART_COLORS.blue }]} />}>
+          <Card title={`Budget Tracking (${m.unitLabel})`} headerRight={<Legend items={[{ label: 'Planned', color: CHART_COLORS.blueFaint }, { label: 'Actual', color: CHART_COLORS.blue }]} />}>
             <div className="h-[240px]">
               <ResponsiveContainer>
                 <BarChart data={chart} margin={{ top: 18, right: 8, left: -8, bottom: 0 }} barGap={2} barCategoryGap="30%">
                   <CartesianGrid vertical={false} />
                   <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} interval={0} />
                   <YAxis tickLine={false} axisLine={false} />
-                  <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`₹ ${v} Cr`]} />
+                  <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`${m.symbol} ${v} ${m.unit}`]} />
                   <Bar isAnimationActive={false} dataKey="Planned" fill={CHART_COLORS.blueFaint} radius={[3, 3, 0, 0]}><LabelList dataKey="Planned" position="top" style={{ fontSize: 11, fill: '#111827', fontWeight: 600 }} /></Bar>
                   <Bar isAnimationActive={false} dataKey="Actual" fill={CHART_COLORS.blue} radius={[3, 3, 0, 0]}><LabelList dataKey="Actual" position="top" style={{ fontSize: 11, fill: '#111827', fontWeight: 600 }} /></Bar>
                 </BarChart>
@@ -345,34 +348,34 @@ export function BudgetView({ ws, onEditWorkstream }: { ws?: Workstream; onEditWo
       </div>
     )
   }
-  const chart = wss.map((x) => ({ name: shortWs(x.name), Approved: x.approvedBudgetCr, Actual: x.actualSpendCr, Forecast: x.forecastAtCompletionCr }))
+  const chart = wss.map((x) => ({ name: shortWs(x.name), Approved: +m.num(x.approvedBudgetCr, 2), Actual: +m.num(x.actualSpendCr, 2), Forecast: +m.num(x.forecastAtCompletionCr, 2) }))
   const tot = (k: 'approvedBudgetCr' | 'actualSpendCr' | 'forecastAtCompletionCr') => +wss.reduce((a, x) => a + x[k], 0).toFixed(2)
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-[1.2fr_1fr] gap-4">
-        <Card title="Workstream Budget (₹ Cr)" subtitle="Click a row to edit the workstream's approved, actual and forecast figures">
+        <Card title={`Workstream Budget (${m.unitLabel})`} subtitle="Click a row to edit the workstream's approved, actual and forecast figures">
           <Table<WsRow> compact rows={wss} onRowClick={(r) => onEditWorkstream?.(r)} columns={[
             { key: 'name', header: 'Workstream', className: 'whitespace-nowrap', render: (r) => <span className="inline-flex items-center gap-2"><WsIcon name={r.name} box={24} size={13} />{r.name}</span> },
-            { key: 'approvedBudgetCr', header: 'Approved', className: 'text-right', render: (r) => r.approvedBudgetCr.toFixed(2) },
-            { key: 'actualSpendCr', header: 'Actual', className: 'text-right', render: (r) => r.actualSpendCr.toFixed(2) },
-            { key: 'forecastAtCompletionCr', header: 'Forecast', className: 'text-right', render: (r) => r.forecastAtCompletionCr.toFixed(2) },
-            { key: 'variance', header: 'Variance', className: 'text-right', render: (r) => { const v = r.approvedBudgetCr - r.forecastAtCompletionCr; return <span className={v < 0 ? 'text-red-600 font-medium' : 'text-green-600 font-medium'}>{v >= 0 ? '+' : ''}{v.toFixed(2)}</span> } },
+            { key: 'approvedBudgetCr', header: 'Approved', className: 'text-right', render: (r) => m.num(r.approvedBudgetCr, 2) },
+            { key: 'actualSpendCr', header: 'Actual', className: 'text-right', render: (r) => m.num(r.actualSpendCr, 2) },
+            { key: 'forecastAtCompletionCr', header: 'Forecast', className: 'text-right', render: (r) => m.num(r.forecastAtCompletionCr, 2) },
+            { key: 'variance', header: 'Variance', className: 'text-right', render: (r) => { const v = r.approvedBudgetCr - r.forecastAtCompletionCr; return <span className={v < 0 ? 'text-red-600 font-medium' : 'text-green-600 font-medium'}>{m.signed(v, 2)}</span> } },
             { key: 'spent', header: 'Spent %', className: 'text-right', render: (r) => `${pct(r.actualSpendCr, r.approvedBudgetCr)}%` },
             { key: 'budgetHealth', header: 'Budget Health', render: (r) => <Badge value={r.budgetHealth} /> },
             { key: 'c', header: '', render: () => <Chevron /> },
           ]} />
           <div className="flex items-center justify-end gap-6 text-[12.5px] mt-2 pr-10 text-ink-700">
-            <span>Total approved <b>{fmtCr2(tot('approvedBudgetCr'))}</b></span><span>Actual <b>{fmtCr2(tot('actualSpendCr'))}</b></span><span>Forecast <b>{fmtCr2(tot('forecastAtCompletionCr'))}</b></span>
+            <span>Total approved <b>{money(tot('approvedBudgetCr'))}</b></span><span>Actual <b>{money(tot('actualSpendCr'))}</b></span><span>Forecast <b>{money(tot('forecastAtCompletionCr'))}</b></span>
           </div>
         </Card>
-        <Card title="Approved vs Actual vs Forecast (₹ Cr)" headerRight={<Legend items={[{ label: 'Approved', color: CHART_COLORS.blueFaint }, { label: 'Actual', color: CHART_COLORS.blue }, { label: 'Forecast', color: CHART_COLORS.teal }]} />}>
+        <Card title={`Approved vs Actual vs Forecast (${m.unitLabel})`} headerRight={<Legend items={[{ label: 'Approved', color: CHART_COLORS.blueFaint }, { label: 'Actual', color: CHART_COLORS.blue }, { label: 'Forecast', color: CHART_COLORS.teal }]} />}>
           <div className="h-[290px]">
             <ResponsiveContainer>
-              <BarChart data={chart} margin={{ top: 8, right: 8, left: -24, bottom: 0 }} barGap={1} barCategoryGap="25%">
+              <BarChart data={chart} margin={{ top: 8, right: 8, left: m.digits > 1 ? -10 : -24, bottom: 0 }} barGap={1} barCategoryGap="25%">
                 <CartesianGrid vertical={false} />
                 <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} interval={0} />
                 <YAxis tickLine={false} axisLine={false} />
-                <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`₹ ${v} Cr`]} />
+                <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`${m.symbol} ${v} ${m.unit}`]} />
                 <Bar isAnimationActive={false} dataKey="Approved" fill={CHART_COLORS.blueFaint} radius={[3, 3, 0, 0]} />
                 <Bar isAnimationActive={false} dataKey="Actual" fill={CHART_COLORS.blue} radius={[3, 3, 0, 0]} />
                 <Bar isAnimationActive={false} dataKey="Forecast" fill={CHART_COLORS.teal} radius={[3, 3, 0, 0]} />

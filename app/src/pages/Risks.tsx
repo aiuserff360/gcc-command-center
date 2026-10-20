@@ -7,6 +7,7 @@ import { Donut, tooltipStyle } from '../components/charts'
 import { useCollection } from '../store/useStore'
 import { seedRaid, seedDependencies, isOpen, daysOpen, LIKELIHOOD, IMPACT_SCALE, RISK_CATEGORIES, type RaidItem, type Dependency } from '../data/shared'
 import { CHART_COLORS, fmtDate } from '../data/common'
+import { useMoney } from '../data/money'
 import {
   seedRiskSettings, seedRaidTrend, seedRiskInsights, seedMitigationActions, seedEscalationDecisions, supplementRaid,
   VIEW_OPTIONS, matchesView, statusBucket, STATUS_BUCKETS, CATEGORY_COLORS, openRisks, openIssues, cellSeverity, cellScore, SEVERITY_COLORS,
@@ -26,6 +27,8 @@ const LEVEL_BAR: Record<string, string> = { Critical: CHART_COLORS.red, High: CH
 const AGING = [{ key: '0–7 days', color: CHART_COLORS.green }, { key: '8–30 days', color: CHART_COLORS.amber }, { key: '> 30 days', color: CHART_COLORS.red }]
 
 export default function Risks() {
+  const m = useMoney()
+  const d2 = m.digits + 1 // impact thresholds: 2 decimals in ₹ Cr, 3 in € M
   const raidC = useCollection<RaidItem>('raid', RAID_SEED)
   const settingsC = useCollection<RiskSettings>('riskSettings', seedRiskSettings)
   const trendC = useCollection<RaidTrendPoint>('raidTrend', seedRaidTrend)
@@ -228,7 +231,7 @@ export default function Risks() {
               <ScaleTable rows={[['Very High', '> 75%', 'Expected to occur; already showing early signs'], ['High', '50 – 75%', 'More likely than not'], ['Medium', '30 – 50%', 'Could occur in normal circumstances'], ['Low', '10 – 30%', 'Unlikely but possible'], ['Very Low', '< 10%', 'Rare; would require exceptional circumstances']]} />
             </Card>
             <Card title="Impact Scale" subtitle="Effect on schedule, cost and go-live if it occurs">
-              <ScaleTable rows={[['Very High', '> 8 weeks / > ₹ 0.50 Cr', 'Go-live slips; program objectives compromised'], ['High', '4 – 8 weeks / ₹ 0.25 – 0.50 Cr', 'Go-live at risk; steering decision required'], ['Medium', '2 – 4 weeks / ₹ 0.10 – 0.25 Cr', 'Milestone slips; recoverable within phase'], ['Low', '1 – 2 weeks / ₹ 0.05 – 0.10 Cr', 'Absorbed within workstream float'], ['Very Low', '< 1 week / < ₹ 0.05 Cr', 'Negligible; managed by the activity owner']]} />
+              <ScaleTable rows={[['Very High', `> 8 weeks / > ${m.fmt(0.5, d2)}`, 'Go-live slips; program objectives compromised'], ['High', `4 – 8 weeks / ${m.symbol} ${m.num(0.25, d2)} – ${m.num(0.5, d2)} ${m.unit}`, 'Go-live at risk; steering decision required'], ['Medium', `2 – 4 weeks / ${m.symbol} ${m.num(0.1, d2)} – ${m.num(0.25, d2)} ${m.unit}`, 'Milestone slips; recoverable within phase'], ['Low', `1 – 2 weeks / ${m.symbol} ${m.num(0.05, d2)} – ${m.num(0.1, d2)} ${m.unit}`, 'Absorbed within workstream float'], ['Very Low', `< 1 week / < ${m.fmt(0.05, d2)}`, 'Negligible; managed by the activity owner']]} />
             </Card>
             <Card title="Scoring Methodology" subtitle="WBS 14.1.1 – Establish risk categorization and scoring methodology">
               <div className="text-[12.5px] text-ink-700 space-y-2 leading-relaxed">

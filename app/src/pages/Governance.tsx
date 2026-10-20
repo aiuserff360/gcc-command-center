@@ -8,6 +8,7 @@ import { Donut, tooltipStyle } from '../components/charts'
 import { useCollection, uid } from '../store/useStore'
 import { seedRaid, seedWorkstreamSummaries, isOpen, type RaidItem, type WorkstreamSummary } from '../data/shared'
 import { WORKSTREAMS, WORKSTREAM_META, OWNERS, CHART_COLORS, fmtDate, TODAY, type Workstream } from '../data/common'
+import { useMoney, type Money } from '../data/money'
 import {
   seedGovernanceSettings, seedSteeringMeetings, seedPackChecklist, seedDecisions, seedChangeRequests, seedActions, seedStakeholders, seedRaci, seedGovEvents, seedControls, seedRagCriteria, RACI_ROLES,
   type GovernanceSettings, type SteeringMeeting, type PackItem, type Decision, type ChangeRequest, type ActionItem, type Stakeholder, type RaciRow, type RaciValue, type GovEvent, type Control, type RagCriterion,
@@ -17,14 +18,19 @@ const TABS = ['Governance Overview', 'Steering Committee', 'Decision Log', 'Chan
 const WS_OPTIONS = [...WORKSTREAMS, 'Program Management'] as const
 const VIEW_OPTIONS = ['All Workstreams', ...WORKSTREAMS] as const
 const STATUS_COLOR: Record<string, string> = { 'On Track': CHART_COLORS.green, 'At Risk': CHART_COLORS.amber, Delayed: CHART_COLORS.red, Completed: CHART_COLORS.green }
-const fmtCrSigned = (v: number) => `${v < 0 ? '−' : ''}₹ ${Math.abs(v).toFixed(2)} Cr`
+/** Change-request amounts are small, so show one more decimal than the default (₹ 0.08 Cr | € 0.009 M). */
+const signedMoney = (v: number, money: Money) => `${v < 0 ? '−' : ''}${money.fmt(Math.abs(v), money.digits + 1)}`
+/** Convert "₹ 4.2 Cr" / "₹ 28.5 L" embedded in narrative text to the display currency. */
+const moneyText = (s: string, money: Money) => money.currency === 'INR' ? s : s.replace(/₹\s*([\d.,]+)\s*(Cr|L)\b/g, (_, n: string, u: string) => (u === 'Cr' ? money.fmt(parseFloat(n.replace(/,/g, ''))) : money.fmtLakh(parseFloat(n.replace(/,/g, '')))))
 
 type Setter<T> = <K extends keyof T>(k: K) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void
-function useForm<T>(initial: T) {
+function useForm<T>(initial: T, money?: Money) {
   const [f, setF] = useState<T>(initial)
   const s: Setter<T> = (k) => (e) => setF({ ...f, [k]: e.target.value })
   const n: Setter<T> = (k) => (e) => setF({ ...f, [k]: parseFloat(e.target.value) || 0 })
-  return { f, setF, s, n }
+  /** Props for a money input: shows the display currency, stores ₹ Cr. */
+  const c = (k: keyof T) => ({ type: 'number' as const, step: 'any', value: money!.inputValue(f[k] as number), onChange: (e: ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: money!.toBase(parseFloat(e.target.value) || 0) }) })
+  return { f, setF, s, n, c }
 }
 function ModalFooter({ onClose, onSave, onDelete, isNew, saveLabel = 'Save' }: { onClose: () => void; onSave: () => void; onDelete?: () => void; isNew: boolean; saveLabel?: string }) {
   return (
@@ -41,6 +47,7 @@ export default function Governance() {
   const nav = useNavigate()
   const [tab, setTab] = useState(TABS[0])
   const [view, setView] = useState<string>('All Workstreams')
+  const money = useMoney()
 
   const settingsC = useCollection<GovernanceSettings>('governanceSettings', seedGovernanceSettings)
   const gs = settingsC.items[0] ?? seedGovernanceSettings[0]
@@ -109,7 +116,7 @@ export default function Governance() {
       <div className="grid grid-cols-5 gap-4 mb-4">
         <KpiTile tone="blue" icon={<Gavel size={22} />} value={<>{held} <span className="text-[16px] text-ink-500 font-semibold">of {gs.plannedSteeringMeetings}</span></>} label="Steering Committees Held" sub={nextMeeting ? <>Next: <b>{fmtDate(nextMeeting.date)}</b></> : 'No meeting scheduled'} />
         <KpiTile tone="violet" icon={<ListChecks size={22} />} value={openDecisions.length} label="Open Decisions" sub={<span className={overdueDecisions.length ? 'text-red-600' : 'text-green-600'}>{overdueDecisions.length} overdue</span>} />
-        <KpiTile tone="teal" icon={<FileDiff size={22} />} value={pendingCrs.length} label="Pending Change Requests" sub={<>{fmtCrSigned(pendingCrImpact)} impact</>} />
+        <KpiTile tone="teal" icon={<FileDiff size={22} />} value={pendingCrs.length} label="Pending Change Requests" sub={<>{signedMoney(pendingCrImpact, money)} impact</>} />
         <KpiTile tone="red" icon={<Flag size={22} />} value={awaiting.length} label="Escalations Awaiting Decision" sub={<><span className="text-red-600">{awaiting.length} Awaiting Decision</span> | <span className="text-brand-600">{escalations.length - awaiting.length} In Progress</span></>} />
         <KpiTile tone={healthTone} icon={<ShieldCheck size={22} />} value={healthRag} label="Governance Health" sub={<>Program health score <b>{gs.programHealthScore}</b> / 100</>} />
       </div>
@@ -196,7 +203,7 @@ export default function Governance() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-              <div className="flex justify-between text-[12px] text-ink-500 mt-1"><span>{pendingCrs.length} pending</span><span>{fmtCrSigned(pendingCrImpact)} cost impact</span><span>{pendingCrs.reduce((s, c) => s + Math.max(0, c.scheduleImpactDays), 0)} days schedule</span></div>
+              <div className="flex justify-between text-[12px] text-ink-500 mt-1"><span>{pendingCrs.length} pending</span><span>{signedMoney(pendingCrImpact, money)} cost impact</span><span>{pendingCrs.reduce((s, c) => s + Math.max(0, c.scheduleImpactDays), 0)} days schedule</span></div>
             </Card>
             <Card title="Escalations" subtitle={`${awaiting.length} awaiting steering committee decision`} action={<ViewAll onClick={() => nav('/risks')} />}>
               <div className="space-y-2">
@@ -226,7 +233,7 @@ export default function Governance() {
               { key: 'title', header: 'Meeting', render: (m) => <span className="font-medium block max-w-[210px] truncate" title={m.title}>{m.title}</span> },
               { key: 'agenda', header: 'Agenda', render: (m) => <span className="block max-w-[220px] truncate text-ink-700" title={m.agenda}>{m.agenda}</span> },
               { key: 'attendees', header: 'Attendees', render: (m) => <span className="block max-w-[150px] truncate" title={m.attendees}>{m.attendees}</span> },
-              { key: 'decisionsTaken', header: 'Decisions Taken', render: (m) => <span className="block max-w-[240px] truncate" title={m.decisionsTaken}>{m.decisionsTaken || '—'}</span> },
+              { key: 'decisionsTaken', header: 'Decisions Taken', render: (m) => <span className="block max-w-[240px] truncate" title={moneyText(m.decisionsTaken, money)}>{moneyText(m.decisionsTaken, money) || '—'}</span> },
               { key: 'actions', header: 'Actions', render: (m) => <span className="block max-w-[200px] truncate" title={m.actions}>{m.actions || '—'}</span> },
               { key: 'minutesStatus', header: 'Minutes', render: (m) => <Badge value={m.minutesStatus === 'Circulated' ? 'In Review' : m.minutesStatus === 'Scheduled' ? 'Pending' : m.minutesStatus} /> },
               { key: 'status', header: 'Status', render: (m) => <Badge value={m.status === 'Scheduled' ? 'Planned' : m.status} /> },
@@ -400,7 +407,7 @@ export default function Governance() {
             <Card title="Program Controls" subtitle="WBS 1.3 Governance and controls · 13 Stakeholder Management" action={<button className="btn-primary" onClick={() => setControlEdit(newControl())}><Plus size={14} /> Add Control</button>}>
               <Table<Control> compact rows={controlsC.items} onRowClick={setControlEdit} columns={[
                 { key: 'wbs', header: 'WBS', className: 'text-ink-500 whitespace-nowrap' },
-                { key: 'control', header: 'Control', render: (c) => <div><div className="font-medium max-w-[330px] truncate" title={c.control}>{c.control}</div><div className="text-[11.5px] text-ink-500 max-w-[330px] truncate" title={c.description}>{c.description}</div></div> },
+                { key: 'control', header: 'Control', render: (c) => <div><div className="font-medium max-w-[330px] truncate" title={c.control}>{c.control}</div><div className="text-[11.5px] text-ink-500 max-w-[330px] truncate" title={moneyText(c.description, money)}>{moneyText(c.description, money)}</div></div> },
                 { key: 'owner', header: 'Owner', className: 'whitespace-nowrap' },
                 { key: 'lastReviewed', header: 'Last Reviewed', className: 'whitespace-nowrap', render: (c) => c.lastReviewed ? fmtDate(c.lastReviewed) : '—' },
                 { key: 'evidence', header: 'Evidence', render: (c) => <span className="block max-w-[140px] truncate" title={c.evidence}>{c.evidence}</span> },
@@ -419,7 +426,7 @@ export default function Governance() {
                   <div key={l} className="flex items-center justify-between text-[12.5px]"><span className="inline-flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: c }} />{l}</span><b>{controlsC.items.filter((x) => x.status === l).length}</b></div>
                 ))}
               </div>
-              <div className="mt-3 pt-3 border-t border-line text-[12px] text-ink-500">Delegation of authority: Workstream Lead &lt; ₹ 5 L · Program Director &lt; ₹ 25 L · Steering Committee above ₹ 25 L or &gt; 10 days schedule impact.</div>
+              <div className="mt-3 pt-3 border-t border-line text-[12px] text-ink-500">Delegation of authority: Workstream Lead &lt; {money.fmtLakh(5)} · Program Director &lt; {money.fmtLakh(25)} · Steering Committee above {money.fmtLakh(25)} or &gt; 10 days schedule impact.</div>
             </Card>
           </div>
           <Card title="RAG Criteria Definition" subtitle="Program health indicators (WBS 1.3.8) · click a row to edit thresholds">
@@ -499,6 +506,7 @@ function DecisionLog({ decisions, onEdit, onAdd, onDecide }: { decisions: Decisi
 /* Change Requests tab                                                     */
 /* ====================================================================== */
 function ChangeRequests({ crs, pipeline, onEdit, onAdd, onDecide }: { crs: ChangeRequest[]; pipeline: { type: string; Draft: number; 'In Review': number; Approved: number; Rejected: number }[]; onEdit: (c: ChangeRequest) => void; onAdd: () => void; onDecide: (c: ChangeRequest, s: ChangeRequest['status']) => void }) {
+  const money = useMoney()
   const [status, setStatus] = useState('All')
   const rows = crs.filter((c) => status === 'All' || c.status === status).sort((a, b) => b.submitted.localeCompare(a.submitted))
   const approved = crs.filter((c) => c.status === 'Approved')
@@ -531,9 +539,9 @@ function ChangeRequests({ crs, pipeline, onEdit, onAdd, onDecide }: { crs: Chang
         </Card>
         <Card title="Approved Change Impact on Baseline">
           <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 rounded-lg bg-surface"><div className="text-[11.5px] text-ink-500">Approved cost impact</div><div className="text-[20px] font-bold text-ink-900">{fmtCrSigned(approvedCost)}</div><div className="text-[11px] text-ink-500">{approved.length} approved CRs</div></div>
+            <div className="p-3 rounded-lg bg-surface"><div className="text-[11.5px] text-ink-500">Approved cost impact</div><div className="text-[20px] font-bold text-ink-900">{signedMoney(approvedCost, money)}</div><div className="text-[11px] text-ink-500">{approved.length} approved CRs</div></div>
             <div className="p-3 rounded-lg bg-surface"><div className="text-[11.5px] text-ink-500">Approved schedule impact</div><div className="text-[20px] font-bold text-ink-900">{approvedDays > 0 ? '+' : ''}{approvedDays} days</div><div className="text-[11px] text-ink-500">net vs baseline</div></div>
-            <div className="p-3 rounded-lg bg-blue-50"><div className="text-[11.5px] text-ink-500">In review – cost</div><div className="text-[20px] font-bold text-brand-600">{fmtCrSigned(inReview.reduce((s, c) => s + c.costImpactCr, 0))}</div><div className="text-[11px] text-ink-500">{inReview.length} CRs awaiting approval</div></div>
+            <div className="p-3 rounded-lg bg-blue-50"><div className="text-[11.5px] text-ink-500">In review – cost</div><div className="text-[20px] font-bold text-brand-600">{signedMoney(inReview.reduce((s, c) => s + c.costImpactCr, 0), money)}</div><div className="text-[11px] text-ink-500">{inReview.length} CRs awaiting approval</div></div>
             <div className="p-3 rounded-lg bg-blue-50"><div className="text-[11.5px] text-ink-500">In review – schedule</div><div className="text-[20px] font-bold text-brand-600">{inReview.reduce((s, c) => s + c.scheduleImpactDays, 0)} days</div><div className="text-[11px] text-ink-500">gross impact if approved</div></div>
           </div>
         </Card>
@@ -549,7 +557,7 @@ function ChangeRequests({ crs, pipeline, onEdit, onAdd, onDecide }: { crs: Chang
           { key: 'type', header: 'Type', render: (c) => <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11.5px] font-medium ${c.type === 'Scope' ? 'bg-violet-50 text-violet-700' : c.type === 'Budget' ? 'bg-teal-50 text-teal-700' : 'bg-orange-50 text-orange-700'}`}>{c.type}</span> },
           { key: 'workstream', header: 'Workstream', render: (c) => c.workstream === 'Program Management' ? 'PMO' : WORKSTREAM_META[c.workstream as Workstream]?.short ?? c.workstream },
           { key: 'raisedBy', header: 'Raised By' },
-          { key: 'costImpactCr', header: 'Cost Impact', render: (c) => <span className={c.costImpactCr > 0 ? 'text-red-600' : c.costImpactCr < 0 ? 'text-green-600' : ''}>{fmtCrSigned(c.costImpactCr)}</span> },
+          { key: 'costImpactCr', header: 'Cost Impact', render: (c) => <span className={c.costImpactCr > 0 ? 'text-red-600' : c.costImpactCr < 0 ? 'text-green-600' : ''}>{signedMoney(c.costImpactCr, money)}</span> },
           { key: 'scheduleImpactDays', header: 'Schedule Impact', render: (c) => <span className={c.scheduleImpactDays > 0 ? 'text-red-600' : c.scheduleImpactDays < 0 ? 'text-green-600' : ''}>{c.scheduleImpactDays > 0 ? '+' : ''}{c.scheduleImpactDays} d</span> },
           { key: 'submitted', header: 'Submitted', render: (c) => fmtDate(c.submitted) },
           { key: 'status', header: 'Status', render: (c) => <Badge value={c.status} /> },
@@ -706,7 +714,8 @@ function DecisionModal({ value, isNew, onClose, onSave, onDelete }: { value: Dec
 }
 
 function CrModal({ value, isNew, onClose, onSave, onDelete }: { value: ChangeRequest; isNew: boolean; onClose: () => void; onSave: (v: ChangeRequest) => void; onDelete: () => void }) {
-  const { f, setF, s, n } = useForm(value)
+  const money = useMoney()
+  const { f, setF, s, n, c } = useForm(value, money)
   const set = (status: ChangeRequest['status']) => setF({ ...f, status, decidedOn: status === 'Approved' || status === 'Rejected' ? (f.decidedOn ?? TODAY) : undefined })
   return (
     <Modal open width="max-w-3xl" title={isNew ? 'Raise change request' : `Edit ${f.code}`} onClose={onClose} footer={
@@ -727,7 +736,7 @@ function CrModal({ value, isNew, onClose, onSave, onDelete }: { value: ChangeReq
       </FormGrid>
       <SectionTitle>Impact assessment</SectionTitle>
       <FormGrid cols={3}>
-        <Field label="Cost impact (₹ Cr, negative = saving)"><Input type="number" step="0.01" value={f.costImpactCr} onChange={n('costImpactCr')} /></Field>
+        <Field label={`Cost impact (${money.unitLabel}, negative = saving)`}><Input {...c('costImpactCr')} /></Field>
         <Field label="Schedule impact (days)"><Input type="number" value={f.scheduleImpactDays} onChange={n('scheduleImpactDays')} /></Field>
         <Field label="Approval authority"><Input readOnly value={Math.abs(f.costImpactCr) >= 0.25 || Math.abs(f.scheduleImpactDays) > 10 ? 'Steering Committee' : Math.abs(f.costImpactCr) >= 0.05 ? 'Program Director' : 'Workstream Lead'} className="bg-surface" /></Field>
         <Field label="Cross-workstream impact" className="col-span-3"><Input value={f.crossWorkstreamImpact} onChange={s('crossWorkstreamImpact')} placeholder="Which workstreams, dependencies or baselines are affected?" /></Field>

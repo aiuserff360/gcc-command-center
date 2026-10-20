@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import { Users, Cpu, Building2, Scale, ArrowLeftRight, ClipboardList, Plane, Layers } from 'lucide-react'
 import { FIN_WS_COLORS, fmtVar } from '../../data/financial'
+import { useMoney, type Money } from '../../data/money'
 
 export const WS_ICON: Record<string, ReactNode> = {
   'Talent & Hiring': <Users size={14} />, 'Technology & Infrastructure': <Cpu size={14} />, 'Facilities & Workplace': <Building2 size={14} />, 'Legal & Compliance': <Scale size={14} />,
@@ -11,10 +12,16 @@ export function WsIcon({ name }: { name: string }) {
   return <span className="w-5 h-5 rounded-md flex items-center justify-center shrink-0" style={{ background: `${FIN_WS_COLORS[name] ?? '#94A3B8'}22`, color: FIN_WS_COLORS[name] ?? '#64748B' }}>{WS_ICON[name] ?? <Layers size={14} />}</span>
 }
 
-/** Variance pill: negative / zero = favourable (green), positive = unfavourable (red). */
+/**
+ * Variance pill: `value` is a ₹ Cr amount, rendered in the selected currency.
+ * Negative / zero = favourable (green), positive = unfavourable (red). `digits` are the ₹ Cr decimals (€ M gets one more).
+ */
 export function VariancePill({ value, digits = 1 }: { value: number; digits?: number }) {
-  const bad = Math.round(value * 10 ** digits) > 0
-  return <span className={clsx('inline-flex items-center justify-center rounded-md px-1.5 py-0.5 text-[11.5px] font-medium min-w-[36px]', bad ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700')}>{fmtVar(value, digits)}</span>
+  const m = useMoney()
+  const d = mdigits(m, digits)
+  const v = m.toDisplay(value)
+  const bad = Math.round(v * 10 ** d) > 0
+  return <span className={clsx('inline-flex items-center justify-center rounded-md px-1.5 py-0.5 text-[11.5px] font-medium min-w-[36px]', bad ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700')}>{fmtVar(v, d)}</span>
 }
 
 export function SpentBar({ pct, width = 76 }: { pct: number; width?: number }) {
@@ -31,7 +38,14 @@ export function SpentBar({ pct, width = 76 }: { pct: number; width?: number }) {
 export function Tbl({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={clsx('overflow-x-auto scroll-thin', className)}><table className="w-full border-separate border-spacing-0 tbl">{children}</table></div>
 }
+/** Unit-less number (counts, ratios). For money use `mnum` / `mfmt`. */
 export const num = (v: number, d = 1) => v.toFixed(d)
+/** Decimals for a money value: `d` decimals in ₹ Cr become `d + 1` in € M so small amounts stay legible. */
+export const mdigits = (m: Money, d = 1) => d - 1 + m.digits
+/** Money table cell / label – number only in the display unit ("4.0" | "0.43"). `cr` is stored ₹ Cr. */
+export const mnum = (m: Money, cr: number, d = 1) => m.num(cr, mdigits(m, d))
+/** Money with symbol and unit ("₹ 4.0 Cr" | "€ 0.43 M"). `cr` is stored ₹ Cr. */
+export const mfmt = (m: Money, cr: number, d = 1) => m.fmt(cr, mdigits(m, d))
 export const TOTAL_ROW = 'bg-surface/70 font-semibold'
 
 export function StatBox({ label, value, sub, tone = 'text-ink-900' }: { label: string; value: ReactNode; sub?: ReactNode; tone?: string }) {

@@ -2,10 +2,13 @@ import { useState } from 'react'
 import { Modal, Field, Input, Select, FormGrid } from './ui'
 import { PHASES } from '../data/common'
 import type { ProgramKpis } from '../data/shared'
+import { useMoney } from '../data/money'
 
 /** Shared editor for the program-level KPI record ('programKpis'). Used by Dashboard and Program Planning. */
 export function ProgramKpiEditor({ open, onClose, value, onSave }: { open: boolean; onClose: () => void; value: ProgramKpis; onSave: (v: ProgramKpis) => void }) {
   const [f, setF] = useState<ProgramKpis>(value)
+  const m = useMoney()
+  const money = (key: keyof ProgramKpis) => ({ type: 'number', step: 'any', value: m.inputValue(f[key] as number), onChange: (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [key]: m.toBase(parseFloat(e.target.value) || 0) }) }) as const
   const num = (key: keyof ProgramKpis) => ({ type: 'number', step: 'any', value: f[key] as number, onChange: (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [key]: parseFloat(e.target.value) || 0 }) }) as const
   return (
     <Modal open={open} onClose={onClose} title="Update program KPIs" footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={() => onSave(f)}>Save</button></>}>
@@ -19,11 +22,11 @@ export function ProgramKpiEditor({ open, onClose, value, onSave }: { open: boole
         <Field label="Talent onboarded"><Input {...num('talentOnboarded')} /></Field>
         <Field label="Talent target"><Input {...num('talentTarget')} /></Field>
         <Field label="Open critical issues"><Input {...num('openCriticalIssues')} /></Field>
-        <Field label="Approved budget (₹ Cr)"><Input {...num('approvedBudgetCr')} /></Field>
-        <Field label="Actual spend (₹ Cr)"><Input {...num('actualSpendCr')} /></Field>
-        <Field label="Forecast at completion (₹ Cr)"><Input {...num('forecastAtCompletionCr')} /></Field>
-        <Field label="Target benefits (₹ Cr)"><Input {...num('targetBenefitsCr')} /></Field>
-        <Field label="Projected benefits (₹ Cr)"><Input {...num('projectedBenefitsCr')} /></Field>
+        <Field label={`Approved budget (${m.unitLabel})`}><Input {...money('approvedBudgetCr')} /></Field>
+        <Field label={`Actual spend (${m.unitLabel})`}><Input {...money('actualSpendCr')} /></Field>
+        <Field label={`Forecast at completion (${m.unitLabel})`}><Input {...money('forecastAtCompletionCr')} /></Field>
+        <Field label={`Target benefits (${m.unitLabel})`}><Input {...money('targetBenefitsCr')} /></Field>
+        <Field label={`Projected benefits (${m.unitLabel})`}><Input {...money('projectedBenefitsCr')} /></Field>
         <Field label="Go-live target"><Input type="date" value={f.goLiveTarget} onChange={(e) => setF({ ...f, goLiveTarget: e.target.value })} /></Field>
         <Field label="Readiness – People %"><Input {...num('readinessPeople')} /></Field>
         <Field label="Readiness – Process %"><Input {...num('readinessProcess')} /></Field>

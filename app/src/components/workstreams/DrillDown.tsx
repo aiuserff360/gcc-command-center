@@ -7,7 +7,8 @@ import { useCollection } from '../../store/useStore'
 import { seedMilestones, seedRaid, seedDependencies, isOpen, type Milestone, type RaidItem, type Dependency } from '../../data/shared'
 import { seedInitiatives, seedTeamMembers, seedWsBudgetLines, seedWsDocuments, raidWorkstreamOf, WS_TOP_RAID, IMPACT_RANK, type Initiative, type TeamMember, type WsBudgetLine, type WsDocument } from '../../data/workstreams'
 import { fmtDate, CHART_COLORS, TODAY, type Workstream } from '../../data/common'
-import { WsIcon, wsIcon, progressColor, fmtCr2, byDate, shortWs, type WsRow } from './common'
+import { WsIcon, wsIcon, progressColor, fmtMoneyShort, byDate, shortWs, type WsRow } from './common'
+import { useMoney } from '../../data/money'
 import { InitiativesView, MilestonesView, ResourcesView, TeamView, RisksView, BudgetView, DependenciesView, DocumentsView } from './views'
 import { DeliverablesView } from './Deliverables'
 
@@ -80,8 +81,9 @@ function useWsData(w: WsRow) {
 /* ---------- Executive Summary (mock-up layout) ---------- */
 function ExecutiveSummary({ w, onTab, onEdit }: { w: WsRow; onTab: (t: string) => void; onEdit: () => void }) {
   const d = useWsData(w)
+  const m = useMoney()
   const active = d.inits.filter((i) => i.status !== 'Completed').length
-  const budget = d.lines.map((l) => ({ name: l.category, Planned: l.plannedCr, Actual: l.actualCr }))
+  const budget = d.lines.map((l) => ({ name: l.category, Planned: +m.num(l.plannedCr, 2), Actual: +m.num(l.actualCr, 2) }))
   const row = (label: string, value: React.ReactNode) => <div className="flex items-start justify-between gap-2 text-[12px] py-[5px]"><span className="text-ink-700 shrink-0">{label}</span><span className="font-medium text-ink-900 text-right">{value}</span></div>
   return (
     <div className="grid grid-cols-[215px_335px_290px_minmax(0,1fr)] gap-4 items-start">
@@ -119,7 +121,7 @@ function ExecutiveSummary({ w, onTab, onEdit }: { w: WsRow; onTab: (t: string) =
       <div className="space-y-4">
         <Card>
           <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
-            <h3 className="card-title whitespace-nowrap">Budget Tracking (₹ Cr)</h3>
+            <h3 className="card-title whitespace-nowrap">Budget Tracking ({m.unitLabel})</h3>
             <span className="flex items-center gap-2 text-[11px] text-ink-700">
               <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: CHART_COLORS.blueFaint }} />Planned</span>
               <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: CHART_COLORS.blue }} />Actual</span>
@@ -132,7 +134,7 @@ function ExecutiveSummary({ w, onTab, onEdit }: { w: WsRow; onTab: (t: string) =
                 <CartesianGrid vertical={false} />
                 <XAxis dataKey="name" tickLine={false} axisLine={false} tick={<WrapTick />} interval={0} height={30} />
                 <YAxis hide />
-                <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`₹ ${v} Cr`]} />
+                <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`${m.symbol} ${v} ${m.unit}`]} />
                 <Bar isAnimationActive={false} dataKey="Planned" fill={CHART_COLORS.blueFaint} radius={[3, 3, 0, 0]}><LabelList dataKey="Planned" position="top" style={{ fontSize: 10.5, fill: '#111827', fontWeight: 600 }} /></Bar>
                 <Bar isAnimationActive={false} dataKey="Actual" fill={CHART_COLORS.blue} radius={[3, 3, 0, 0]}><LabelList dataKey="Actual" position="top" style={{ fontSize: 10.5, fill: '#111827', fontWeight: 600 }} /></Bar>
               </BarChart>
@@ -162,6 +164,8 @@ function WrapTick({ x, y, payload }: { x?: number; y?: number; payload?: { value
 /* ---------- "View Full Workstream" report ---------- */
 function FullWorkstream({ w, onClose }: { w: WsRow; onClose: () => void }) {
   const d = useWsData(w)
+  const m = useMoney()
+  const money = (cr: number) => fmtMoneyShort(cr, m)
   const H = ({ children }: { children: React.ReactNode }) => <h4 className="text-[13px] font-semibold text-ink-900 mt-5 mb-2 pb-1 border-b border-line">{children}</h4>
   const stat = (l: string, v: React.ReactNode) => <div className="rounded-lg bg-surface px-3 py-2"><div className="text-[11px] text-ink-500">{l}</div><div className="text-[15px] font-semibold">{v}</div></div>
   return (
@@ -170,7 +174,7 @@ function FullWorkstream({ w, onClose }: { w: WsRow; onClose: () => void }) {
       <div className="grid grid-cols-6 gap-2 mt-3">
         {stat('Overall Progress', `${w.progress}%`)}{stat('Status', <Badge value={w.status} />)}{stat('Schedule Health', <Badge value={w.scheduleHealth} />)}{stat('Budget Health', <Badge value={w.budgetHealth} />)}
         {stat('Lead', w.lead)}{stat('Executive Sponsor', w.executiveSponsor)}
-        {stat('Approved Budget', fmtCr2(w.approvedBudgetCr))}{stat('Actual Spend', fmtCr2(w.actualSpendCr))}{stat('Forecast at Completion', fmtCr2(w.forecastAtCompletionCr))}
+        {stat('Approved Budget', money(w.approvedBudgetCr))}{stat('Actual Spend', money(w.actualSpendCr))}{stat('Forecast at Completion', money(w.forecastAtCompletionCr))}
         {stat('Milestones', `${d.ms.length} (${d.msOnTrack} on track)`)}{stat('Initiatives', d.inits.length)}{stat('Team', `${d.team.length} members`)}
       </div>
       <H>Milestones ({d.ms.length})</H>
@@ -179,8 +183,8 @@ function FullWorkstream({ w, onClose }: { w: WsRow; onClose: () => void }) {
       <Table<Initiative> compact rows={d.inits} columns={[{ key: 'name', header: 'Initiative' }, { key: 'owner', header: 'Owner' }, { key: 'status', header: 'Status', render: (r) => <Badge value={r.status} /> }, { key: 'end', header: 'End', render: (r) => fmtDate(r.end) }, { key: 'progress', header: 'Progress', render: (r) => `${r.progress}%` }]} />
       <H>Open Risks & Issues ({d.raidAll.length})</H>
       <Table<RaidItem> compact rows={d.raidAll} columns={[{ key: 'code', header: 'ID' }, { key: 'title', header: 'Risk / Issue' }, { key: 'level', header: 'Impact', render: (r) => <Badge value={r.level} /> }, { key: 'status', header: 'Status', render: (r) => <Badge value={r.status} /> }, { key: 'owner', header: 'Owner' }, { key: 'dueDate', header: 'Due', render: (r) => fmtDate(r.dueDate) }]} />
-      <H>Budget Lines (₹ Cr)</H>
-      <Table<WsBudgetLine> compact rows={d.lines} columns={[{ key: 'category', header: 'Category' }, { key: 'plannedCr', header: 'Planned', render: (r) => r.plannedCr.toFixed(2) }, { key: 'actualCr', header: 'Actual', render: (r) => r.actualCr.toFixed(2) }, { key: 'rem', header: 'Remaining', render: (r) => (r.plannedCr - r.actualCr).toFixed(2) }]} />
+      <H>Budget Lines ({m.unitLabel})</H>
+      <Table<WsBudgetLine> compact rows={d.lines} columns={[{ key: 'category', header: 'Category' }, { key: 'plannedCr', header: 'Planned', render: (r) => m.num(r.plannedCr, 2) }, { key: 'actualCr', header: 'Actual', render: (r) => m.num(r.actualCr, 2) }, { key: 'rem', header: 'Remaining', render: (r) => m.num(r.plannedCr - r.actualCr, 2) }]} />
       <H>Dependencies ({d.dependsOn.length})</H>
       <Table<Dependency> compact rows={d.dependsOn} columns={[{ key: 'on', header: 'Depends On' }, { key: 'type', header: 'Dependency Type' }, { key: 'impact', header: 'Impact', render: (r) => <Badge value={r.impact} /> }, { key: 'status', header: 'Status', render: (r) => <Badge value={r.status} /> }, { key: 'dueDate', header: 'Due', render: (r) => fmtDate(r.dueDate) }]} />
       <H>Team ({d.team.length})</H>

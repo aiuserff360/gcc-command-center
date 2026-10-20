@@ -3,6 +3,18 @@ import clsx from 'clsx'
 import { Legend, type Column } from '../ui'
 import { CHART_COLORS } from '../../data/common'
 import { FUNNEL_COLORS, type FunnelStage, type WorkstreamHeadcount } from '../../data/resources'
+import type { Money } from '../../data/money'
+
+/* ---------- ₹ Lakh helpers (money.ts only exposes a string formatter for Lakh fields) ---------- */
+const LAKH = 1e5
+/** Lakh → display number (₹ L stays as is, € K otherwise). */
+export const lakhToDisplay = (lakh: number, m: Money) => (m.currency === 'INR' ? lakh : (lakh * LAKH) / m.rate / 1e3)
+/** Display number (₹ L | € K) → ₹ Lakh for storage. */
+export const lakhToBase = (d: number, m: Money) => (m.currency === 'INR' ? d : (d * 1e3 * m.rate) / LAKH)
+/** Number-only Lakh cell: "14.0" | "15.2". */
+export const lakhNum = (lakh: number, m: Money) => lakhToDisplay(lakh, m).toFixed(1)
+/** Rounded display number for <Input value=...>. */
+export const lakhInput = (lakh: number, m: Money) => +lakhToDisplay(lakh, m).toFixed(m.currency === 'INR' ? 2 : 3)
 
 /** Two-line X-axis tick for long category names. */
 export function WrapTick({ x, y, payload, size = 11 }: { x?: number; y?: number; payload?: { value: string }; size?: number }) {

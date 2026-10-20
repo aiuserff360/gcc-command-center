@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useStore, type Phase } from '../../store/useStore'
 import { PHASES, PROGRAM_NAMES, programDef } from '../../data/common'
+import { formatMoney } from '../../data/money'
 import { FilterSelect } from '../ui'
 
 export const NAV = [
@@ -121,6 +122,7 @@ export function Topbar({ variant }: { variant: 'dashboard' | 'page' }) {
       {/* Right: date, notifications, user */}
       <div className="flex items-center gap-4 shrink-0 ml-auto">
         <span className="text-[12.5px] text-ink-700 whitespace-nowrap hidden xl:inline">Mon, 20 Oct 2026</span>
+        <CurrencyToggle />
         <div className="relative">
           <button onClick={() => setNotif((v) => !v)} className="relative text-ink-700 hover:text-ink-900 cursor-pointer flex">
             <Bell size={19} />
@@ -153,6 +155,21 @@ export function Topbar({ variant }: { variant: 'dashboard' | 'page' }) {
         </div>
       </div>
     </header>
+  )
+}
+
+export function CurrencyToggle() {
+  const currency = useStore((s) => s.currency)
+  const setCurrency = useStore((s) => s.setCurrency)
+  const rate = useStore((s) => s.eurRate)
+  return (
+    <div className="flex items-center bg-surface rounded-lg p-0.5 shrink-0" title={`Amounts shown in ${currency === 'INR' ? 'Indian Rupees (crore)' : `Euros (millions) at ₹ ${rate} per €`}`}>
+      {(['INR', 'EUR'] as const).map((c) => (
+        <button key={c} onClick={() => setCurrency(c)} className={clsx('px-2.5 py-1 rounded-md text-[12px] font-semibold cursor-pointer', currency === c ? 'bg-white text-navy-900 shadow-sm' : 'text-ink-500 hover:text-ink-900')}>
+          {c === 'INR' ? '₹ INR' : '€ EUR'}
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -235,7 +252,7 @@ function Assistant({ onClose }: { onClose: () => void }) {
   const canned: Record<string, string> = {
     status: 'Program is 72% complete with 84% milestone adherence. Six critical issues are open. The IT infrastructure readiness milestone (23 Oct 2026) is At Risk and is the main threat to the 12 Nov 2026 go-live target.',
     hiring: 'Talent onboarded is 320 of 450 FTEs (+12% vs plan). Wave 2 hiring is 20% behind plan; consider accelerating lateral hiring for Senior Data Engineer and Cybersecurity Analyst roles.',
-    budget: 'Approved budget ₹ 4.0 Cr, actual spend ₹ 2.6 Cr (65%), forecast at completion ₹ 3.8 Cr leaving ₹ 0.2 Cr headroom. Other (Travel, Misc) is the only workstream over budget (+0.1).',
+    budget: (() => { const { currency, eurRate } = useStore.getState(); const f = (cr: number) => formatMoney(cr, currency, eurRate); return `Approved budget ${f(4.0)}, actual spend ${f(2.6)} (65%), forecast at completion ${f(3.8)} leaving ${f(0.2)} headroom. Other (Travel, Misc) is the only workstream over budget (+${f(0.1)}).` })(),
     risk: 'Top risk is the delay in IT infrastructure provisioning (impact score 9.0, Critical, owner R. Mehta). It is linked to 4 downstream deliverables. Recommended action: escalate the network provisioning issue to the steering committee.',
   }
   const ask = () => {

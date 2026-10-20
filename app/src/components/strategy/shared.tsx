@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { ConfirmDelete, Field, Input } from '../ui'
 import { YEARS, YEAR_KEYS, type YearValues } from '../../data/strategy'
+import type { Money } from '../../data/money'
 
 /** Standard modal footer: optional Delete (left), Cancel + Save (right). */
 export function EditorFooter({ onCancel, onSave, onDelete, saveLabel = 'Save' }: { onCancel: () => void; onSave: () => void; onDelete?: () => void; saveLabel?: string }) {
@@ -13,20 +14,46 @@ export function EditorFooter({ onCancel, onSave, onDelete, saveLabel = 'Save' }:
   )
 }
 
-/** Five numeric inputs for Year 1–5 values. */
-export function YearFields<T extends YearValues>({ value, onChange, unit }: { value: T; onChange: (v: T) => void; unit?: string }) {
+/**
+ * Five numeric inputs for Year 1–5 values.
+ * Pass `money` for ₹ Cr fields: the inputs then display/edit in the selected currency and save back to ₹ Cr.
+ */
+export function YearFields<T extends YearValues>({ value, onChange, unit, money }: { value: T; onChange: (v: T) => void; unit?: string; money?: Money }) {
+  const label = money ? money.unitLabel : unit
   return (
     <div className="grid grid-cols-5 gap-3">
       {YEARS.map((y, i) => {
         const k = YEAR_KEYS[i]
         return (
-          <Field key={k} label={unit ? `${y} (${unit})` : y}>
-            <Input type="number" step="any" value={value[k]} onChange={(e) => onChange({ ...value, [k]: parseFloat(e.target.value) || 0 })} />
+          <Field key={k} label={label ? `${y} (${label})` : y}>
+            <Input type="number" step="any" value={money ? money.inputValue(value[k]) : value[k]} onChange={(e) => { const n = parseFloat(e.target.value) || 0; onChange({ ...value, [k]: money ? money.toBase(n) : n }) }} />
           </Field>
         )
       })}
     </div>
   )
+}
+
+/** Props for a numeric <Input> bound to a ₹ Cr key: displays/edits in the selected currency, stores ₹ Cr. */
+export function moneyProps<T extends object>(f: T, setF: (v: T) => void, key: keyof T, m: Money) {
+  return {
+    type: 'number' as const, step: 'any', value: m.inputValue(f[key] as unknown as number),
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [key]: m.toBase(parseFloat(e.target.value) || 0) }),
+  }
+}
+
+/** Formats a number that is ALREADY in display units (chart data mapped through m.toDisplay) as "₹ 4.0 Cr" | "€ 0.43 M". */
+export const fmtDisplay = (m: Money) => (v: unknown) => `${m.symbol} ${Number(v ?? 0).toFixed(m.digits)} ${m.unit}`
+
+/** "Nice" axis ticks from 0 to max (step 1/2/5 × 10^k), so both currencies get readable gridlines. */
+export function niceTicks(max: number, count = 5) {
+  const raw = Math.max(max, 1e-9) / count
+  const pow = Math.pow(10, Math.floor(Math.log10(raw)))
+  const f = raw / pow
+  const step = (f <= 1 ? 1 : f <= 2.5 ? 2 : f <= 5 ? 5 : 10) * pow
+  const ticks: number[] = []
+  for (let t = 0; t <= max + 1e-9; t += step) ticks.push(+t.toFixed(6))
+  return ticks
 }
 
 /** Props for a numeric <Input> bound to a key of a form object. */

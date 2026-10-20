@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { ListChecks, Flag, Users, IndianRupee, Pencil, Plus } from 'lucide-react'
+import { ListChecks, Flag, Users, IndianRupee, Euro, Pencil, Plus } from 'lucide-react'
 import { PageHeader } from '../components/layout/AppShell'
 import { Card, Badge, Table, Tabs, Chevron, Legend } from '../components/ui'
 import { Donut, tooltipStyle } from '../components/charts'
@@ -14,6 +14,7 @@ import { useWsRows, InitiativesView, MilestonesView, ResourcesView, TeamView, Ri
 import { DeliverablesView } from '../components/workstreams/Deliverables'
 import { DrillDown } from '../components/workstreams/DrillDown'
 import { WorkstreamForm, SettingsForm } from '../components/workstreams/forms'
+import { useMoney } from '../data/money'
 
 const TABS = ['Workstream Overview', 'Initiatives & Milestones', 'Team & Resources', 'Risks & Issues', 'Budget & Costs', 'Dependencies', 'Deliverables', 'Documents']
 
@@ -31,6 +32,7 @@ export default function Workstreams() {
   const [selected, setSelected] = useState<string>(params.get('ws') ?? 'Technology & Infrastructure')
   const [editWs, setEditWs] = useState<{ item: WsRow; isNew: boolean } | null>(null)
   const [editKpi, setEditKpi] = useState(false)
+  const m = useMoney()
 
   // One-time merge of the mock-up's Technology rows into the shared RAID register (guarded by id).
   useEffect(() => {
@@ -75,7 +77,7 @@ export default function Workstreams() {
           sub={<span><span className="text-green-600">{counts.onTrack} On Track</span> <span className="text-ink-400">|</span> <span className="text-amber-600">{counts.atRisk} At Risk</span> <span className="text-ink-400">|</span> <span className="text-red-600">{counts.delayed} Delayed</span></span>} />
         <Kpi tone="red" icon={<Flag size={18} />} value={activeInits} label="Active Workstream Initiatives" onClick={() => setTab('Initiatives & Milestones')} />
         <Kpi tone="violet" icon={<Users size={18} />} value={deps.length} label="Cross-workstream Dependencies" onClick={() => setTab('Dependencies')} />
-        <Kpi tone="green" icon={<IndianRupee size={18} />} value={`₹ ${totalBudget.toFixed(1)} Cr`} label="Total Workstream Budget" sub={<>₹ {totalSpent.toFixed(1)} Cr spent ({totalBudget ? Math.round((totalSpent / totalBudget) * 100) : 0}%)</>} onClick={() => setTab('Budget & Costs')} />
+        <Kpi tone="green" icon={m.currency === 'EUR' ? <Euro size={18} /> : <IndianRupee size={18} />} value={m.fmt(totalBudget)} label="Total Workstream Budget" sub={<>{m.fmt(totalSpent)} spent ({totalBudget ? Math.round((totalSpent / totalBudget) * 100) : 0}%)</>} onClick={() => setTab('Budget & Costs')} />
       </div>
 
       <Tabs tabs={TABS} active={tab} onChange={setTab} className="mb-4" />

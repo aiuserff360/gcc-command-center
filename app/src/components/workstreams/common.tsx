@@ -3,6 +3,7 @@ import clsx from 'clsx'
 import { Users, Cpu, Scale, Building2, ArrowLeftRight, Settings2, Wallet, Layers, TrendingUp, TrendingDown, Search } from 'lucide-react'
 import { Ring, ConfirmDelete, Progress } from '../ui'
 import type { WorkstreamSummary } from '../../data/shared'
+import type { Money } from '../../data/money'
 
 /** WorkstreamSummary row as used on this page – may carry a designated key milestone id. */
 export type WsRow = WorkstreamSummary & { keyMilestoneId?: string }
@@ -30,7 +31,13 @@ export const progressColor = (v: number) => (v >= 80 ? '#16A34A' : v >= 65 ? '#5
 export const STATUS_COLOR: Record<string, string> = {
   'On Track': '#16A34A', Completed: '#16A34A', 'At Risk': '#F59E0B', Delayed: '#DC2626', Overdue: '#DC2626', 'Not Started': '#CBD5E1', Pending: '#94A3B8', 'In Progress': '#1E5BBE', Open: '#DC2626', Resolved: '#16A34A', Closed: '#94A3B8',
 }
-export const fmtCr2 = (v: number) => `₹ ${(+v).toFixed(2).replace(/\.?0+$/, '')} Cr`
+/** Compact money label in the selected currency with trailing zeros trimmed: "₹ 1.8 Cr" | "€ 0.2 M". */
+export const fmtMoneyShort = (cr: number, m: Money) => `${m.symbol} ${m.num(cr, 2).replace(/\.?0+$/, '')} ${m.unit}`
+/* ---------- ₹ Lakh helpers (money.ts only exposes a string formatter for Lakh fields) ---------- */
+const LAKH = 1e5
+export const lakhToDisplay = (lakh: number, m: Money) => (m.currency === 'INR' ? lakh : (lakh * LAKH) / m.rate / 1e3)
+export const lakhToBase = (d: number, m: Money) => (m.currency === 'INR' ? d : (d * 1e3 * m.rate) / LAKH)
+export const lakhInput = (lakh: number, m: Money) => +lakhToDisplay(lakh, m).toFixed(m.currency === 'INR' ? 2 : 3)
 
 /* ---------- KPI tile (local variant: tighter so 5 long labels fit on one row) ---------- */
 type Tone = 'green' | 'blue' | 'violet' | 'red' | 'amber' | 'teal' | 'orange' | 'navy'
@@ -82,7 +89,12 @@ export function useFields<T extends object>(initial: T) {
     type: 'checkbox' as const, checked: Boolean(f[k]),
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => set(k, e.target.checked as T[keyof T]),
   })
-  return { f, set, setF, txt, num, chk }
+  /** Numeric field stored in one unit (₹ Cr / ₹ Lakh) but edited in the display unit. */
+  const cnv = (k: keyof T, toDisplay: (base: number) => number, toBase: (display: number) => number) => ({
+    type: 'number' as const, step: 'any', value: toDisplay(Number(f[k] ?? 0)),
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => set(k, toBase(parseFloat(e.target.value) || 0) as T[keyof T]),
+  })
+  return { f, set, setF, txt, num, chk, cnv }
 }
 
 /** Select with separate option values and labels (the shared Select uses the label as value). */

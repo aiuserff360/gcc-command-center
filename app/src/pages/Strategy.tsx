@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from 'recharts'
-import { FileText, Pencil, MoreVertical, Target, BarChart3, Coins, TrendingUp, Users, Check, CheckCircle2, Crosshair, IndianRupee, Lightbulb, Globe } from 'lucide-react'
+import { FileText, Pencil, MoreVertical, Target, BarChart3, Coins, TrendingUp, Users, Check, CheckCircle2, Crosshair, IndianRupee, Euro, Lightbulb, Globe } from 'lucide-react'
 import { Card, KpiTile, Tabs, ViewAll, Modal, Field, Input, Select, TextArea, FormGrid, FilterSelect, Legend } from '../components/ui'
 import { BarList, tooltipStyle } from '../components/charts'
 import { useCollection, useStore, type Phase } from '../store/useStore'
@@ -10,7 +10,8 @@ import {
   valueCaseByYear, investmentByYear, totalInvestment, locationOverall, bandTalent, bandInfra, bandEcosystem, fmtYears, BENEFIT_CATEGORIES, YEARS,
   type StrategySettings, type InvestmentLine, type OperatingModel, type ServiceScope, type LocationOption, type BenefitItem, type Scenario,
 } from '../data/strategy'
-import { numProps, textProps, OmPill, ScorePill, EditorFooter } from '../components/strategy/shared'
+import { numProps, textProps, OmPill, ScorePill, EditorFooter, fmtDisplay, niceTicks } from '../components/strategy/shared'
+import { useMoney, numMoney, type Currency } from '../data/money'
 import { OM_ICON } from '../components/strategy/OperatingModelTab'
 import { CATEGORY_COLORS } from '../components/strategy/BenefitsTab'
 import { Dot } from '../components/strategy/LocationTab'
@@ -28,9 +29,9 @@ const TH = 'text-left text-[11px] font-medium text-ink-500 px-1.5 py-1.5 bg-surf
 const TD = 'px-1.5 py-2 text-[11.5px] text-ink-900 border-b border-line/70 align-middle whitespace-nowrap'
 
 const TABS = ['Overview', 'Strategic Objectives', 'Business Case', 'Operating Model', 'Scope & Services', 'Talent & Location', 'Benefits & KPIs', 'Scenarios', 'Approvals']
-const RATIONALE_ICONS = [
+const rationaleIcons = (currency: Currency) => [
   <span className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center shrink-0"><Crosshair size={20} /></span>,
-  <span className="w-10 h-10 rounded-full bg-blue-50 text-brand-600 flex items-center justify-center shrink-0"><IndianRupee size={20} /></span>,
+  <span className="w-10 h-10 rounded-full bg-blue-50 text-brand-600 flex items-center justify-center shrink-0">{currency === 'EUR' ? <Euro size={20} /> : <IndianRupee size={20} />}</span>,
   <span className="w-10 h-10 rounded-full bg-green-50 text-green-600 flex items-center justify-center shrink-0"><Lightbulb size={20} /></span>,
   <span className="w-10 h-10 rounded-full bg-violet-50 text-violet-600 flex items-center justify-center shrink-0"><Globe size={20} /></span>,
 ]
@@ -85,17 +86,29 @@ function Overview({ s, go, onEdit }: { s: StrategySettings; go: (t: string) => v
   const { items: locations } = useCollection<LocationOption>('strategyLocations', seedLocations)
   const { items: benefits } = useCollection<BenefitItem>('strategyBenefits', seedBenefits)
   const { items: scenarios } = useCollection<Scenario>('strategyScenarios', seedScenarios)
+  const m = useMoney()
+  const { currency, rate } = m
+  const icons = rationaleIcons(currency)
 
-  const vc = useMemo(() => valueCaseByYear(benefits), [benefits])
+  const vcCr = useMemo(() => valueCaseByYear(benefits), [benefits])
   const inv = useMemo(() => investmentByYear(investments), [investments])
   const total = totalInvestment(investments)
-  const runRate = vc[Math.min(4, Math.max(0, s.runRateFromYear - 1))]?.total ?? 0
+  const runRate = vcCr[Math.min(4, Math.max(0, s.runRateFromYear - 1))]?.total ?? 0
   const headcount = services.filter((x) => x.status !== 'Out of Scope').reduce((a, x) => a + x.y5, 0)
-  const ivr = YEARS.map((year, i) => ({ year, 'Total Investment (Cumulative)': inv[i].cumulative, 'Cumulative Benefits': s.cumulativeBenefitsCr[i] ?? 0 }))
+  // Chart series in the display currency (stored values stay in ₹ Cr)
+  const vc = useMemo(() => {
+    const d = (cr: number) => +numMoney(cr, currency, rate)
+    return vcCr.map((r) => ({ ...r, total: d(r.total), ...Object.fromEntries(BENEFIT_CATEGORIES.map((c) => [c, d(r[c])])) }))
+  }, [vcCr, currency, rate])
+  const ivr = useMemo(() => {
+    const d = (cr: number) => +numMoney(cr, currency, rate)
+    return YEARS.map((year, i) => ({ year, 'Total Investment (Cumulative)': d(inv[i].cumulative), 'Cumulative Benefits': d(s.cumulativeBenefitsCr[i] ?? 0) }))
+  }, [inv, s.cumulativeBenefitsCr, currency, rate])
   const scoredLocations = locations.map((l) => ({ ...l, overall: locationOverall(l, s.locationWeights) })).sort((a, b) => b.overall - a.overall)
   const scopeRows = services.filter((x) => x.status !== 'Out of Scope').slice().sort((a, b) => b.y5 - a.y5)
-  const yMax = Math.max(100, ...vc.map((r) => r.total), ...ivr.map((r) => r['Cumulative Benefits']))
-  const ticks = [0, 20, 40, 60, 80, 100].filter((t) => t <= yMax)
+  const yMax = Math.max(+m.num(100), ...vc.map((r) => r.total), ...ivr.map((r) => r['Cumulative Benefits']))
+  const ticks = niceTicks(yMax)
+  const tip = fmtDisplay(m)
 
   return (
     <div className="space-y-4">
@@ -103,8 +116,8 @@ function Overview({ s, go, onEdit }: { s: StrategySettings; go: (t: string) => v
       <div className="grid grid-cols-5 gap-4">
         <KpiTile tone="green" icon={<Target size={22} />} value={`${s.targetCostSavingsPct}%`} label="Target Cost Savings (Run-rate)" sub={s.costSavingsBasis} />
         <KpiTile tone="blue" icon={<BarChart3 size={22} />} value={s.paybackPeriod} label="Payback Period" sub={s.paybackBasis} />
-        <KpiTile tone="orange" icon={<Coins size={22} />} value={`₹ ${total.toFixed(1)} Cr`} label={`Total Investment (${s.investmentHorizonYears} years)`} sub="Setup + Ramp-up" />
-        <KpiTile tone="violet" icon={<TrendingUp size={22} />} value={`₹ ${runRate.toFixed(1)} Cr`} label="Annual Run-rate Benefits" sub={`from Year ${s.runRateFromYear} onwards`} />
+        <KpiTile tone="orange" icon={<Coins size={22} />} value={m.fmt(total)} label={`Total Investment (${s.investmentHorizonYears} years)`} sub="Setup + Ramp-up" />
+        <KpiTile tone="violet" icon={<TrendingUp size={22} />} value={m.fmt(runRate)} label="Annual Run-rate Benefits" sub={`from Year ${s.runRateFromYear} onwards`} />
         <KpiTile tone="blue" icon={<Users size={22} />} value={headcount} label="Target Headcount" sub="by Year 5" />
       </div>
 
@@ -114,13 +127,13 @@ function Overview({ s, go, onEdit }: { s: StrategySettings; go: (t: string) => v
           <div className="space-y-4 pt-1">
             {s.rationale.map((r, i) => (
               <div key={r.title} className="flex items-center gap-3">
-                {RATIONALE_ICONS[i % RATIONALE_ICONS.length]}
+                {icons[i % icons.length]}
                 <div><div className="text-[13.5px] font-semibold text-ink-900">{r.title}</div><div className="text-[12px] text-ink-500 leading-snug">{r.description}</div></div>
               </div>
             ))}
           </div>
         </Card>
-        <Card title="Value Case Summary (₹ Cr)">
+        <Card title={`Value Case Summary (${m.unitLabel})`}>
           <Legend items={BENEFIT_CATEGORIES.map((c) => ({ label: c, color: CATEGORY_COLORS[c] }))} />
           <div className="h-[200px] mt-2">
             <ResponsiveContainer>
@@ -128,7 +141,7 @@ function Overview({ s, go, onEdit }: { s: StrategySettings; go: (t: string) => v
                 <CartesianGrid vertical={false} />
                 <XAxis dataKey="year" tickLine={false} axisLine={false} />
                 <YAxis tickLine={false} axisLine={false} domain={[0, yMax]} ticks={ticks} />
-                <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} />
+                <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={tip} />
                 {BENEFIT_CATEGORIES.map((c, i) => (
                   <Bar key={c} dataKey={c} stackId="a" fill={CATEGORY_COLORS[c]} radius={i === 2 ? [3, 3, 0, 0] : 0} isAnimationActive={false}>
                     {i === 2 && <LabelList dataKey="total" position="top" style={{ fontSize: 11.5, fill: '#111827', fontWeight: 600 }} />}
@@ -138,7 +151,7 @@ function Overview({ s, go, onEdit }: { s: StrategySettings; go: (t: string) => v
             </ResponsiveContainer>
           </div>
         </Card>
-        <Card title="Investment vs Returns (₹ Cr)">
+        <Card title={`Investment vs Returns (${m.unitLabel})`}>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-ink-700">
             <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: CHART_COLORS.blue }} />Total Investment (Cumulative)</span>
             <span className="inline-flex items-center gap-1.5"><span className="inline-flex items-center"><span className="w-2 border-t-2" style={{ borderColor: '#10B981' }} /><span className="w-2 h-2 rounded-full" style={{ background: '#10B981' }} /><span className="w-2 border-t-2" style={{ borderColor: '#10B981' }} /></span>Cumulative Benefits</span>
@@ -149,7 +162,7 @@ function Overview({ s, go, onEdit }: { s: StrategySettings; go: (t: string) => v
                 <CartesianGrid vertical={false} />
                 <XAxis dataKey="year" tickLine={false} axisLine={false} />
                 <YAxis tickLine={false} axisLine={false} domain={[0, yMax]} ticks={ticks} />
-                <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} />
+                <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={tip} />
                 <Bar dataKey="Total Investment (Cumulative)" fill="#DCE7F7" radius={[3, 3, 0, 0]} isAnimationActive={false}><LabelList dataKey="Total Investment (Cumulative)" position="top" style={{ fontSize: 11.5, fill: '#111827', fontWeight: 600 }} /></Bar>
                 <Line dataKey="Cumulative Benefits" stroke="#10B981" strokeWidth={2} isAnimationActive={false} dot={{ r: 4, fill: '#10B981', strokeWidth: 0 }}><LabelList dataKey="Cumulative Benefits" position="top" offset={8} style={{ fontSize: 11.5, fill: '#111827', fontWeight: 600 }} /></Line>
               </ComposedChart>
@@ -197,11 +210,11 @@ function Overview({ s, go, onEdit }: { s: StrategySettings; go: (t: string) => v
         </Card>
         <Card title="Scenario Analysis (5-year view)" action={<ViewAll label="View Details" onClick={() => go('Scenarios')} />}>
           <table className="w-full border-separate border-spacing-0">
-            <thead><tr><th className={TH}>Scenario</th><th className={TH}>Investment<br />(₹ Cr)</th><th className={TH}>Annual Benefits<br />(₹ Cr)</th><th className={TH}>Payback<br />Period</th><th className={`${TH} text-right`}>IRR</th></tr></thead>
+            <thead><tr><th className={TH}>Scenario</th><th className={TH}>Investment<br />({m.unitLabel})</th><th className={TH}>Annual Benefits<br />({m.unitLabel})</th><th className={TH}>Payback<br />Period</th><th className={`${TH} text-right`}>IRR</th></tr></thead>
             <tbody>
               {scenarios.map((sc) => (
                 <tr key={sc.id} className={`cursor-pointer hover:bg-brand-50/60 ${sc.isBase ? 'bg-surface/70 font-semibold' : ''}`} onClick={() => go('Scenarios')}>
-                  <td className={`${TD} py-2.5`}>{sc.name}</td><td className={`${TD} py-2.5`}>{sc.investmentCr.toFixed(1)}</td><td className={`${TD} py-2.5`}>{sc.annualBenefitsCr.toFixed(1)}</td><td className={`${TD} py-2.5`}>{fmtYears(sc.paybackYears)}</td><td className={`${TD} py-2.5 text-right`}>{sc.irrPct}%</td>
+                  <td className={`${TD} py-2.5`}>{sc.name}</td><td className={`${TD} py-2.5`}>{m.num(sc.investmentCr)}</td><td className={`${TD} py-2.5`}>{m.num(sc.annualBenefitsCr)}</td><td className={`${TD} py-2.5`}>{fmtYears(sc.paybackYears)}</td><td className={`${TD} py-2.5 text-right`}>{sc.irrPct}%</td>
                 </tr>
               ))}
             </tbody>
@@ -222,6 +235,7 @@ function Overview({ s, go, onEdit }: { s: StrategySettings; go: (t: string) => v
 /* ------------------------------------------------------------------ */
 function StrategyEditor({ value, onClose, onSave }: { value: StrategySettings; onClose: () => void; onSave: (v: StrategySettings) => void }) {
   const [f, setF] = useState<StrategySettings>(value)
+  const m = useMoney()
   const phase = useStore((s) => s.phase)
   const setPhase = useStore((s) => s.setPhase)
   const [assumptions, setAssumptions] = useState(value.assumptions.join('\n'))
@@ -254,9 +268,9 @@ function StrategyEditor({ value, onClose, onSave }: { value: StrategySettings; o
         ))}
       </div>
       <div className="h-4" />
-      <div className="label">Cumulative Benefits – Investment vs Returns chart (₹ Cr)</div>
+      <div className="label">Cumulative Benefits – Investment vs Returns chart ({m.unitLabel})</div>
       <div className="grid grid-cols-5 gap-3">
-        {YEARS.map((y, i) => <Field key={y} label={y}><Input type="number" step="any" value={cum[i]} onChange={(e) => setCum(cum.map((v, j) => (j === i ? parseFloat(e.target.value) || 0 : v)))} /></Field>)}
+        {YEARS.map((y, i) => <Field key={y} label={y}><Input type="number" step="any" value={m.inputValue(cum[i])} onChange={(e) => setCum(cum.map((v, j) => (j === i ? m.toBase(parseFloat(e.target.value) || 0) : v)))} /></Field>)}
       </div>
       <div className="h-4" />
       <Field label="Key assumptions (one per line)"><TextArea value={assumptions} onChange={(e) => setAssumptions(e.target.value)} className="min-h-[120px]" /></Field>

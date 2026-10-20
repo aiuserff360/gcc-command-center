@@ -157,7 +157,8 @@ export const seedScenarios: FinanceScenario[] = [
 export interface FinanceSettings { id: string; runRateYear: string; headroomPctOfBudget: number; discountRatePct: number; contingencyPct: number; varianceCommentary: string }
 export const seedFinanceSettings: FinanceSettings[] = [{
   id: 'fs-1', runRateYear: 'Year 5', headroomPctOfBudget: 55, discountRatePct: 12, contingencyPct: 10,
-  varianceCommentary: 'Forecast at completion is ₹ 0.2 Cr below the approved budget. Technology & Infrastructure is trending ₹ 0.2 Cr under budget after the network contract was renegotiated; Other (Travel, Misc) is ₹ 0.1 Cr over on Wave 2 transition travel and will be offset from contingency.',
+  // Narrative only – amounts per workstream are generated at render time in the selected currency (Actuals & Forecast tab).
+  varianceCommentary: 'Forecast at completion is trending about 5% below the approved budget. Technology & Infrastructure is running under budget after the network contract was renegotiated; Other (Travel, Misc) is over on Wave 2 transition travel and will be offset from contingency.',
 }]
 
 /* ---------- helpers ---------- */

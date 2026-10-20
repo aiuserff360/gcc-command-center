@@ -7,25 +7,33 @@ import { Donut, BarList, tooltipStyle } from '../components/charts'
 import { useCollection, uid } from '../store/useStore'
 import { seedProgramKpis, type ProgramKpis } from '../data/shared'
 import { WORKSTREAMS, WORKSTREAM_META, CHART_COLORS, fmtDate, TODAY } from '../data/common'
+import { useMoney, type Money } from '../data/money'
 import { seedBenefitItems, seedValueMonthly, seedSavingsInitiatives, seedValueSettings, BENEFIT_AREAS, BENEFIT_COLORS, WATERFALL, PAYBACK, RUNRATE, type BenefitItem, type ValueMonth, type SavingsInitiative, type ValueSettings, type BenefitArea } from '../data/value'
 
 const TABS = ['Value Overview', 'Benefits Register', 'Cost Savings', 'Productivity & Quality', 'Value Forecast', 'Benefit Owners & Sign-off']
 const VIEW_OPTIONS = ['All Benefit Areas', ...BENEFIT_AREAS] as const
-const fmt = (v: number, d = 1) => `₹ ${v.toFixed(d)} Cr`
+/** Convert "₹ 4.2 Cr" / "₹ 28.5 L" embedded in narrative text to the display currency. */
+const moneyText = (s: string, money: Money) => money.currency === 'INR' ? s : s.replace(/₹\s*([\d.,]+)\s*(Cr|L)\b/g, (_, n: string, u: string) => (u === 'Cr' ? money.fmt(parseFloat(n.replace(/,/g, ''))) : money.fmtLakh(parseFloat(n.replace(/,/g, '')))))
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0)
 const STATUS_COLOR: Record<string, string> = { 'On Track': CHART_COLORS.green, 'At Risk': CHART_COLORS.amber, Delayed: CHART_COLORS.red, Realized: CHART_COLORS.teal, 'Not Started': CHART_COLORS.gray }
 
 type Setter<T> = <K extends keyof T>(k: K) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void
-function useForm<T>(initial: T) {
+function useForm<T>(initial: T, money?: Money) {
   const [f, setF] = useState<T>(initial)
   const s: Setter<T> = (k) => (e) => setF({ ...f, [k]: e.target.value })
   const n: Setter<T> = (k) => (e) => setF({ ...f, [k]: parseFloat(e.target.value) || 0 })
-  return { f, setF, s, n }
+  /** Props for a money input: shows the display currency, stores ₹ Cr. */
+  const c = (k: keyof T) => ({ type: 'number' as const, step: 'any', value: money!.inputValue(f[k] as number), onChange: (e: ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: money!.toBase(parseFloat(e.target.value) || 0) }) })
+  return { f, setF, s, n, c }
 }
 
 export default function ValueRealization() {
   const [tab, setTab] = useState(TABS[0])
   const [view, setView] = useState<string>('All Benefit Areas')
+  const money = useMoney()
+  const fmt = money.fmt
+  /** ₹ Cr -> rounded number in the display unit (chart series). */
+  const disp = (cr: number) => +money.toDisplay(cr).toFixed(money.digits)
   const kpisC = useCollection<ProgramKpis>('programKpis', seedProgramKpis)
   const k = kpisC.items[0] ?? seedProgramKpis[0]
   const settingsC = useCollection<ValueSettings>('valueSettings', seedValueSettings)
@@ -56,7 +64,7 @@ export default function ValueRealization() {
   const newBenefit = (): BenefitItem => ({ id: uid('bn'), code: `B-${String(benefitsC.items.length + 1).padStart(3, '0')}`, benefitArea: view === 'All Benefit Areas' ? 'Cost Savings (Ops)' : (view as BenefitArea), lever: '', targetCr: 0, forecastCr: 0, realizedCr: 0, owner: 'L. Moreau', workstream: 'Finance & Procurement', status: 'Not Started', measurementMethod: '', baseline: '', frequency: 'Monthly', signedOff: false })
   const newSaving = (): SavingsInitiative => ({ id: uid('si'), initiative: '', category: 'Labour Arbitrage', annualisedSavingCr: 0, oneTimeCostCr: 0, start: TODAY, status: 'Planned', owner: 'V. Reddy' })
 
-  const cumulativeData = monthlyC.items.map((m) => ({ month: m.month, Target: m.targetCr, Forecast: m.forecastCr, Realized: m.realizedCr }))
+  const cumulativeData = useMemo(() => monthlyC.items.map((m) => ({ month: m.month, Target: disp(m.targetCr), Forecast: disp(m.forecastCr), Realized: m.realizedCr === undefined ? undefined : disp(m.realizedCr) })), [monthlyC.items, money.currency, money.rate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div>
@@ -76,14 +84,14 @@ export default function ValueRealization() {
       {tab === 'Value Overview' && (
         <div className="space-y-4">
           <div className="grid grid-cols-[1.5fr_1fr] gap-4">
-            <Card title="Cumulative Benefits (₹ Cr)" subtitle="Target vs forecast vs realized · cumulative from Jan 2026" headerRight={<Legend items={[{ label: 'Target', color: CHART_COLORS.gray, dashed: true }, { label: 'Forecast', color: CHART_COLORS.blueLight }, { label: 'Realized', color: CHART_COLORS.green }]} />} action={<ViewAll label="Record month" onClick={() => setMonthEdit(latestMonth ?? monthlyC.items[0])} />}>
+            <Card title={`Cumulative Benefits (${money.unitLabel})`} subtitle="Target vs forecast vs realized · cumulative from Jan 2026" headerRight={<Legend items={[{ label: 'Target', color: CHART_COLORS.gray, dashed: true }, { label: 'Forecast', color: CHART_COLORS.blueLight }, { label: 'Realized', color: CHART_COLORS.green }]} />} action={<ViewAll label="Record month" onClick={() => setMonthEdit(latestMonth ?? monthlyC.items[0])} />}>
               <div className="h-[240px]">
                 <ResponsiveContainer>
                   <ComposedChart data={cumulativeData} margin={{ top: 10, right: 10, left: -22, bottom: 0 }}>
                     <CartesianGrid vertical={false} />
                     <XAxis dataKey="month" tickLine={false} axisLine={false} interval={1} />
                     <YAxis tickLine={false} axisLine={false} />
-                    <Tooltip {...tooltipStyle} formatter={(v) => [`₹ ${v} Cr`]} />
+                    <Tooltip {...tooltipStyle} formatter={(v) => [`${money.symbol} ${v} ${money.unit}`]} />
                     <Area isAnimationActive={false} type="monotone" dataKey="Realized" stroke={CHART_COLORS.green} fill={CHART_COLORS.green} fillOpacity={0.12} strokeWidth={2.5} dot={{ r: 2.5, fill: CHART_COLORS.green }} connectNulls={false} />
                     <Line isAnimationActive={false} type="monotone" dataKey="Forecast" stroke={CHART_COLORS.blueLight} strokeWidth={2} dot={false} />
                     <Line isAnimationActive={false} type="monotone" dataKey="Target" stroke="#94A3B8" strokeWidth={2} strokeDasharray="5 4" dot={false} />
@@ -115,28 +123,28 @@ export default function ValueRealization() {
           <div className="grid grid-cols-[1.5fr_1fr] gap-4">
             <Card title="Benefit Realization Tracking" action={<ViewAll onClick={() => setTab('Benefits Register')} />}>
               <table className="w-full border-separate border-spacing-0 tbl">
-                <thead><tr><th className="th">Benefit Area</th><th className="th text-right">Target (₹ Cr)</th><th className="th text-right">Forecast (₹ Cr)</th><th className="th text-right">Realized (₹ Cr)</th><th className="th w-[150px]">Progress</th><th className="th">Status</th></tr></thead>
+                <thead><tr><th className="th">Benefit Area</th><th className="th text-right">Target ({money.unitLabel})</th><th className="th text-right">Forecast ({money.unitLabel})</th><th className="th text-right">Realized ({money.unitLabel})</th><th className="th w-[150px]">Progress</th><th className="th">Status</th></tr></thead>
                 <tbody>
                   {areaRows.map((r) => (
                     <tr key={r.area} className="cursor-pointer hover:bg-brand-50/60" onClick={() => { setView(r.area); setTab('Benefits Register') }}>
                       <td className="td font-medium whitespace-nowrap"><span className="inline-flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: BENEFIT_COLORS[r.area] }} />{r.area}</span></td>
-                      <td className="td text-right">{r.target.toFixed(1)}</td><td className="td text-right">{r.forecast.toFixed(1)}</td><td className="td text-right">{r.realized.toFixed(1)}</td>
+                      <td className="td text-right">{money.num(r.target)}</td><td className="td text-right">{money.num(r.forecast)}</td><td className="td text-right">{money.num(r.realized)}</td>
                       <td className="td"><div className="flex items-center gap-2"><Progress value={r.progress} className="flex-1" color={STATUS_COLOR[r.status]} /><span className="w-9 text-right text-[12px] font-medium">{r.progress}%</span></div></td>
                       <td className="td"><Badge value={r.status} /></td>
                     </tr>
                   ))}
-                  <tr className="font-semibold"><td className="td">Total</td><td className="td text-right">{totalTarget.toFixed(1)}</td><td className="td text-right">{totalForecast.toFixed(1)}</td><td className="td text-right">{realizedToDate.toFixed(1)}</td><td className="td"><div className="flex items-center gap-2"><Progress value={pct(totalForecast, totalTarget)} className="flex-1" color={CHART_COLORS.blue} /><span className="w-9 text-right text-[12px]">{pct(totalForecast, totalTarget)}%</span></div></td><td className="td" /></tr>
+                  <tr className="font-semibold"><td className="td">Total</td><td className="td text-right">{money.num(totalTarget)}</td><td className="td text-right">{money.num(totalForecast)}</td><td className="td text-right">{money.num(realizedToDate)}</td><td className="td"><div className="flex items-center gap-2"><Progress value={pct(totalForecast, totalTarget)} className="flex-1" color={CHART_COLORS.blue} /><span className="w-9 text-right text-[12px]">{pct(totalForecast, totalTarget)}%</span></div></td><td className="td" /></tr>
                 </tbody>
               </table>
             </Card>
-            <Card title="Benefits by Area (₹ Cr)" headerRight={<Legend items={[{ label: 'Target', color: CHART_COLORS.blueFaint }, { label: 'Forecast', color: CHART_COLORS.blue }, { label: 'Realized', color: CHART_COLORS.green }]} />}>
+            <Card title={`Benefits by Area (${money.unitLabel})`} headerRight={<Legend items={[{ label: 'Target', color: CHART_COLORS.blueFaint }, { label: 'Forecast', color: CHART_COLORS.blue }, { label: 'Realized', color: CHART_COLORS.green }]} />}>
               <div className="h-[230px]">
                 <ResponsiveContainer>
-                  <BarChart data={areaRows.map((r) => ({ name: r.area.replace(' (Ops)', ''), Target: r.target, Forecast: r.forecast, Realized: r.realized }))} margin={{ top: 14, right: 4, left: -24, bottom: 0 }} barGap={2} barCategoryGap="25%">
+                  <BarChart data={areaRows.map((r) => ({ name: r.area.replace(' (Ops)', ''), Target: disp(r.target), Forecast: disp(r.forecast), Realized: disp(r.realized) }))} margin={{ top: 14, right: 4, left: -24, bottom: 0 }} barGap={2} barCategoryGap="25%">
                     <CartesianGrid vertical={false} />
                     <XAxis dataKey="name" tickLine={false} axisLine={false} interval={0} tick={{ fontSize: 10.5 }} />
                     <YAxis tickLine={false} axisLine={false} />
-                    <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`₹ ${v} Cr`]} />
+                    <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`${money.symbol} ${v} ${money.unit}`]} />
                     <Bar isAnimationActive={false} dataKey="Target" fill={CHART_COLORS.blueFaint} radius={[3, 3, 0, 0]} />
                     <Bar isAnimationActive={false} dataKey="Forecast" fill={CHART_COLORS.blue} radius={[3, 3, 0, 0]}><LabelList dataKey="Forecast" position="top" style={{ fontSize: 10.5, fill: '#111827', fontWeight: 600 }} /></Bar>
                     <Bar isAnimationActive={false} dataKey="Realized" fill={CHART_COLORS.green} radius={[3, 3, 0, 0]} />
@@ -199,8 +207,8 @@ export default function ValueRealization() {
       {tab === 'Cost Savings' && (
         <div className="space-y-4">
           <div className="grid grid-cols-[1.4fr_1fr] gap-4">
-            <Card title="Cost Build – Onshore Baseline to GCC Run Cost (₹ Cr, steady state)" subtitle={`${vs.targetRunRateSavingsPct}% target cost savings · ${fmt(vs.baselineCostCr - vs.gccRunCostCr, 0)} annual saving at Year 4`}>
-              <WaterfallChart baseline={vs.baselineCostCr} gcc={vs.gccRunCostCr} />
+            <Card title={`Cost Build – Onshore Baseline to GCC Run Cost (${money.unitLabel}, steady state)`} subtitle={`${vs.targetRunRateSavingsPct}% target cost savings · ${fmt(vs.baselineCostCr - vs.gccRunCostCr, money.currency === 'INR' ? 0 : 1)} annual saving at Year 4`}>
+              <WaterfallChart baselineCr={vs.baselineCostCr} gccCr={vs.gccRunCostCr} money={money} />
             </Card>
             <Card title="Savings Run-rate">
               <div className="flex items-center gap-5">
@@ -251,7 +259,7 @@ export default function ValueRealization() {
             <Card title="Non-financial Benefit Levers" subtitle="Productivity, quality and time-to-market levers with measurement baselines" action={<button className="btn-primary" onClick={() => setBenefitEdit({ ...newBenefit(), benefitArea: 'Productivity Gains' })}><Plus size={14} /> Add Lever</button>}>
               <Table<BenefitItem> compact rows={benefitsC.items.filter((b) => b.benefitArea !== 'Cost Savings (Ops)')} onRowClick={setBenefitEdit} columns={[
                 { key: 'lever', header: 'Lever', render: (b) => <div><div className="font-medium min-w-[180px] max-w-[230px] truncate" title={b.lever}>{b.lever}</div><div className="text-[11.5px] text-ink-500">{b.benefitArea}</div></div> },
-                { key: 'baseline', header: 'Baseline', render: (b) => <span className="block max-w-[115px] truncate" title={b.baseline}>{b.baseline}</span> },
+                { key: 'baseline', header: 'Baseline', render: (b) => <span className="block max-w-[115px] truncate" title={moneyText(b.baseline, money)}>{moneyText(b.baseline, money)}</span> },
                 { key: 'measurementMethod', header: 'Measurement', render: (b) => <span className="block max-w-[130px] truncate" title={b.measurementMethod}>{b.measurementMethod}</span> },
                 { key: 'forecastCr', header: 'Forecast', render: (b) => fmt(b.forecastCr), className: 'text-right whitespace-nowrap' },
                 { key: 'status', header: 'Status', render: (b) => <Badge value={b.status} /> },
@@ -265,12 +273,13 @@ export default function ValueRealization() {
                   { kpi: 'Finance close rework rate', base: 12, cur: 8.5, tgt: 5, unit: '%', lowerBetter: true },
                   { kpi: 'SLA adherence', base: 91, cur: 95.5, tgt: 98, unit: '%' },
                   { kpi: 'Release cycle (weeks)', base: 14, cur: 11, tgt: 8, unit: 'w', lowerBetter: true },
-                  { kpi: 'Overtime cost (₹ L / month)', base: 9.2, cur: 6.8, tgt: 3.5, unit: '', lowerBetter: true },
+                  { kpi: 'Overtime cost / month', base: 9.2, cur: 6.8, tgt: 3.5, unit: '', lowerBetter: true, fmtV: (v: number) => money.fmtLakh(v) },
                 ].map((r) => {
                   const prog = r.lowerBetter ? pct(r.base - r.cur, r.base - r.tgt) : pct(r.cur - r.base, r.tgt - r.base)
+                  const fv = (v: number) => (r.fmtV ? r.fmtV(v) : `${v}${r.unit}`)
                   return (
                     <div key={r.kpi} className="text-[12.5px]">
-                      <div className="flex justify-between mb-1"><span className="text-ink-700">{r.kpi}</span><span className="text-ink-500">Baseline {r.base}{r.unit} → <b className="text-ink-900">{r.cur}{r.unit}</b> · target {r.tgt}{r.unit}</span></div>
+                      <div className="flex justify-between mb-1"><span className="text-ink-700">{r.kpi}</span><span className="text-ink-500">Baseline {fv(r.base)} → <b className="text-ink-900">{fv(r.cur)}</b> · target {fv(r.tgt)}</span></div>
                       <div className="flex items-center gap-2"><Progress value={prog} className="flex-1" color={prog >= 60 ? CHART_COLORS.green : prog >= 35 ? CHART_COLORS.amber : CHART_COLORS.red} /><span className="w-9 text-right font-medium">{Math.min(100, prog)}%</span></div>
                     </div>
                   )
@@ -285,14 +294,14 @@ export default function ValueRealization() {
       {tab === 'Value Forecast' && (
         <div className="space-y-4">
           <div className="grid grid-cols-[1.4fr_1fr] gap-4">
-            <Card title="Payback – Investment vs Benefits by Year (₹ Cr)" subtitle={`Payback ${vs.paybackYears} · investment ${fmt(vs.totalInvestmentCr)} · ${fmt(vs.annualRunRateBenefitsCr)} run-rate from Year 4`} headerRight={<Legend items={[{ label: 'Investment', color: CHART_COLORS.red }, { label: 'Benefits', color: CHART_COLORS.green }, { label: 'Cumulative net', color: CHART_COLORS.blue }]} />}>
+            <Card title={`Payback – Investment vs Benefits by Year (${money.unitLabel})`} subtitle={`Payback ${vs.paybackYears} · investment ${fmt(vs.totalInvestmentCr)} · ${fmt(vs.annualRunRateBenefitsCr)} run-rate from Year 4`} headerRight={<Legend items={[{ label: 'Investment', color: CHART_COLORS.red }, { label: 'Benefits', color: CHART_COLORS.green }, { label: 'Cumulative net', color: CHART_COLORS.blue }]} />}>
               <div className="h-[250px]">
                 <ResponsiveContainer>
-                  <ComposedChart data={PAYBACK.reduce<{ year: string; Investment: number; Benefits: number; 'Cumulative net': number }[]>((acc, p) => { const prev = acc.length ? acc[acc.length - 1]['Cumulative net'] : 0; acc.push({ year: p.year, Investment: p.investment, Benefits: p.benefits, 'Cumulative net': +(prev + p.benefits - p.investment).toFixed(1) }); return acc }, [])} margin={{ top: 14, right: 8, left: -18, bottom: 0 }} barGap={2}>
+                  <ComposedChart data={PAYBACK.reduce<{ year: string; Investment: number; Benefits: number; 'Cumulative net': number }[]>((acc, p) => { const prev = acc.length ? acc[acc.length - 1]['Cumulative net'] : 0; acc.push({ year: p.year, Investment: disp(p.investment), Benefits: disp(p.benefits), 'Cumulative net': +(prev + disp(p.benefits) - disp(p.investment)).toFixed(money.digits) }); return acc }, [])} margin={{ top: 14, right: 8, left: -18, bottom: 0 }} barGap={2}>
                     <CartesianGrid vertical={false} />
                     <XAxis dataKey="year" tickLine={false} axisLine={false} />
                     <YAxis tickLine={false} axisLine={false} />
-                    <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`₹ ${v} Cr`]} />
+                    <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`${money.symbol} ${v} ${money.unit}`]} />
                     <Bar isAnimationActive={false} dataKey="Investment" fill={CHART_COLORS.red} radius={[3, 3, 0, 0]} barSize={26} />
                     <Bar isAnimationActive={false} dataKey="Benefits" fill={CHART_COLORS.green} radius={[3, 3, 0, 0]} barSize={26}><LabelList dataKey="Benefits" position="top" style={{ fontSize: 10.5, fill: '#111827', fontWeight: 600 }} /></Bar>
                     <Line isAnimationActive={false} type="monotone" dataKey="Cumulative net" stroke={CHART_COLORS.blue} strokeWidth={2.5} dot={{ r: 3.5, fill: CHART_COLORS.blue }} />
@@ -318,13 +327,13 @@ export default function ValueRealization() {
               <div className="mt-3 pt-3 border-t border-line text-[12px] text-ink-500">Projected benefits are editable on the Dashboard (Update program KPIs). Scenario deltas derive from open change requests and the transition plan.</div>
             </Card>
           </div>
-          <Card title="Monthly Value Tracking (cumulative ₹ Cr)" subtitle="Click a month to record realized value" action={<button className="btn-primary" onClick={() => setMonthEdit(latestMonth ?? monthlyC.items[0])}><PenLine size={14} /> Record Realized Value</button>}>
+          <Card title={`Monthly Value Tracking (cumulative ${money.unitLabel})`} subtitle="Click a month to record realized value" action={<button className="btn-primary" onClick={() => setMonthEdit(latestMonth ?? monthlyC.items[0])}><PenLine size={14} /> Record Realized Value</button>}>
             <Table<ValueMonth> compact rows={monthlyC.items} onRowClick={setMonthEdit} columns={[
               { key: 'month', header: 'Month', render: (m) => <span className="font-medium">{m.month}</span> },
-              { key: 'targetCr', header: 'Target', render: (m) => m.targetCr.toFixed(1), className: 'text-right' },
-              { key: 'forecastCr', header: 'Forecast', render: (m) => m.forecastCr.toFixed(1), className: 'text-right' },
-              { key: 'realizedCr', header: 'Realized', render: (m) => m.realizedCr !== undefined ? <span className="text-green-700 font-medium">{m.realizedCr.toFixed(1)}</span> : <span className="text-ink-400">—</span>, className: 'text-right' },
-              { key: 'var', header: 'Variance vs Target', render: (m) => m.realizedCr !== undefined ? <span className={m.realizedCr >= m.targetCr ? 'text-green-700' : 'text-red-600'}>{(m.realizedCr - m.targetCr) >= 0 ? '+' : ''}{(m.realizedCr - m.targetCr).toFixed(1)}</span> : <span className="text-ink-400">—</span>, className: 'text-right' },
+              { key: 'targetCr', header: 'Target', render: (m) => money.num(m.targetCr), className: 'text-right' },
+              { key: 'forecastCr', header: 'Forecast', render: (m) => money.num(m.forecastCr), className: 'text-right' },
+              { key: 'realizedCr', header: 'Realized', render: (m) => m.realizedCr !== undefined ? <span className="text-green-700 font-medium">{money.num(m.realizedCr)}</span> : <span className="text-ink-400">—</span>, className: 'text-right' },
+              { key: 'var', header: 'Variance vs Target', render: (m) => m.realizedCr !== undefined ? <span className={m.realizedCr >= m.targetCr ? 'text-green-700' : 'text-red-600'}>{money.signed(m.realizedCr - m.targetCr)}</span> : <span className="text-ink-400">—</span>, className: 'text-right' },
               { key: 'att', header: 'Attainment', render: (m) => <div className="flex items-center gap-2 w-[160px]"><Progress value={pct(m.realizedCr ?? m.forecastCr, m.targetCr)} className="flex-1" color={m.realizedCr !== undefined ? CHART_COLORS.green : CHART_COLORS.blueFaint} /><span className="w-9 text-right text-[11.5px]">{pct(m.realizedCr ?? m.forecastCr, m.targetCr)}%</span></div> },
             ]} />
           </Card>
@@ -385,18 +394,20 @@ export default function ValueRealization() {
 }
 
 /* ---------------- Waterfall ---------------- */
-function WaterfallChart({ baseline, gcc }: { baseline: number; gcc: number }) {
-  // Scale the lever steps so that baseline − levers + transition = gcc
+function WaterfallChart({ baselineCr, gccCr, money }: { baselineCr: number; gccCr: number; money: Money }) {
+  // Work in display units (₹ Cr or € M); scale the lever steps so that baseline − levers + transition = gcc
+  const baseline = money.toDisplay(baselineCr), gcc = money.toDisplay(gccCr)
+  const lv = money.currency === 'INR' ? 0 : 1
   const levers = WATERFALL.filter((w) => w.kind === 'down')
   const leverTotal = levers.reduce((s, l) => s + Math.abs(l.value), 0)
-  const transition = WATERFALL.find((w) => w.kind === 'up')?.value ?? 0
+  const transition = money.toDisplay(WATERFALL.find((w) => w.kind === 'up')?.value ?? 0)
   const scale = (baseline - gcc + transition) / leverTotal
   let running = baseline
-  const data: { name: string; base: number; value: number; fill: string; label: string }[] = [{ name: 'Onshore Baseline', base: 0, value: baseline, fill: CHART_COLORS.navy, label: baseline.toFixed(0) }]
-  for (const l of levers) { const v = +(Math.abs(l.value) * scale).toFixed(1); running -= v; data.push({ name: l.name, base: running, value: v, fill: CHART_COLORS.green, label: `−${v.toFixed(0)}` }) }
-  data.push({ name: 'Transition Cost', base: running, value: transition, fill: CHART_COLORS.amber, label: `+${transition}` })
+  const data: { name: string; base: number; value: number; fill: string; label: string }[] = [{ name: 'Onshore Baseline', base: 0, value: +baseline.toFixed(2), fill: CHART_COLORS.navy, label: baseline.toFixed(lv) }]
+  for (const l of levers) { const v = +(Math.abs(l.value) * scale).toFixed(2); running -= v; data.push({ name: l.name, base: running, value: v, fill: CHART_COLORS.green, label: `−${v.toFixed(lv)}` }) }
+  data.push({ name: 'Transition Cost', base: running, value: +transition.toFixed(2), fill: CHART_COLORS.amber, label: `+${transition.toFixed(lv)}` })
   running += transition
-  data.push({ name: 'GCC Run Cost', base: 0, value: +running.toFixed(1), fill: CHART_COLORS.blue, label: running.toFixed(0) })
+  data.push({ name: 'GCC Run Cost', base: 0, value: +running.toFixed(2), fill: CHART_COLORS.blue, label: running.toFixed(lv) })
   return (
     <div className="h-[260px]">
       <ResponsiveContainer>
@@ -404,7 +415,7 @@ function WaterfallChart({ baseline, gcc }: { baseline: number; gcc: number }) {
           <CartesianGrid vertical={false} />
           <XAxis dataKey="name" tickLine={false} axisLine={false} interval={0} tick={{ fontSize: 10.5 }} />
           <YAxis tickLine={false} axisLine={false} />
-          <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v, name) => (name === 'base' ? [null, null] : [`₹ ${v} Cr`, 'Amount'])} />
+          <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v, name) => (name === 'base' ? [null, null] : [`${money.symbol} ${v} ${money.unit}`, 'Amount'])} />
           <Bar isAnimationActive={false} dataKey="base" stackId="w" fill="transparent" />
           <Bar isAnimationActive={false} dataKey="value" stackId="w" radius={[4, 4, 0, 0]}>
             {data.map((d) => <Cell key={d.name} fill={d.fill} />)}
@@ -422,7 +433,8 @@ function Footer({ onClose, onSave, onDelete, isNew, saveLabel = 'Save' }: { onCl
 }
 
 function BenefitModal({ value, isNew, onClose, onSave, onDelete }: { value: BenefitItem; isNew: boolean; onClose: () => void; onSave: (v: BenefitItem) => void; onDelete: () => void }) {
-  const { f, s, n } = useForm(value)
+  const money = useMoney()
+  const { f, s, c } = useForm(value, money)
   return (
     <Modal open width="max-w-3xl" title={isNew ? 'Add benefit' : `Edit ${f.code}`} onClose={onClose} footer={<Footer isNew={isNew} onClose={onClose} onSave={() => onSave(f)} onDelete={onDelete} />}>
       <FormGrid cols={3}>
@@ -430,9 +442,9 @@ function BenefitModal({ value, isNew, onClose, onSave, onDelete }: { value: Bene
         <Field label="Benefit area"><Select options={BENEFIT_AREAS} value={f.benefitArea} onChange={s('benefitArea')} /></Field>
         <Field label="Status"><Select options={['On Track', 'At Risk', 'Delayed', 'Realized', 'Not Started']} value={f.status} onChange={s('status')} /></Field>
         <Field label="Lever" className="col-span-3"><Input value={f.lever} onChange={s('lever')} placeholder="e.g. Labour arbitrage – Finance operations" /></Field>
-        <Field label="Target (₹ Cr, annual)"><Input type="number" step="0.1" value={f.targetCr} onChange={n('targetCr')} /></Field>
-        <Field label="Forecast (₹ Cr)"><Input type="number" step="0.1" value={f.forecastCr} onChange={n('forecastCr')} /></Field>
-        <Field label="Realized to date (₹ Cr)"><Input type="number" step="0.1" value={f.realizedCr} onChange={n('realizedCr')} /></Field>
+        <Field label={`Target (${money.unitLabel}, annual)`}><Input {...c('targetCr')} /></Field>
+        <Field label={`Forecast (${money.unitLabel})`}><Input {...c('forecastCr')} /></Field>
+        <Field label={`Realized to date (${money.unitLabel})`}><Input {...c('realizedCr')} /></Field>
         <Field label="Benefit owner"><Input value={f.owner} onChange={s('owner')} /></Field>
         <Field label="Workstream"><Select options={WORKSTREAMS} value={f.workstream} onChange={s('workstream')} /></Field>
         <Field label="Measurement frequency"><Select options={['Monthly', 'Quarterly', 'Annually']} value={f.frequency} onChange={s('frequency')} /></Field>
@@ -444,6 +456,7 @@ function BenefitModal({ value, isNew, onClose, onSave, onDelete }: { value: Bene
 }
 
 function MonthModal({ value, months, onClose, onSave }: { value: ValueMonth; months: ValueMonth[]; onClose: () => void; onSave: (v: ValueMonth) => void }) {
+  const money = useMoney()
   const [id, setId] = useState(value.id)
   const base = months.find((m) => m.id === id) ?? value
   const [f, setF] = useState<ValueMonth>(base)
@@ -452,9 +465,9 @@ function MonthModal({ value, months, onClose, onSave }: { value: ValueMonth; mon
     <Modal open title="Record realized value" onClose={onClose} footer={<Footer isNew onClose={onClose} onSave={() => onSave(f)} saveLabel="Record" />}>
       <FormGrid cols={2}>
         <Field label="Month"><select className="input" value={id} onChange={(e) => pick(e.target.value)}>{months.map((m) => <option key={m.id} value={m.id}>{m.month}</option>)}</select></Field>
-        <Field label="Realized (cumulative ₹ Cr)"><Input type="number" step="0.1" value={f.realizedCr ?? ''} onChange={(e) => setF({ ...f, realizedCr: e.target.value === '' ? undefined : parseFloat(e.target.value) || 0 })} /></Field>
-        <Field label="Target (cumulative ₹ Cr)"><Input type="number" step="0.1" value={f.targetCr} onChange={(e) => setF({ ...f, targetCr: parseFloat(e.target.value) || 0 })} /></Field>
-        <Field label="Forecast (cumulative ₹ Cr)"><Input type="number" step="0.1" value={f.forecastCr} onChange={(e) => setF({ ...f, forecastCr: parseFloat(e.target.value) || 0 })} /></Field>
+        <Field label={`Realized (cumulative ${money.unitLabel})`}><Input type="number" step="any" value={f.realizedCr === undefined ? '' : money.inputValue(f.realizedCr)} onChange={(e) => setF({ ...f, realizedCr: e.target.value === '' ? undefined : money.toBase(parseFloat(e.target.value) || 0) })} /></Field>
+        <Field label={`Target (cumulative ${money.unitLabel})`}><Input type="number" step="any" value={money.inputValue(f.targetCr)} onChange={(e) => setF({ ...f, targetCr: money.toBase(parseFloat(e.target.value) || 0) })} /></Field>
+        <Field label={`Forecast (cumulative ${money.unitLabel})`}><Input type="number" step="any" value={money.inputValue(f.forecastCr)} onChange={(e) => setF({ ...f, forecastCr: money.toBase(parseFloat(e.target.value) || 0) })} /></Field>
       </FormGrid>
       <p className="text-[12px] text-ink-500 mt-3">Leave realized empty for future months. Values are cumulative from January 2026.</p>
     </Modal>
@@ -462,14 +475,15 @@ function MonthModal({ value, months, onClose, onSave }: { value: ValueMonth; mon
 }
 
 function SavingModal({ value, isNew, onClose, onSave, onDelete }: { value: SavingsInitiative; isNew: boolean; onClose: () => void; onSave: (v: SavingsInitiative) => void; onDelete: () => void }) {
-  const { f, s, n } = useForm(value)
+  const money = useMoney()
+  const { f, s, c } = useForm(value, money)
   return (
     <Modal open title={isNew ? 'Add savings initiative' : 'Edit savings initiative'} onClose={onClose} footer={<Footer isNew={isNew} onClose={onClose} onSave={() => onSave(f)} onDelete={onDelete} />}>
       <FormGrid cols={3}>
         <Field label="Initiative" className="col-span-3"><Input value={f.initiative} onChange={s('initiative')} /></Field>
         <Field label="Category"><Select options={['Labour Arbitrage', 'Vendor', 'Real Estate', 'Automation', 'Process']} value={f.category} onChange={s('category')} /></Field>
-        <Field label="Annualised saving (₹ Cr)"><Input type="number" step="0.1" value={f.annualisedSavingCr} onChange={n('annualisedSavingCr')} /></Field>
-        <Field label="One-time cost (₹ Cr)"><Input type="number" step="0.1" value={f.oneTimeCostCr} onChange={n('oneTimeCostCr')} /></Field>
+        <Field label={`Annualised saving (${money.unitLabel})`}><Input {...c('annualisedSavingCr')} /></Field>
+        <Field label={`One-time cost (${money.unitLabel})`}><Input {...c('oneTimeCostCr')} /></Field>
         <Field label="Start"><Input type="date" value={f.start} onChange={s('start')} /></Field>
         <Field label="Status"><Select options={['Planned', 'In Progress', 'Realized', 'At Risk']} value={f.status} onChange={s('status')} /></Field>
         <Field label="Owner"><Input value={f.owner} onChange={s('owner')} /></Field>
@@ -479,23 +493,25 @@ function SavingModal({ value, isNew, onClose, onSave, onDelete }: { value: Savin
 }
 
 function SettingsModal({ value, onClose, onSave }: { value: ValueSettings; onClose: () => void; onSave: (v: ValueSettings) => void }) {
-  const { f, s, n } = useForm(value)
+  const money = useMoney()
+  const { f, s, n, c } = useForm(value, money)
   return (
     <Modal open title="Business-case assumptions" onClose={onClose} footer={<Footer isNew onClose={onClose} onSave={() => onSave(f)} />}>
       <FormGrid cols={2}>
         <Field label="Cost savings run-rate (%)"><Input type="number" value={f.runRateSavingsPct} onChange={n('runRateSavingsPct')} /></Field>
         <Field label="Target run-rate savings by Year 5 (%)"><Input type="number" value={f.targetRunRateSavingsPct} onChange={n('targetRunRateSavingsPct')} /></Field>
         <Field label="Payback period"><Input value={f.paybackYears} onChange={s('paybackYears')} /></Field>
-        <Field label="Annual run-rate benefits from Year 4 (₹ Cr)"><Input type="number" step="0.1" value={f.annualRunRateBenefitsCr} onChange={n('annualRunRateBenefitsCr')} /></Field>
-        <Field label="Onshore baseline cost (₹ Cr)"><Input type="number" step="0.1" value={f.baselineCostCr} onChange={n('baselineCostCr')} /></Field>
-        <Field label="GCC run cost at steady state (₹ Cr)"><Input type="number" step="0.1" value={f.gccRunCostCr} onChange={n('gccRunCostCr')} /></Field>
-        <Field label="Total investment (₹ Cr)"><Input type="number" step="0.1" value={f.totalInvestmentCr} onChange={n('totalInvestmentCr')} /></Field>
+        <Field label={`Annual run-rate benefits from Year 4 (${money.unitLabel})`}><Input {...c('annualRunRateBenefitsCr')} /></Field>
+        <Field label={`Onshore baseline cost (${money.unitLabel})`}><Input {...c('baselineCostCr')} /></Field>
+        <Field label={`GCC run cost at steady state (${money.unitLabel})`}><Input {...c('gccRunCostCr')} /></Field>
+        <Field label={`Total investment (${money.unitLabel})`}><Input {...c('totalInvestmentCr')} /></Field>
       </FormGrid>
     </Modal>
   )
 }
 
 function SignOffModal({ value, onClose, onSave }: { value: BenefitItem; onClose: () => void; onSave: (v: BenefitItem) => void }) {
+  const money = useMoney()
   const [by, setBy] = useState(value.owner)
   const [on, setOn] = useState(TODAY)
   const [realized, setRealized] = useState(value.realizedCr)
@@ -505,7 +521,7 @@ function SignOffModal({ value, onClose, onSave }: { value: BenefitItem; onClose:
       <FormGrid cols={2}>
         <Field label="Signed off by"><Input value={by} onChange={(e) => setBy(e.target.value)} /></Field>
         <Field label="Sign-off date"><Input type="date" value={on} onChange={(e) => setOn(e.target.value)} /></Field>
-        <Field label="Realized value confirmed (₹ Cr)"><Input type="number" step="0.1" value={realized} onChange={(e) => setRealized(parseFloat(e.target.value) || 0)} /></Field>
+        <Field label={`Realized value confirmed (${money.unitLabel})`}><Input type="number" step="any" value={money.inputValue(realized)} onChange={(e) => setRealized(money.toBase(parseFloat(e.target.value) || 0))} /></Field>
         <Field label="Measurement method"><Input readOnly value={value.measurementMethod} className="bg-surface" /></Field>
         <Field label="Evidence / reference" className="col-span-2"><TextArea value={evidence} onChange={(e) => setEvidence(e.target.value)} placeholder="e.g. Finance variance report Sep 2026, invoice reconciliation" /></Field>
       </FormGrid>

@@ -285,7 +285,7 @@ export const seedScenarios: Scenario[] = [
 /* Approvals                                                           */
 /* ------------------------------------------------------------------ */
 export const APPROVAL_STATUSES = ['Approved', 'Pending', 'In Review', 'Rejected'] as const
-export const APPROVAL_ITEMS = ['Strategy & Business Case v2.1', 'Operating model selection', 'Location decision', 'Investment envelope (₹ 12.0 Cr)', 'Scope of services', 'Benefits register', 'Key assumptions'] as const
+export const APPROVAL_ITEMS = ['Strategy & Business Case v2.1', 'Operating model selection', 'Location decision', 'Investment envelope (3-year)', 'Scope of services', 'Benefits register', 'Key assumptions'] as const
 
 export interface ApprovalRecord {
   id: string
@@ -299,7 +299,7 @@ export interface ApprovalRecord {
 
 export const seedApprovals: ApprovalRecord[] = [
   { id: 'apr-01', approver: 'J. Whitfield', role: 'Group CEO', item: 'Strategy & Business Case v2.1', date: '2026-10-28', status: 'Pending', comments: 'Scheduled for the Oct Executive Committee.' },
-  { id: 'apr-02', approver: 'L. Fernandes', role: 'Group CFO', item: 'Investment envelope (₹ 12.0 Cr)', date: '2026-10-14', status: 'Approved', comments: 'Approved with contingency held centrally.' },
+  { id: 'apr-02', approver: 'L. Fernandes', role: 'Group CFO', item: 'Investment envelope (3-year)', date: '2026-10-14', status: 'Approved', comments: 'Approved with contingency held centrally.' },
   { id: 'apr-03', approver: 'D. Okafor', role: 'Chief Technology Officer', item: 'Operating model selection', date: '2026-10-09', status: 'Approved', comments: 'Captive GCC endorsed; revisit hybrid for surge capacity.' },
   { id: 'apr-04', approver: 'Anita Sharma', role: 'Program Manager', item: 'Scope of services', date: '2026-10-07', status: 'Approved', comments: '' },
   { id: 'apr-05', approver: 'M. Castellanos', role: 'Chief People Officer', item: 'Location decision', date: '2026-10-21', status: 'In Review', comments: 'Requested attrition benchmarks for Bengaluru vs Hyderabad.' },

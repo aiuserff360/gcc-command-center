@@ -4,7 +4,8 @@ import { Card, Badge, Modal, Field, Input, TextArea, Select, FormGrid } from '..
 import { useCollection, uid } from '../../store/useStore'
 import { WBS, WBS_TO_DASHBOARD, seedActivities, type Activity } from '../../data/wbs'
 import { fmtDateShort, OWNERS, TODAY, type Workstream, type Status } from '../../data/common'
-import { Toolbar, MiniSelect, SearchBox, Strip, useFields, FormFooter, Checkbox, SelectKV, PctBar, shortWs } from './common'
+import { Toolbar, MiniSelect, SearchBox, Strip, useFields, FormFooter, Checkbox, SelectKV, PctBar, shortWs, lakhInput, lakhToBase, lakhToDisplay } from './common'
+import { useMoney } from '../../data/money'
 
 const ALL = 'All'
 const ACT_STATUSES = ['Not Started', 'In Progress', 'Completed', 'At Risk', 'Delayed'] as const
@@ -122,7 +123,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return <div className="mb-4"><div className="text-[12px] font-semibold text-brand-600 uppercase tracking-wide border-b border-line pb-1 mb-2">{title}</div>{children}</div>
 }
 export function ActivityForm({ initial, isNew, onSave, onDelete, onClose }: { initial: Activity; isNew: boolean; onSave: (v: Activity) => void; onDelete?: () => void; onClose: () => void }) {
-  const { f, set, txt, num, chk } = useFields(initial)
+  const { f, set, txt, num, chk, cnv } = useFields(initial)
+  const m = useMoney()
+  const lakh = (k: 'budgetLakh' | 'commitmentLakh' | 'actualLakh' | 'forecastLakh') => cnv(k, (l) => lakhInput(l, m), (d) => lakhToBase(d, m))
   const wbs = WBS.find((w) => wbsLabel(w) === f.wbsWorkstream)
   const subs = wbs?.subs ?? []
   const onWbs = (label: string) => { const w = WBS.find((x) => wbsLabel(x) === label); if (!w) return; set('wbsWorkstream', label); set('subWorkstream', subLabel(w.subs[0])); set('workstream', WBS_TO_DASHBOARD[label] ?? f.workstream) }
@@ -172,13 +175,13 @@ export function ActivityForm({ initial, isNew, onSave, onDelete, onClose }: { in
           <Checkbox label="On critical path" {...chk('criticalPath')} />
         </FormGrid>
       </Section>
-      <Section title="Financial (₹ Lakh)">
+      <Section title={`Financial (${m.lakhUnitLabel})`}>
         <FormGrid cols={3}>
-          <Field label="Budget"><Input {...num('budgetLakh')} /></Field>
-          <Field label="Commitment"><Input {...num('commitmentLakh')} /></Field>
-          <Field label="Actual"><Input {...num('actualLakh')} /></Field>
-          <Field label="Forecast"><Input {...num('forecastLakh')} /></Field>
-          <Field label="Variance (budget − forecast)"><Input value={variance.toFixed(1)} readOnly className={variance < 0 ? 'bg-red-50 text-red-700' : 'bg-surface'} /></Field>
+          <Field label="Budget"><Input {...lakh('budgetLakh')} /></Field>
+          <Field label="Commitment"><Input {...lakh('commitmentLakh')} /></Field>
+          <Field label="Actual"><Input {...lakh('actualLakh')} /></Field>
+          <Field label="Forecast"><Input {...lakh('forecastLakh')} /></Field>
+          <Field label="Variance (budget − forecast)"><Input value={lakhToDisplay(variance, m).toFixed(1)} readOnly className={variance < 0 ? 'bg-red-50 text-red-700' : 'bg-surface'} /></Field>
         </FormGrid>
       </Section>
       <Section title="Governance & completion">

@@ -22,6 +22,7 @@ type Collections = Record<string, WithId[]>
 export const GLOBAL_COLLECTIONS = new Set(['programs', 'portfolioInitiatives', 'programBenefits', 'investmentYears', 'users', 'lookups', 'notificationSettings', 'connectors', 'syncLog', 'dataFlows', 'fieldMappings', 'webhooks', 'integrationSettings', 'recipients', 'reportSchedules'])
 
 export interface User { name: string; role: string; initials: string }
+export type Currency = 'INR' | 'EUR'
 
 interface StoreState {
   collections: Collections
@@ -29,6 +30,10 @@ interface StoreState {
   phase: Phase
   program: string
   user: User | null
+  currency: Currency
+  eurRate: number
+  setCurrency: (c: Currency) => void
+  setEurRate: (r: number) => void
   login: (name: string, role: string) => void
   logout: () => void
   setPhase: (p: Phase) => void
@@ -50,6 +55,10 @@ export const useStore = create<StoreState>()(
       phase: 'Build',
       program: 'GCC Program - India',
       user: null,
+      currency: 'INR',
+      eurRate: 92,
+      setCurrency: (currency) => set({ currency }),
+      setEurRate: (eurRate) => set({ eurRate: eurRate > 0 ? eurRate : 92 }),
       login: (name, role) => set({ user: { name: name.trim(), role: role.trim() || 'Program Manager', initials: initials(name) } }),
       logout: () => set({ user: null }),
       setPhase: (phase) => set({ phase }),

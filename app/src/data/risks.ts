@@ -140,7 +140,7 @@ export interface EscalationDecision {
   decidedBy?: string
 }
 export const seedEscalationDecisions: EscalationDecision[] = [
-  { id: 'esc-r-001', raidId: 'r-001', decisionNeeded: 'Approve backup ISP contract (₹ 0.12 Cr) and accept 2-week go-live slip for Wave 2', steeringDate: '2026-10-23', escalatedOn: '2026-10-10', escalatedTo: 'Steering Committee' },
+  { id: 'esc-r-001', raidId: 'r-001', decisionNeeded: 'Approve backup ISP contract (3% of Technology budget) and accept 2-week go-live slip for Wave 2', steeringDate: '2026-10-23', escalatedOn: '2026-10-10', escalatedTo: 'Steering Committee' },
   { id: 'esc-r-002', raidId: 'r-002', decisionNeeded: 'Approve additional hiring support budget for specialist roles (two agencies)', steeringDate: '2026-10-23', escalatedOn: '2026-10-12', escalatedTo: 'Steering Committee' },
   { id: 'esc-r-005', raidId: 'r-005', decisionNeeded: 'Approve split-order with second laptop supplier at 6% premium', steeringDate: '2026-10-16', escalatedOn: '2026-10-08', escalatedTo: 'Program Director', decision: 'Approved split order; procurement to execute by 27 Oct.', decidedOn: '2026-10-16', decidedBy: 'A. Sharma' },
   { id: 'esc-r-010', raidId: 'r-010', decisionNeeded: 'Approve retention bonus scheme for 18 critical roles', steeringDate: '2026-10-16', escalatedOn: '2026-10-06', escalatedTo: 'Steering Committee', decision: 'Approved in principle; HR to finalise scheme by 15 Nov.', decidedOn: '2026-10-16', decidedBy: 'Global CHRO' },

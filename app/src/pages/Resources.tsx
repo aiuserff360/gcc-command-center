@@ -12,11 +12,13 @@ import CostTab from '../components/resources/CostTab'
 import LocationTab from '../components/resources/LocationTab'
 import AttritionTab from '../components/resources/AttritionTab'
 import { PositionForm, SettingsForm } from '../components/resources/forms'
+import { useMoney } from '../data/money'
 
 const TABS = ['Workforce Overview', 'Hiring Plan & Pipeline', 'Resource Allocation', 'Skills & Capability', 'Cost Analysis', 'Location Mix', 'Attrition & Retention']
 
 export default function Resources() {
   const d = useResourceData()
+  const m = useMoney()
   const { kpi, settings, settingsC, positions } = d
   const [tab, setTab] = useState(TABS[0])
   const [viewBy, setViewBy] = useState<ViewBy>('FTE Headcount')
@@ -36,7 +38,7 @@ export default function Resources() {
         <KpiTile tone="red" icon={<UserRound size={22} />} value={<span className="text-navy-900">{kpi.openCount}</span>} label="Open Positions" sub={<><span className="text-red-600 font-medium">{kpi.critical} Critical</span><span className="text-ink-400 mx-1">|</span><span className="text-ink-700">{kpi.others} Others</span></>} />
         <KpiTile tone="violet" icon={<Clock3 size={22} />} value={<span className="text-brand-600">{settings.avgTimeToHireMonths} months</span>} label="Avg. Time to Hire" trend={kpi.tthDelta > 0 ? 'down' : 'up'}
           sub={<span className={kpi.tthDelta > 0 ? 'text-red-600' : 'text-green-600'}>{kpi.tthDelta > 0 ? '+' : ''}{kpi.tthDelta} vs target</span>} />
-        <KpiTile tone="orange" icon={<Coins size={22} />} value={<span className="text-navy-900">₹ {kpi.costActual.toFixed(1)} Cr</span>} label="Annual People Cost" sub={<>of <b>₹ {kpi.costBudget.toFixed(1)} Cr</b> budget</>} />
+        <KpiTile tone="orange" icon={<Coins size={22} />} value={<span className="text-navy-900">{m.fmt(kpi.costActual)}</span>} label="Annual People Cost" sub={<>of <b>{m.fmt(kpi.costBudget)}</b> budget</>} />
       </div>
 
       <Tabs tabs={TABS} active={tab} onChange={setTab} />

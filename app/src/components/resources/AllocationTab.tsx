@@ -4,9 +4,10 @@ import { Plus } from 'lucide-react'
 import { Card, Badge, Table, FilterSelect, Progress } from '../ui'
 import { tooltipStyle } from '../charts'
 import { CHART_COLORS, fmtDate } from '../../data/common'
+import { useMoney } from '../../data/money'
 import { FUNCTIONS, RES_LOCATIONS, fnShort, type Employee } from '../../data/resources'
 import type { ResourceData } from './useResourceData'
-import { CardLegend, MiniStat, CompactTable } from './widgets'
+import { CardLegend, MiniStat, CompactTable, lakhNum } from './widgets'
 import { EmployeeForm } from './forms'
 
 export default function AllocationTab({ d }: { d: ResourceData }) {
@@ -15,6 +16,7 @@ export default function AllocationTab({ d }: { d: ResourceData }) {
   const [adding, setAdding] = useState(false)
   const [fWs, setFWs] = useState('All')
   const [fLoc, setFLoc] = useState('All')
+  const m = useMoney()
 
   const byWs = useMemo(() => FUNCTIONS.map((ws) => {
     const list = employees.items.filter((e) => e.workstream === ws)
@@ -91,7 +93,7 @@ export default function AllocationTab({ d }: { d: ResourceData }) {
           { key: 'location', header: 'Location' },
           { key: 'grade', header: 'Grade' },
           { key: 'costBand', header: 'Cost Band' },
-          { key: 'annualCostL', header: 'Annual Cost (₹ L)', className: 'text-right' },
+          { key: 'annualCostL', header: `Annual Cost (${m.lakhUnitLabel})`, className: 'text-right', render: (r) => lakhNum(r.annualCostL, m) },
           { key: 'startDate', header: 'Start Date', render: (r) => fmtDate(r.startDate) },
           { key: 'allocationPct', header: 'Allocation', render: (r) => <span className="flex items-center gap-2"><Progress value={r.allocationPct} className="w-[70px]" color={r.allocationPct >= 100 ? '#16A34A' : r.allocationPct >= 50 ? '#F59E0B' : '#DC2626'} /><span className="w-9 text-right">{r.allocationPct}%</span></span> },
           { key: 'state', header: 'Status', render: (r) => <Badge value={r.allocationPct >= 100 ? 'Allocated' : r.allocationPct >= 50 ? 'Partial' : 'Bench'} className={r.allocationPct >= 100 ? 'bg-green-50 text-green-700' : r.allocationPct >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'} /> },

@@ -7,6 +7,8 @@ import {
   type Position, type Employee, type SkillRow, type HeadcountMonth, type ResourceSettings, type TrainingPlan, type ExitRecord, type RetentionAction, type LocationRow, type PeopleCostRow,
 } from '../../data/resources'
 import { TODAY } from '../../data/common'
+import { useMoney, type Money } from '../../data/money'
+import { lakhInput, lakhToBase } from './widgets'
 
 type Num<T> = (key: keyof T) => React.InputHTMLAttributes<HTMLInputElement>
 function useForm<T>(initial: T, open: boolean) {
@@ -14,7 +16,9 @@ function useForm<T>(initial: T, open: boolean) {
   useEffect(() => { if (open) setF(initial) }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
   const num: Num<T> = (key) => ({ type: 'number', step: 'any', value: f[key] as unknown as number, onChange: (e) => setF({ ...f, [key]: parseFloat(e.target.value) || 0 }) })
   const txt = (key: keyof T) => ({ value: f[key] as unknown as string, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF({ ...f, [key]: e.target.value }) })
-  return { f, setF, num, txt }
+  /** Numeric field stored in one unit but edited in another (₹ Cr ⇄ display currency, ₹ Lakh ⇄ ₹ L / € K). */
+  const cnv = (key: keyof T, toDisplay: (base: number) => number, toBase: (display: number) => number): React.InputHTMLAttributes<HTMLInputElement> => ({ type: 'number', step: 'any', value: toDisplay(Number(f[key] ?? 0)), onChange: (e) => setF({ ...f, [key]: toBase(parseFloat(e.target.value) || 0) }) })
+  return { f, setF, num, txt, cnv }
 }
 const Footer = ({ onClose, onSave, onDelete, saveLabel = 'Save' }: { onClose: () => void; onSave: () => void; onDelete?: () => void; saveLabel?: string }) => (
   <>
@@ -52,7 +56,8 @@ export function PositionForm({ open, onClose, value, onSave, onDelete }: { open:
 export const blankEmployee = (): Employee => ({ id: uid('emp'), name: '', role: '', workstream: FUNCTIONS[0], location: RES_LOCATIONS[0], grade: 'L3', allocationPct: 100, costBand: 'Band B', annualCostL: 14, startDate: TODAY })
 export function EmployeeForm({ open, onClose, value, onSave, onDelete }: { open: boolean; onClose: () => void; value: Employee | null; onSave: (e: Employee) => void; onDelete?: (id: string) => void }) {
   const editing = !!value
-  const { f, num, txt } = useForm<Employee>(value ?? blankEmployee(), open)
+  const m = useMoney()
+  const { f, num, txt, cnv } = useForm<Employee>(value ?? blankEmployee(), open)
   return (
     <Modal open={open} onClose={onClose} title={editing ? 'Edit Employee' : 'Add Employee'} footer={<Footer onClose={onClose} onSave={() => f.name.trim() && onSave(f)} onDelete={editing && onDelete ? () => { onDelete(f.id); onClose() } : undefined} saveLabel={editing ? 'Save changes' : 'Add employee'} />}>
       <FormGrid cols={3}>
@@ -63,7 +68,7 @@ export function EmployeeForm({ open, onClose, value, onSave, onDelete }: { open:
         <Field label="Location"><Select options={RES_LOCATIONS} {...txt('location')} /></Field>
         <Field label="Allocation %"><Input {...num('allocationPct')} min={0} max={100} /></Field>
         <Field label="Cost band"><Select options={COST_BANDS} {...txt('costBand')} /></Field>
-        <Field label="Annual cost (₹ Lakh)"><Input {...num('annualCostL')} /></Field>
+        <Field label={`Annual cost (${m.lakhUnitLabel})`}><Input {...cnv('annualCostL', (l) => lakhInput(l, m), (d) => lakhToBase(d, m))} /></Field>
         <Field label="Start date"><Input type="date" {...txt('startDate')} /></Field>
       </FormGrid>
     </Modal>
@@ -168,12 +173,13 @@ export function LocationForm({ open, onClose, value, onSave, onDelete }: { open:
 
 /* ---------- People cost row ---------- */
 export function PeopleCostForm({ open, onClose, value, onSave }: { open: boolean; onClose: () => void; value: PeopleCostRow | null; onSave: (r: PeopleCostRow) => void }) {
-  const { f, num } = useForm<PeopleCostRow>(value ?? { id: '', workstream: '', budgetCr: 0, actualCr: 0 }, open)
+  const m: Money = useMoney()
+  const { f, cnv } = useForm<PeopleCostRow>(value ?? { id: '', workstream: '', budgetCr: 0, actualCr: 0 }, open)
   return (
     <Modal open={open} onClose={onClose} title={`Edit People Cost – ${f.workstream}`} width="max-w-md" footer={<Footer onClose={onClose} onSave={() => onSave(f)} />}>
       <FormGrid cols={2}>
-        <Field label="Annual budget (₹ Cr)"><Input {...num('budgetCr')} /></Field>
-        <Field label="Annual run-rate / actual (₹ Cr)"><Input {...num('actualCr')} /></Field>
+        <Field label={`Annual budget (${m.unitLabel})`}><Input {...cnv('budgetCr', m.inputValue, m.toBase)} /></Field>
+        <Field label={`Annual run-rate / actual (${m.unitLabel})`}><Input {...cnv('actualCr', m.inputValue, m.toBase)} /></Field>
       </FormGrid>
     </Modal>
   )

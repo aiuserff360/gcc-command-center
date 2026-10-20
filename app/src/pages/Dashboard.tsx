@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList, Legend as RLegend } from 'recharts'
-import { CheckCircle2, BarChart3, Users, Database, AlertTriangle, Target, AlertCircle, Info, TrendingUp, Pencil, Cpu, Scale, Building2, ArrowLeftRight, Settings2, Wallet, Check } from 'lucide-react'
-import { Card, KpiTile, Badge, Progress, Ring, Table, ViewAll, Chevron, Legend } from '../components/ui'
+import { CheckCircle2, BarChart3, Users, Database, AlertTriangle, AlertCircle, Info, TrendingUp, Pencil, Cpu, Scale, Building2, ArrowLeftRight, Settings2, Wallet } from 'lucide-react'
+import { Card, KpiTile, Badge, Progress, Table, ViewAll, Chevron, Legend } from '../components/ui'
 import { ProgramKpiEditor } from '../components/ProgramKpiEditor'
 import { Donut, tooltipStyle } from '../components/charts'
 import { useCollection, useStore } from '../store/useStore'
+import { useMoney } from '../data/money'
 import { seedMilestones, seedRaid, seedProgramKpis, seedWorkstreamSummaries, isOpen, type Milestone, type RaidItem, type ProgramKpis, type WorkstreamSummary } from '../data/shared'
-import { PHASES, fmtDate, CHART_COLORS, MONTHS, programDef } from '../data/common'
+import { fmtDate, CHART_COLORS, MONTHS, programDef } from '../data/common'
 
 const WS_ICON: Record<string, React.ReactNode> = {
   'Talent & Hiring': <Users size={15} />, 'Technology & Infrastructure': <Cpu size={15} />, 'Legal & Compliance': <Scale size={15} />,
@@ -19,42 +20,12 @@ const WS_SHORT: Record<string, string> = {
 }
 const OWNER_ROLE: Record<string, string> = { 'R. Mehta': 'IT Lead', 'S. Iyer': 'Talent Lead', 'A. Sharma': 'Transition Lead', 'V. Reddy': 'Procurement', 'P. Rao': 'Legal Lead', 'K. Nair': 'Facilities Lead', 'M. Khan': 'Operations Lead', 'D. Singh': 'Operations' }
 
-function LifecycleStepper({ phaseIdx }: { phaseIdx: number }) {
-  const arrow = 14
-  return (
-    <div className="pt-1">
-      <div className="flex" style={{ gap: 4 }}>
-        {PHASES.map((p, i) => {
-          const active = i === phaseIdx, done = i < phaseIdx
-          const clip = i === 0
-            ? `polygon(0 0, calc(100% - ${arrow}px) 0, 100% 50%, calc(100% - ${arrow}px) 100%, 0 100%)`
-            : `polygon(0 0, calc(100% - ${arrow}px) 0, 100% 50%, calc(100% - ${arrow}px) 100%, 0 100%, ${arrow}px 50%)`
-          return (
-            <div key={p} aria-current={active ? 'step' : undefined}
-              className="relative flex-1 h-10 flex items-center justify-center gap-1.5 text-[13px] font-semibold select-none"
-              style={{ clipPath: clip, background: active ? '#1E5BBE' : done ? '#DCE7F7' : '#EEF2F7', color: active ? '#fff' : done ? '#1E5BBE' : '#6B7280', paddingLeft: i === 0 ? 0 : arrow }}>
-              {done && <Check size={13} strokeWidth={3} />}
-              {p}
-            </div>
-          )
-        })}
-      </div>
-      <div className="flex mt-1.5" style={{ gap: 4 }}>
-        {PHASES.map((p, i) => (
-          <div key={p} className="flex-1 flex items-center justify-center text-[10.5px] text-ink-500 h-4">
-            {i === phaseIdx ? <span className="inline-flex items-center gap-1 text-brand-600 font-medium"><span className="w-1.5 h-1.5 rounded-full bg-brand-600" />Current phase</span> : i < phaseIdx ? 'Completed' : ''}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 const rampFor = (scale: number) => MONTHS.map((m, i) => ({ month: m, Plan: Math.round([80, 110, 150, 180, 210, 250, 290, 320, 350, 390, 420, 450][i] * scale), Actual: Math.round([60, 95, 135, 170, 200, 240, 280, 330, 370, 400, 430, 450][i] * scale) }))
 
 export default function Dashboard() {
   const nav = useNavigate()
   const program = useStore((s) => s.program)
+  const m = useMoney()
   const kpisC = useCollection<ProgramKpis>('programKpis', seedProgramKpis)
   const k = kpisC.items[0] ?? seedProgramKpis[0]
   const { items: milestones } = useCollection<Milestone>('milestones', seedMilestones)
@@ -62,7 +33,6 @@ export default function Dashboard() {
   const { items: wss } = useCollection<WorkstreamSummary>('workstreamSummaries', seedWorkstreamSummaries)
   const [edit, setEdit] = useState(false)
 
-  const phaseIdx = PHASES.indexOf(k.lifecyclePhase)
   const msCounts = useMemo(() => {
     const c = (s: string[]) => milestones.filter((m) => s.includes(m.status)).length
     return { onTrack: c(['On Track', 'Completed']), atRisk: c(['At Risk']), delayed: c(['Delayed']), notStarted: c(['Not Started', 'Pending']), total: milestones.length }
@@ -77,46 +47,38 @@ export default function Dashboard() {
   const openCritical = useMemo(() => raid.filter((r) => isOpen(r) && r.level === 'Critical').length, [raid])
   const headroom = +(k.approvedBudgetCr - k.forecastAtCompletionCr).toFixed(1)
   const budgetData = [
-    { name: 'Approved Budget', value: k.approvedBudgetCr, fill: CHART_COLORS.blue },
-    { name: 'Actual Spend', value: k.actualSpendCr, fill: CHART_COLORS.blueLight },
-    { name: 'Forecast at Completion', value: k.forecastAtCompletionCr, fill: CHART_COLORS.teal },
-    { name: 'Forecast Headroom', value: headroom, fill: CHART_COLORS.blueFaint },
+    { name: 'Approved Budget', value: +m.num(k.approvedBudgetCr), fill: CHART_COLORS.blue },
+    { name: 'Actual Spend', value: +m.num(k.actualSpendCr), fill: CHART_COLORS.blueLight },
+    { name: 'Forecast at Completion', value: +m.num(k.forecastAtCompletionCr), fill: CHART_COLORS.teal },
+    { name: 'Forecast Headroom', value: +m.num(headroom), fill: CHART_COLORS.blueFaint },
   ]
   const benefitPct = Math.round((k.projectedBenefitsCr / k.targetBenefitsCr) * 100)
   const timelinePct = k.programCompletion
 
   return (
     <div className="space-y-4">
-      {/* Lifecycle + timeline */}
-      <div className="grid grid-cols-[1fr_340px] gap-4">
-        <Card>
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <h3 className="card-title">GCC Lifecycle Phase</h3>
-              <p className="text-[12px] text-ink-500 mt-0.5">{programDef(program).city}, {programDef(program).country} · currently in the <b className="text-ink-900">{k.lifecyclePhase}</b> phase · change it under Edit</p>
-            </div>
-            <button className="btn-primary" onClick={() => setEdit(true)}><Pencil size={13} /> Edit</button>
+      {/* Program timeline */}
+      <Card>
+        <div className="flex items-center justify-between gap-6">
+          <div className="min-w-[220px]">
+            <h3 className="card-title">Program Timeline</h3>
+            <p className="text-[12.5px] text-ink-500 mt-0.5">{programDef(program).city}, {programDef(program).country} · {fmtDate(k.timelineStart).slice(3)} – {fmtDate(k.timelineEnd).slice(3)}</p>
           </div>
-          <LifecycleStepper phaseIdx={phaseIdx} />
-        </Card>
-        <Card>
-          <h3 className="card-title">Program Timeline</h3>
-          <p className="text-[12.5px] text-ink-500 mt-0.5">{fmtDate(k.timelineStart).slice(3)} – {fmtDate(k.timelineEnd).slice(3)}</p>
-          <div className="flex items-center gap-3 mt-3">
+          <div className="flex-1 flex items-center gap-3">
             <div className="flex-1 h-2.5 rounded-full bg-slate-200 overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-brand-600 to-teal-500" style={{ width: `${timelinePct}%` }} /></div>
-            <span className="text-[13px] font-semibold text-ink-900">{timelinePct}% complete</span>
+            <span className="text-[13px] font-semibold text-ink-900 whitespace-nowrap">{timelinePct}% complete</span>
           </div>
-        </Card>
-      </div>
+          <button className="btn-primary shrink-0" onClick={() => setEdit(true)}><Pencil size={13} /> Edit</button>
+        </div>
+      </Card>
 
       {/* KPI tiles */}
-      <div className="grid grid-cols-6 gap-4">
+      <div className="grid grid-cols-5 gap-4">
         <KpiTile tone="green" icon={<CheckCircle2 size={22} />} value={`${k.programCompletion}%`} label="Program Completion" trend="up" sub={<span className="text-green-600">+{k.programCompletionDelta}% vs last month</span>} />
         <KpiTile tone="blue" icon={<BarChart3 size={22} />} value={`${k.milestoneAdherence}%`} label="Milestone Adherence" trend="up" sub={<span className="text-green-600">+{k.milestoneAdherenceDelta}% vs last month</span>} />
         <KpiTile tone="navy" icon={<Users size={22} />} value={<>{k.talentOnboarded} <span className="text-[16px] text-ink-500 font-semibold">/ {k.talentTarget}</span></>} label="Talent Onboarded" trend="up" sub={<span className="text-green-600">+{k.talentDeltaVsPlan}% vs plan</span>} />
-        <KpiTile tone="navy" icon={<Database size={22} className="text-red-500" />} value={`₹ ${k.actualSpendCr.toFixed(1)} Cr`} label="Actual Spend" sub={<>of <b>₹ {k.approvedBudgetCr.toFixed(1)} Cr</b> budget</>} />
+        <KpiTile tone="navy" icon={<Database size={22} className="text-red-500" />} value={m.fmt(k.actualSpendCr)} label="Actual Spend" sub={<>of <b>{m.fmt(k.approvedBudgetCr)}</b> budget</>} />
         <KpiTile tone="red" icon={<AlertTriangle size={22} />} value={openCritical} label="Open Critical Issues" trend="down" sub={<span className="text-red-600">{k.openCriticalIssuesDelta} vs last month</span>} />
-        <KpiTile tone="green" icon={<Target size={22} className="text-brand-600" />} value={`${k.transitionReadiness}%`} label="Readiness for Transition" trend="up" sub={<span className="text-green-600">+{k.transitionReadinessDelta}% vs last month</span>} />
       </div>
 
       {/* Row 2 */}
@@ -146,15 +108,15 @@ export default function Dashboard() {
             </div>
           </div>
         </Card>
-        <Card title="Budget Overview (₹ Cr)">
+        <Card title={`Budget Overview (${m.unitLabel})`}>
           <div className="h-[200px]">
             <ResponsiveContainer>
               <BarChart data={budgetData} margin={{ top: 18, right: 8, left: -24, bottom: 0 }} barCategoryGap="28%">
                 <CartesianGrid vertical={false} />
                 <XAxis dataKey="name" tickLine={false} axisLine={false} interval={0} tick={<WrapTick />} height={34} />
                 <YAxis tickLine={false} axisLine={false} />
-                <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`₹ ${v} Cr`]} />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}><LabelList dataKey="value" position="top" style={{ fontSize: 11.5, fill: '#111827', fontWeight: 600 }} /></Bar>
+                <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`${m.symbol} ${v} ${m.unit}`]} />
+                <Bar dataKey="value" radius={[4, 4, 0, 0]} isAnimationActive={false}><LabelList dataKey="value" position="top" style={{ fontSize: 11.5, fill: '#111827', fontWeight: 600 }} /></Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -196,17 +158,7 @@ export default function Dashboard() {
       </div>
 
       {/* Row 4 */}
-      <div className="grid grid-cols-[1fr_1.2fr_1.05fr] gap-4">
-        <Card title="Transition Readiness" action={<ViewAll label="View Details" onClick={() => nav('/transition')} />}>
-          <div className="grid grid-cols-4 gap-2 pt-1">
-            {[['People', k.readinessPeople, '#16A34A'], ['Process', k.readinessProcess, '#16A34A'], ['Technology', k.readinessTechnology, '#F59E0B'], ['Controls & Compliance', k.readinessControls, '#16A34A']].map(([l, v, c]) => (
-              <div key={l as string} className="flex flex-col items-center gap-2 text-center">
-                <Ring value={v as number} size={66} stroke={7} color={c as string} />
-                <span className="text-[12px] text-ink-700 leading-tight">{l as string}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
+      <div className="grid grid-cols-[1.3fr_1fr] gap-4">
         <Card title="Resource Ramp-up" action={<ViewAll label="View Details" onClick={() => nav('/resources')} />} headerRight={<Legend items={[{ label: 'Plan', color: CHART_COLORS.blueFaint }, { label: 'Actual', color: CHART_COLORS.blue }]} />}>
           <div className="h-[150px]">
             <ResponsiveContainer>
@@ -215,16 +167,16 @@ export default function Dashboard() {
                 <XAxis dataKey="month" tickLine={false} axisLine={false} />
                 <YAxis tickLine={false} axisLine={false} />
                 <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} />
-                <Bar dataKey="Plan" fill={CHART_COLORS.blueFaint} radius={[3, 3, 0, 0]} />
-                <Bar dataKey="Actual" fill={CHART_COLORS.blue} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="Plan" fill={CHART_COLORS.blueFaint} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+                <Bar dataKey="Actual" fill={CHART_COLORS.blue} radius={[3, 3, 0, 0]} isAnimationActive={false} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </Card>
         <Card title="Value Realization" action={<ViewAll label="View Details" onClick={() => nav('/value')} />}>
           <div className="grid grid-cols-2 gap-3">
-            <div><div className="text-[12.5px] text-ink-500">Target Benefits (Annual)</div><div className="text-[24px] font-bold text-ink-900 mt-1">₹ {k.targetBenefitsCr.toFixed(1)} Cr</div></div>
-            <div><div className="text-[12.5px] text-ink-500">Projected Benefits</div><div className="text-[24px] font-bold text-green-600 mt-1">₹ {k.projectedBenefitsCr.toFixed(1)} Cr</div><div className="text-[12px] text-ink-500">{benefitPct}% of target</div></div>
+            <div><div className="text-[12.5px] text-ink-500">Target Benefits (Annual)</div><div className="text-[24px] font-bold text-ink-900 mt-1">{m.fmt(k.targetBenefitsCr)}</div></div>
+            <div><div className="text-[12.5px] text-ink-500">Projected Benefits</div><div className="text-[24px] font-bold text-green-600 mt-1">{m.fmt(k.projectedBenefitsCr)}</div><div className="text-[12px] text-ink-500">{benefitPct}% of target</div></div>
           </div>
           <Progress value={benefitPct} className="mt-4" color="#16A34A" height="h-3" />
         </Card>

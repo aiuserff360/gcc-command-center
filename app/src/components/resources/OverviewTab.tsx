@@ -4,6 +4,7 @@ import { Pencil } from 'lucide-react'
 import { Card, Badge, Progress, ViewAll } from '../ui'
 import { Donut, tooltipStyle } from '../charts'
 import { CHART_COLORS } from '../../data/common'
+import { useMoney } from '../../data/money'
 import { fnShort, isOpenPosition, positionDaysOpen, type Position, type SkillRow, type ViewBy, type WorkstreamHeadcount, type HeadcountMonth, type ForecastQuarter } from '../../data/resources'
 import type { ResourceData } from './useResourceData'
 import { Funnel, WrapTick, StackedHeadcountBars, CardLegend, CompactTable, HC_LEGEND } from './widgets'
@@ -19,13 +20,14 @@ export default function OverviewTab({ d, viewBy, goTab }: { d: ResourceData; vie
   const [editTth, setEditTth] = useState(false)
   const [editFc, setEditFc] = useState(false)
   const [pos, setPos] = useState<Position | null>(null)
+  const m = useMoney()
 
-  // "View by" conversion: FTE → ₹ Cr (cost per FTE) → seats (seat ratio)
-  const unit = viewBy === 'Cost' ? '₹ Cr' : viewBy === 'Seats' ? 'Seats' : 'FTEs'
-  const conv = (n: number) => (viewBy === 'Cost' ? +(n * kpi.costPerFteCr).toFixed(1) : viewBy === 'Seats' ? Math.round(n * settings.seatRatio) : n)
-  const fmtUnit = (n: number) => (viewBy === 'Cost' ? `₹ ${n} Cr` : String(n))
+  // "View by" conversion: FTE → money (cost per FTE, in the selected currency) → seats (seat ratio)
+  const unit = viewBy === 'Cost' ? m.unitLabel : viewBy === 'Seats' ? 'Seats' : 'FTEs'
+  const conv = (n: number) => (viewBy === 'Cost' ? +m.num(n * kpi.costPerFteCr) : viewBy === 'Seats' ? Math.round(n * settings.seatRatio) : n)
+  const fmtUnit = (n: number) => (viewBy === 'Cost' ? `${m.symbol} ${n} ${m.unit}` : String(n))
 
-  const hcData = useMemo(() => headcountPlan.items.map((m) => ({ month: m.month, Planned: conv(m.planned), Actual: conv(m.actual), Target: conv(m.target) })), [headcountPlan.items, viewBy, kpi.costPerFteCr, settings.seatRatio]) // eslint-disable-line react-hooks/exhaustive-deps
+  const hcData = useMemo(() => headcountPlan.items.map((h) => ({ month: h.month, Planned: conv(h.planned), Actual: conv(h.actual), Target: conv(h.target) })), [headcountPlan.items, viewBy, kpi.costPerFteCr, settings.seatRatio, m.currency, m.rate]) // eslint-disable-line react-hooks/exhaustive-deps
   const hcMax = Math.max(500, Math.ceil(Math.max(0, ...hcData.flatMap((d) => [d.Planned, d.Actual, d.Target])) / 100) * 100)
   const hcTicks = Array.from({ length: hcMax / 100 + 1 }, (_, i) => i * 100)
   const utilData = headcountPlan.items.map((m) => ({ month: m.month, Planned: m.plannedUtil, Actual: m.actualUtil }))

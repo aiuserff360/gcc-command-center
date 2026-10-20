@@ -7,6 +7,7 @@ import { tooltipStyle } from '../components/charts'
 import { useCollection, useStore, uid } from '../store/useStore'
 import { seedMilestones, seedRaid, seedProgramKpis, seedWorkstreamSummaries, isOpen, type Milestone, type RaidItem, type ProgramKpis, type WorkstreamSummary } from '../data/shared'
 import { fmtDate, CHART_COLORS, MONTHS, TODAY, WORKSTREAM_META, OWNERS, type Workstream } from '../data/common'
+import { useMoney } from '../data/money'
 import {
   seedReports, seedReportCommentary, seedReportSchedules, seedRecipients, REPORT_TYPES, REPORT_STATUSES, CADENCES, CHANNELS, RECIPIENT_GROUPS,
   type Report, type ReportCommentary, type ReportSchedule, type Recipient,
@@ -189,6 +190,7 @@ function WeeklyUpdate({ k, milestones, raid, wss, commentary, commentaryC, repor
   k: ProgramKpis; milestones: Milestone[]; raid: RaidItem[]; wss: WorkstreamSummary[]; commentary: ReportCommentary
   commentaryC: ReturnType<typeof useCollection<ReportCommentary>>; reportsC: ReturnType<typeof useCollection<Report>>; recipients: number
 }) {
+  const m = useMoney()
   const [text, setText] = useState(commentary.text)
   const [copied, setCopied] = useState(false)
   const due = useMemo(() => milestones.filter((m) => m.status !== 'Completed' && m.dueDate >= TODAY && m.dueDate <= addDays(TODAY, 14)).sort((a, b) => a.dueDate.localeCompare(b.dueDate)), [milestones])
@@ -200,7 +202,7 @@ function WeeklyUpdate({ k, milestones, raid, wss, commentary, commentaryC, repor
   const asText = () => [
     `WEEKLY PROGRAM UPDATE – ${k.programName} – ${weekLabel(TODAY)} (${period})`, '',
     'PROGRAM KPIs',
-    `Program completion ${k.programCompletion}% | Milestone adherence ${k.milestoneAdherence}% | Talent onboarded ${k.talentOnboarded}/${k.talentTarget} | Actual spend ₹ ${k.actualSpendCr} Cr of ₹ ${k.approvedBudgetCr} Cr | Open critical issues ${k.openCriticalIssues} | Readiness ${k.transitionReadiness}%`, '',
+    `Program completion ${k.programCompletion}% | Milestone adherence ${k.milestoneAdherence}% | Talent onboarded ${k.talentOnboarded}/${k.talentTarget} | Actual spend ${m.fmt(k.actualSpendCr)} of ${m.fmt(k.approvedBudgetCr)} | Open critical issues ${k.openCriticalIssues} | Readiness ${k.transitionReadiness}%`, '',
     'WORKSTREAM STATUS', ...wss.map((w) => `- ${w.name}: ${w.status} (${w.progress}%) – schedule ${w.scheduleHealth}, budget ${w.budgetHealth}, owner ${w.owner}`), '',
     'MILESTONES DUE IN NEXT 2 WEEKS', ...due.map((m) => `- ${fmtDate(m.dueDate)} ${m.name} (${SHORT(m.workstream)}) – ${m.status}, ${m.owner}`), '',
     'TOP OPEN RISKS & ISSUES', ...topRaid.map((r) => `- ${r.code} ${r.title} – ${r.level}, ${r.status}, ${r.owner}`), '',
@@ -246,7 +248,7 @@ function WeeklyUpdate({ k, milestones, raid, wss, commentary, commentaryC, repor
               ['Program Completion', `${k.programCompletion}%`, `+${k.programCompletionDelta}% vs last month`, 'text-green-600'],
               ['Milestone Adherence', `${k.milestoneAdherence}%`, `+${k.milestoneAdherenceDelta}% vs last month`, 'text-brand-600'],
               ['Talent Onboarded', `${k.talentOnboarded} / ${k.talentTarget}`, `+${k.talentDeltaVsPlan}% vs plan`, 'text-navy-900'],
-              ['Actual Spend', `₹ ${k.actualSpendCr.toFixed(1)} Cr`, `of ₹ ${k.approvedBudgetCr.toFixed(1)} Cr budget`, 'text-navy-900'],
+              ['Actual Spend', m.fmt(k.actualSpendCr), `of ${m.fmt(k.approvedBudgetCr)} budget`, 'text-navy-900'],
               ['Open Critical Issues', String(k.openCriticalIssues), `${k.openCriticalIssuesDelta} vs last month`, 'text-red-600'],
               ['Readiness for Transition', `${k.transitionReadiness}%`, `+${k.transitionReadinessDelta}% vs last month`, 'text-green-600'],
             ].map(([l, v, s, c]) => (
@@ -328,12 +330,14 @@ const monthName = (ym: string) => `${MONTHS[+ym.slice(5, 7) - 1]} ${ym.slice(0, 
 const nextMonth = (ym: string) => { const [y, m] = ym.split('-').map(Number); return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}` }
 
 function SteerCo({ k, milestones, raid, wss }: { k: ProgramKpis; milestones: Milestone[]; raid: RaidItem[]; wss: WorkstreamSummary[] }) {
+  const m = useMoney()
   const [month, setMonth] = useState('2026-10')
   const nm = nextMonth(month)
   const nextMs = useMemo(() => milestones.filter((m) => monthKey(m.dueDate) === nm).sort((a, b) => a.dueDate.localeCompare(b.dueDate)), [milestones, nm])
   const top5 = useMemo(() => raid.filter(isOpen).filter((r) => r.type === 'Risk').sort((a, b) => b.impactScore - a.impactScore).slice(0, 5), [raid])
   const decisions = useMemo(() => raid.filter((r) => isOpen(r) && (r.escalationStatus === 'Awaiting Decision' || r.escalated)).slice(0, 4), [raid])
-  const budget = wss.map((w) => ({ name: SHORT(w.name), Budget: w.approvedBudgetCr, Actual: w.actualSpendCr }))
+  const budget = useMemo(() => wss.map((w) => ({ name: SHORT(w.name), Budget: m.toDisplay(w.approvedBudgetCr), Actual: m.toDisplay(w.actualSpendCr) })), [wss, m.currency, m.rate]) // eslint-disable-line react-hooks/exhaustive-deps
+  const fmtDisp = (v: number) => `${m.symbol} ${v.toFixed(m.digits)} ${m.unit}`
   const headcount = useMemo(() => {
     const idx = +month.slice(5, 7) - 1
     const planRamp = [80, 110, 150, 180, 210, 250, 290, 320, 350, 390, 420, 450]
@@ -395,14 +399,14 @@ function SteerCo({ k, milestones, raid, wss }: { k: ProgramKpis; milestones: Mil
             </div>
           </div>
           <div className="rounded-lg border border-line p-3">
-            <div className="flex items-center justify-between mb-1"><div className="text-[13px] font-semibold">Budget vs actual (₹ Cr)</div><Legend items={[{ label: 'Budget', color: CHART_COLORS.blueFaint }, { label: 'Actual', color: CHART_COLORS.blue }]} /></div>
+            <div className="flex items-center justify-between mb-1"><div className="text-[13px] font-semibold">Budget vs actual ({m.unitLabel})</div><Legend items={[{ label: 'Budget', color: CHART_COLORS.blueFaint }, { label: 'Actual', color: CHART_COLORS.blue }]} /></div>
             <div className="h-[190px]">
               <ResponsiveContainer>
                 <BarChart data={budget} margin={{ top: 6, right: 4, left: -26, bottom: 0 }} barGap={2} barCategoryGap="28%">
                   <CartesianGrid vertical={false} />
                   <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} interval={0} angle={-28} textAnchor="end" height={38} />
-                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10.5 }} />
-                  <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} />
+                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10.5 }} tickFormatter={(v) => String(+Number(v).toFixed(m.digits))} />
+                  <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => fmtDisp(Number(v))} />
                   <Bar dataKey="Budget" fill={CHART_COLORS.blueFaint} radius={[3, 3, 0, 0]} />
                   <Bar dataKey="Actual" fill={CHART_COLORS.blue} radius={[3, 3, 0, 0]} />
                 </BarChart>
@@ -470,6 +474,10 @@ function FinancialReport({ k, wss, commentaryC }: { k: ProgramKpis; wss: Workstr
   const monthly = useStore((s) => s.collections['monthlyFinancials']) as AnyRec[] | undefined
   const commentary = commentaryC.items.find((c) => c.id === 'financial') ?? seedReportCommentary[1]
   const [text, setText] = useState(commentary.text)
+  const m = useMoney()
+  const d2 = m.digits + 1 // 2 decimals in ₹ Cr, 3 in € M
+  const cell = (cr: number) => m.num(cr, d2)
+  const fmtDisp = (v: number) => `${m.symbol} ${v.toFixed(d2)} ${m.unit}`
 
   const { rows, source } = useMemo(() => {
     if (budgetLines && budgetLines.length) {
@@ -505,6 +513,8 @@ function FinancialReport({ k, wss, commentaryC }: { k: ProgramKpis; wss: Workstr
     })
     return { data, placeholder: true }
   }, [monthly, k])
+  // chart series in display units so axis/tooltips follow the selected currency
+  const cashData = useMemo(() => cash.data.map((r) => ({ ...r, Plan: r.Plan === undefined ? undefined : m.toDisplay(r.Plan), Actual: r.Actual === undefined ? undefined : m.toDisplay(r.Actual), Forecast: r.Forecast === undefined ? undefined : m.toDisplay(r.Forecast) })), [cash, m.currency, m.rate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = () => commentaryC.update({ ...commentary, text, updatedOn: TODAY })
   const varianceCls = (v: number) => (v > 0.05 ? 'text-red-600' : v < -0.05 ? 'text-green-600' : 'text-ink-900')
@@ -513,39 +523,39 @@ function FinancialReport({ k, wss, commentaryC }: { k: ProgramKpis; wss: Workstr
     <div className="space-y-4">
       <style>{PRINT_CSS}</style>
       <div className="flex items-center justify-between no-print">
-        <p className="text-[12.5px] text-ink-500">Source: {source}. Figures in ₹ Cr. {cash.placeholder && 'Cash forecast is a placeholder curve derived from program KPIs until monthly financials are captured on the Financial Management page.'}</p>
+        <p className="text-[12.5px] text-ink-500">Source: {source}. Figures in {m.unitLabel}. {cash.placeholder && 'Cash forecast is a placeholder curve derived from program KPIs until monthly financials are captured on the Financial Management page.'}</p>
         <button className="btn-secondary" onClick={() => window.print()}><Printer size={14} /> Print / Save as PDF</button>
       </div>
       <div id="print-area" className="space-y-4">
         <div className="grid grid-cols-4 gap-4">
-          <KpiTile tone="blue" icon={<Users size={20} />} value={`₹ ${r1(tot.budget).toFixed(1)} Cr`} label="Approved Budget" />
-          <KpiTile tone="navy" icon={<Users size={20} />} value={`₹ ${r1(tot.actual).toFixed(1)} Cr`} label="Actual Spend" sub={`${tot.budget ? Math.round((tot.actual / tot.budget) * 100) : 0}% consumed`} />
-          <KpiTile tone="teal" icon={<Users size={20} />} value={`₹ ${r1(tot.forecast).toFixed(1)} Cr`} label="Forecast at Completion" />
-          <KpiTile tone={tot.forecast > tot.budget ? 'red' : 'green'} icon={<AlertTriangle size={20} />} value={`₹ ${r1(tot.budget - tot.forecast).toFixed(1)} Cr`} label="Forecast Headroom" sub={`${tot.budget ? Math.round(((tot.forecast - tot.budget) / tot.budget) * 100) : 0}% variance`} />
+          <KpiTile tone="blue" icon={<Users size={20} />} value={m.fmt(tot.budget)} label="Approved Budget" />
+          <KpiTile tone="navy" icon={<Users size={20} />} value={m.fmt(tot.actual)} label="Actual Spend" sub={`${tot.budget ? Math.round((tot.actual / tot.budget) * 100) : 0}% consumed`} />
+          <KpiTile tone="teal" icon={<Users size={20} />} value={m.fmt(tot.forecast)} label="Forecast at Completion" />
+          <KpiTile tone={tot.forecast > tot.budget ? 'red' : 'green'} icon={<AlertTriangle size={20} />} value={m.fmt(tot.budget - tot.forecast)} label="Forecast Headroom" sub={`${tot.budget ? Math.round(((tot.forecast - tot.budget) / tot.budget) * 100) : 0}% variance`} />
         </div>
-        <Card title="Budget vs Actual vs Forecast by Workstream (₹ Cr)">
+        <Card title={`Budget vs Actual vs Forecast by Workstream (${m.unitLabel})`}>
           <Table<FinRow> rows={rows} columns={[
             { key: 'workstream', header: 'Workstream', render: (r) => <span className="font-medium">{r.workstream}</span> },
-            { key: 'budget', header: 'Approved Budget', className: 'text-right', render: (r) => r.budget.toFixed(2) },
-            { key: 'actual', header: 'Actual Spend', className: 'text-right', render: (r) => r.actual.toFixed(2) },
+            { key: 'budget', header: 'Approved Budget', className: 'text-right', render: (r) => cell(r.budget) },
+            { key: 'actual', header: 'Actual Spend', className: 'text-right', render: (r) => cell(r.actual) },
             { key: 'consumed', header: '% Consumed', className: 'text-right', render: (r) => `${r.budget ? Math.round((r.actual / r.budget) * 100) : 0}%` },
-            { key: 'forecast', header: 'Forecast at Completion', className: 'text-right', render: (r) => r.forecast.toFixed(2) },
-            { key: 'variance', header: 'Variance (FAC − Budget)', className: 'text-right', render: (r) => <span className={varianceCls(r.budget ? (r.forecast - r.budget) / r.budget : 0)}>{(r.forecast - r.budget) >= 0 ? '+' : ''}{(r.forecast - r.budget).toFixed(2)} ({r.budget ? Math.round(((r.forecast - r.budget) / r.budget) * 100) : 0}%)</span> },
+            { key: 'forecast', header: 'Forecast at Completion', className: 'text-right', render: (r) => cell(r.forecast) },
+            { key: 'variance', header: 'Variance (FAC − Budget)', className: 'text-right', render: (r) => <span className={varianceCls(r.budget ? (r.forecast - r.budget) / r.budget : 0)}>{m.signed(r.forecast - r.budget, d2)} ({r.budget ? Math.round(((r.forecast - r.budget) / r.budget) * 100) : 0}%)</span> },
             { key: 'health', header: 'Budget Health', render: (r) => <Badge value={!r.budget ? 'Pending' : r.forecast > r.budget * 1.1 ? 'Delayed' : r.forecast > r.budget ? 'At Risk' : 'On Track'} /> },
           ]} />
           <div className="grid grid-cols-[1fr_120px_120px_100px_160px_180px_120px] text-[13px] font-semibold px-3 py-2 border-t border-line mt-1">
-            <span>Total</span><span className="text-right">{r1(tot.budget).toFixed(2)}</span><span className="text-right">{r1(tot.actual).toFixed(2)}</span><span className="text-right">{tot.budget ? Math.round((tot.actual / tot.budget) * 100) : 0}%</span><span className="text-right">{r1(tot.forecast).toFixed(2)}</span><span className={`text-right ${varianceCls(tot.budget ? (tot.forecast - tot.budget) / tot.budget : 0)}`}>{tot.forecast - tot.budget >= 0 ? '+' : ''}{r1(tot.forecast - tot.budget).toFixed(2)}</span><span />
+            <span>Total</span><span className="text-right">{cell(tot.budget)}</span><span className="text-right">{cell(tot.actual)}</span><span className="text-right">{tot.budget ? Math.round((tot.actual / tot.budget) * 100) : 0}%</span><span className="text-right">{cell(tot.forecast)}</span><span className={`text-right ${varianceCls(tot.budget ? (tot.forecast - tot.budget) / tot.budget : 0)}`}>{m.signed(tot.forecast - tot.budget, d2)}</span><span />
           </div>
         </Card>
         <div className="grid grid-cols-[1.2fr_1fr] gap-4">
-          <Card title="Cash Forecast (cumulative, ₹ Cr)" subtitle={cash.placeholder ? 'Placeholder – derived from program KPIs' : 'From monthly financials'} headerRight={<Legend items={[{ label: 'Plan', color: CHART_COLORS.blueFaint }, { label: 'Actual', color: CHART_COLORS.blue }, { label: 'Forecast', color: CHART_COLORS.teal, dashed: true }]} />}>
+          <Card title={`Cash Forecast (cumulative, ${m.unitLabel})`} subtitle={cash.placeholder ? 'Placeholder – derived from program KPIs' : 'From monthly financials'} headerRight={<Legend items={[{ label: 'Plan', color: CHART_COLORS.blueFaint }, { label: 'Actual', color: CHART_COLORS.blue }, { label: 'Forecast', color: CHART_COLORS.teal, dashed: true }]} />}>
             <div className="h-[220px]">
               <ResponsiveContainer>
-                <AreaChart data={cash.data} margin={{ top: 8, right: 8, left: -22, bottom: 0 }}>
+                <AreaChart data={cashData} margin={{ top: 8, right: 8, left: -22, bottom: 0 }}>
                   <CartesianGrid vertical={false} />
                   <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
                   <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
-                  <Tooltip {...tooltipStyle} />
+                  <Tooltip {...tooltipStyle} formatter={(v) => fmtDisp(Number(v))} />
                   <Area type="monotone" dataKey="Plan" stroke={CHART_COLORS.blueFaint} fill={CHART_COLORS.blueFaint} fillOpacity={0.35} strokeWidth={2} />
                   <Area type="monotone" dataKey="Actual" stroke={CHART_COLORS.blue} fill={CHART_COLORS.blue} fillOpacity={0.15} strokeWidth={2.5} connectNulls={false} />
                   <Area type="monotone" dataKey="Forecast" stroke={CHART_COLORS.teal} fill="none" strokeDasharray="5 4" strokeWidth={2} />

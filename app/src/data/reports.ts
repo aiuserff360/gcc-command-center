@@ -42,7 +42,7 @@ export interface ReportCommentary {
 }
 export const seedReportCommentary: ReportCommentary[] = [
   { id: 'weekly', updatedOn: '2026-10-19', sentOn: '2026-10-12', text: 'Program remains on track at 72% completion. Network provisioning slippage is the key watch item for the 23 Oct IT readiness milestone; a recovery plan with the ISP is in place and reviewed daily. Wave 2 hiring is ahead of plan (+12%) and the facility handover remains on schedule for 10 Nov. Steering Committee decision needed on vendor contract approval (Finance & Procurement) to avoid a two-week delay.' },
-  { id: 'financial', updatedOn: '2026-10-08', text: 'Actual spend of ₹ 2.6 Cr is 65% of the ₹ 4.0 Cr approved budget with forecast at completion of ₹ 3.8 Cr (₹ 0.2 Cr headroom). Finance & Procurement is trending over budget due to accelerated vendor onboarding; offset identified in Technology (software licensing deferred to FY27).' },
+  { id: 'financial', updatedOn: '2026-10-08', text: 'Actual spend is 65% of the approved budget, with forecast at completion at 95% of budget (5% headroom). Finance & Procurement is trending over budget due to accelerated vendor onboarding; offset identified in Technology (software licensing deferred to FY27).' },
   { id: 'hiring', updatedOn: '2026-10-15', text: '320 of 450 target positions onboarded (71%). Campus cohort of 45 joins on 02 Nov. Specialist engineering roles (network/security) remain the gap – 8 open requisitions >45 days. Lateral hiring sprint with two new agencies approved.' },
 ]
 
