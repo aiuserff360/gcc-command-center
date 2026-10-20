@@ -12,7 +12,7 @@ import { FilterSelect } from '../ui'
 
 export const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/strategy', label: 'Strategy & Business Case', icon: Target },
+  { to: '/target-footprint', label: 'Target Footprint', icon: Target },
   { to: '/planning', label: 'Program Planning', icon: CalendarRange },
   { to: '/workstreams', label: 'Workstreams', icon: Layers },
   { to: '/resources', label: 'Resource Management', icon: Users },
@@ -75,8 +75,6 @@ export function Sidebar({ onAssistant }: { onAssistant: () => void }) {
 }
 
 export function Topbar({ variant }: { variant: 'dashboard' | 'page' }) {
-  const phase = useStore((s) => s.phase)
-  const setPhase = useStore((s) => s.setPhase)
   const program = useStore((s) => s.program)
   const setProgram = useStore((s) => s.setProgram)
   const [notif, setNotif] = useState(false)
@@ -111,13 +109,7 @@ export function Topbar({ variant }: { variant: 'dashboard' | 'page' }) {
             <span key={w} className="flex items-center"><span className="px-2">{w}</span>{i < 5 && <span className="text-line">|</span>}</span>
           ))}
         </nav>
-      ) : (
-        <nav className="flex items-center gap-0.5 mx-auto bg-surface rounded-lg p-0.5 shrink-0" title="Lifecycle phase filter">
-          {PHASES.map((p) => (
-            <button key={p} onClick={() => setPhase(p as Phase)} className={clsx('px-2.5 py-1 rounded-md text-[12.5px] whitespace-nowrap cursor-pointer', phase === p ? 'bg-brand-600 text-white font-medium shadow-sm' : 'text-ink-700 hover:bg-white')}>{p}</button>
-          ))}
-        </nav>
-      )}
+      ) : null}
 
       {/* Right: date, notifications, user */}
       <div className="flex items-center gap-4 shrink-0 ml-auto">
