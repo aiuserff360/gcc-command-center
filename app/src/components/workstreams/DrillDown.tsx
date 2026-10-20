@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from 'recharts'
-import { ExternalLink, Pencil } from 'lucide-react'
+import { ExternalLink, Pencil, CalendarRange } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { Card, Badge, Progress, Table, ViewAll, Tabs, Modal } from '../ui'
 import { tooltipStyle } from '../charts'
 import { useCollection } from '../../store/useStore'
@@ -17,6 +18,7 @@ export const SUB_TABS = ['Executive Summary', 'Milestones', 'Initiatives', 'Reso
 export function DrillDown({ wss, selected, onSelect, onEditWorkstream, initialTab }: { wss: WsRow[]; selected: string; onSelect: (n: string) => void; onEditWorkstream: (w: WsRow) => void; initialTab?: string }) {
   const [tab, setTab] = useState(initialTab && SUB_TABS.includes(initialTab) ? initialTab : SUB_TABS[0])
   const [full, setFull] = useState(false)
+  const nav = useNavigate()
   const w = wss.find((x) => x.name === selected) ?? wss[0]
   if (!w) return null
   const ws = w.name as Workstream
@@ -33,7 +35,10 @@ export function DrillDown({ wss, selected, onSelect, onEditWorkstream, initialTa
               </select>
             </label>
           </div>
-          <button className="btn-primary" onClick={() => setFull(true)}>View Full Workstream <ExternalLink size={14} /></button>
+          <div className="flex items-center gap-2">
+            <button className="btn-secondary" title="Everything entered here is reflected on the Program Planning timeline" onClick={() => nav(`/planning?ws=${encodeURIComponent(w.name)}`)}><CalendarRange size={14} /> View in Program Planning</button>
+            <button className="btn-primary" onClick={() => setFull(true)}>View Full Workstream <ExternalLink size={14} /></button>
+          </div>
         </div>
         <Tabs size="sm" tabs={SUB_TABS} active={tab} onChange={setTab} className="!border-0 !shadow-none !rounded-none !px-0" />
       </div>

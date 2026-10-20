@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Modal, Field, Input, TextArea, Select, FormGrid, ConfirmDelete } from '../ui'
 import { WORKSTREAMS, OWNERS, type Workstream, type Impact, type Status } from '../../data/common'
 import type { Milestone, Dependency } from '../../data/shared'
-import { PLAN_GROUPS, PLAN_STATUSES, type PlanItem, type PlanStatus } from '../../data/planning'
 
 export const MS_STATUSES: Status[] = ['On Track', 'At Risk', 'Delayed', 'Pending', 'Not Started', 'Completed']
 export const MS_PHASES: Milestone['phase'][] = ['Design', 'Build', 'Transition', 'Operate']
@@ -17,33 +16,6 @@ const Footer = ({ onClose, onSave, onDelete }: { onClose: () => void; onSave: ()
     <button className="btn-primary" onClick={onSave}>Save</button>
   </>
 )
-
-/* ---------- Plan item (Gantt row) ---------- */
-export function PlanItemModal({ open, value, isNew, codes, onClose, onSave, onDelete }: {
-  open: boolean; value: PlanItem; isNew: boolean; codes: string[]; onClose: () => void; onSave: (v: PlanItem) => void; onDelete?: (id: string) => void
-}) {
-  const [f, setF] = useState<PlanItem>(value)
-  useEffect(() => { if (open) setF(value) }, [open, value])
-  const set = <K extends keyof PlanItem>(k: K, v: PlanItem[K]) => setF((p) => ({ ...p, [k]: v }))
-  const groupNames = PLAN_GROUPS.map((g) => `${g.n}. ${g.name}`)
-  return (
-    <Modal open={open} onClose={onClose} title={isNew ? 'Add plan item' : `Edit plan item ${f.code}`} footer={<Footer onClose={onClose} onSave={() => f.name.trim() && onSave(f)} onDelete={!isNew && onDelete ? () => { onDelete(f.id); onClose() } : undefined} />}>
-      <FormGrid cols={3}>
-        <Field label="Plan group" className="col-span-2"><Select options={groupNames} value={`${f.group}. ${PLAN_GROUPS.find((g) => g.n === f.group)?.name ?? ''}`} onChange={(e) => { const g = PLAN_GROUPS[groupNames.indexOf(e.target.value)]; if (g) { set('group', g.n); set('workstream', g.workstream) } }} /></Field>
-        <Field label="ID"><Input value={f.code} onChange={(e) => set('code', e.target.value)} placeholder="e.g. 2.4" /></Field>
-        <Field label="Milestone / activity" className="col-span-2"><Input value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="Name" /></Field>
-        <Field label="Workstream"><Select options={WORKSTREAMS} value={f.workstream} onChange={(e) => set('workstream', e.target.value as Workstream)} /></Field>
-        <Field label="Start"><Input type="date" value={f.start} onChange={(e) => set('start', e.target.value)} /></Field>
-        <Field label="End"><Input type="date" value={f.end} onChange={(e) => set('end', e.target.value)} /></Field>
-        <Field label="Status"><Select options={PLAN_STATUSES} value={f.status} onChange={(e) => set('status', e.target.value as PlanStatus)} /></Field>
-        <Field label="Owner"><Select options={OWNERS} value={f.owner} onChange={(e) => set('owner', e.target.value)} /></Field>
-        <Field label="Predecessor"><Select options={['None', ...codes.filter((c) => c !== f.code)]} value={f.predecessor ?? 'None'} onChange={(e) => set('predecessor', e.target.value === 'None' ? undefined : e.target.value)} /></Field>
-        <Field label="Progress %"><Input type="number" min={0} max={100} value={f.progress} onChange={(e) => set('progress', Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))} /></Field>
-        <label className="flex items-center gap-2 text-[13px] text-ink-700 col-span-3 mt-1 cursor-pointer"><input type="checkbox" checked={!!f.critical} onChange={(e) => set('critical', e.target.checked)} /> On the critical path</label>
-      </FormGrid>
-    </Modal>
-  )
-}
 
 /* ---------- Milestone ---------- */
 export function MilestoneModal({ open, value, isNew, onClose, onSave, onDelete }: {

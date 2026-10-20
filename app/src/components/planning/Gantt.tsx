@@ -6,7 +6,7 @@ import { MONTHS } from '../../data/common'
 import { daysBetween, type PlanItem, type PlanStatus } from '../../data/planning'
 
 export type GanttScale = 'Months' | 'Quarters'
-export interface GanttGroup { n: number; name: string; icon: ReactNode; iconClass: string; items: PlanItem[] }
+export interface GanttGroup { n: number; name: string; icon: ReactNode; iconClass: string; items: PlanItem[]; /** overrides the default "n. name" label */ label?: string }
 
 export const ROW_H = 26
 export const HEADER_H = 44
@@ -25,11 +25,13 @@ const fmtDate = (iso: string) => { const d = new Date(iso + 'T00:00:00'); return
 
 type Row = { kind: 'group'; group: GanttGroup; start: string; end: string } | { kind: 'item'; group: GanttGroup; item: PlanItem }
 
-export function Gantt({ groups, rangeStart, rangeEnd, today, scale, criticalPath, scrollStep, onItemClick, onAddItem }: {
+export function Gantt({ groups, rangeStart, rangeEnd, today, scale, criticalPath, scrollStep, onItemClick, onAddItem, defaultCollapsed = [], emptyText = 'No items yet. Add initiatives, milestones or activities on the Workstreams page.', leftHeader = 'Workstream / Milestone' }: {
   groups: GanttGroup[]; rangeStart: string; rangeEnd: string; today: string; scale: GanttScale; criticalPath: boolean; scrollStep: number
-  onItemClick: (item: PlanItem) => void; onAddItem?: (group: GanttGroup) => void
+  onItemClick: (item: PlanItem) => void; onAddItem?: (group: GanttGroup) => void; defaultCollapsed?: number[]; emptyText?: string; leftHeader?: string
 }) {
-  const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
+  const [collapsed, setCollapsed] = useState<Set<number>>(() => new Set(defaultCollapsed))
+  const collapsedKey = defaultCollapsed.join(',')
+  useEffect(() => { setCollapsed(new Set(defaultCollapsed)) }, [collapsedKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const scrollRef = useRef<HTMLDivElement>(null)
 
   /* ---- time axis ---- */
@@ -131,7 +133,7 @@ export function Gantt({ groups, rangeStart, rangeEnd, today, scale, criticalPath
       {/* ---------- Left: plan table ---------- */}
       <div className="shrink-0 border-r border-line" style={{ width: LEFT_W }}>
         <div className="grid items-center bg-surface/70 text-[12px] font-medium text-ink-500 border-b border-line" style={{ height: HEADER_H, gridTemplateColumns: '62px 1fr 74px 74px 96px' }}>
-          <span className="px-2">ID</span><span className="px-1">Workstream / Milestone</span><span className="px-2">Start</span><span className="px-2">End</span><span className="px-2">Status</span>
+          <span className="px-2">ID</span><span className="px-1">{leftHeader}</span><span className="px-2">Start</span><span className="px-2">End</span><span className="px-2">Status</span>
         </div>
         {rows.map((r, i) => r.kind === 'group' ? (
           <div key={`g${r.group.n}`} className="group grid items-center bg-brand-50 border-b border-line/70 cursor-pointer select-none" style={{ height: ROW_H, gridTemplateColumns: '62px 1fr' }} onClick={() => toggle(r.group.n)}>
@@ -140,7 +142,7 @@ export function Gantt({ groups, rangeStart, rangeEnd, today, scale, criticalPath
               <span className={clsx('w-5 h-5 rounded-md flex items-center justify-center', r.group.iconClass)}>{r.group.icon}</span>
             </span>
             <span className="flex items-center justify-between pr-2">
-              <span className="font-semibold text-ink-900 truncate">{r.group.n}. {r.group.name}</span>
+              <span className="font-semibold text-ink-900 truncate">{r.group.label ?? `${r.group.n}. ${r.group.name}`}</span>
               {onAddItem && <button title="Add plan item" className="opacity-0 group-hover:opacity-100 text-brand-600 hover:bg-brand-100 rounded p-0.5 cursor-pointer" onClick={(e) => { e.stopPropagation(); onAddItem(r.group) }}><Plus size={13} /></button>}
             </span>
           </div>
@@ -148,13 +150,13 @@ export function Gantt({ groups, rangeStart, rangeEnd, today, scale, criticalPath
           <div key={r.item.id} className={clsx('grid items-center border-b border-line/70 cursor-pointer hover:bg-brand-50/60', criticalPath && r.item.critical && 'bg-red-50/40', i === rows.length - 1 && 'border-b-0')}
             style={{ height: ROW_H, gridTemplateColumns: '62px 1fr 74px 74px 96px' }} onClick={() => onItemClick(r.item)}>
             <span className="flex items-center gap-1.5 pl-6 text-ink-400"><MoveHorizontal size={12} /></span>
-            <span className="flex items-center gap-2 min-w-0 pl-0.5"><span className="text-ink-700 w-6 shrink-0">{r.item.code}</span><span className="text-ink-900 truncate">{r.item.name}</span>{criticalPath && r.item.critical && <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" title="Critical path" />}</span>
+            <span className="flex items-center gap-2 min-w-0 pl-0.5"><span className="text-ink-700 w-9 shrink-0 text-[11px]">{r.item.code}</span>{r.item.kind === 'milestone' && <span className="w-2 h-2 rotate-45 bg-green-600 shrink-0" title="Milestone" />}<span className={clsx('truncate', r.item.kind === 'activity' ? 'text-ink-700' : 'text-ink-900')}>{r.item.name}</span>{criticalPath && r.item.critical && <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" title="Critical path" />}</span>
             <span className="px-2 text-ink-700 whitespace-nowrap">{fmtDateShort(r.item.start)}</span>
             <span className="px-2 text-ink-700 whitespace-nowrap">{fmtDateShort(r.item.end)}</span>
             <span className="px-2"><Badge value={r.item.status} /></span>
           </div>
         ))}
-        {rows.length === 0 && <div className="text-ink-500 italic text-center py-6">No plan items. Use "Add plan item" to create one.</div>}
+        {rows.length === 0 && <div className="text-ink-500 italic text-center py-6 px-4">{emptyText}</div>}
       </div>
 
       {/* ---------- Right: timeline ---------- */}
@@ -195,13 +197,23 @@ export function Gantt({ groups, rangeStart, rangeEnd, today, scale, criticalPath
               const it = r.item
               const x0 = x(it.start), x1 = x(it.end)
               const isCrit = criticalPath && it.critical
+              const title = `${it.code} ${it.name}: ${fmtDate(it.start)} – ${fmtDate(it.end)} · ${it.status} · ${it.progress}%`
+              if (it.kind === 'milestone') {
+                return (
+                  <div key={it.id} className="cursor-pointer" onClick={() => onItemClick(it)} title={title}>
+                    {x1 - x0 > 6 && <div className="absolute border-t border-dashed" style={{ left: x0, width: x1 - x0, top: top + ROW_H / 2, borderColor: STATUS_DOT[it.status] }} />}
+                    <Diamond x={x1} y={top + ROW_H / 2} color={STATUS_DOT[it.status]} size={12} ring={isCrit ? '#DC2626' : undefined} />
+                  </div>
+                )
+              }
+              const h = it.kind === 'activity' ? 8 : 12
               return (
-                <div key={it.id} className="cursor-pointer" onClick={() => onItemClick(it)} title={`${it.code} ${it.name}: ${fmtDate(it.start)} – ${fmtDate(it.end)} · ${it.status} · ${it.progress}%`}>
-                  <div className="absolute rounded" style={{ left: x0, width: Math.max(4, x1 - x0), top: top + 7, height: 12, background: STATUS_BAR[it.status], boxShadow: isCrit ? '0 0 0 1.5px #DC2626' : undefined, opacity: criticalPath && !it.critical ? 0.75 : 1 }}>
+                <div key={it.id} className="cursor-pointer" onClick={() => onItemClick(it)} title={title}>
+                  <div className="absolute rounded" style={{ left: x0, width: Math.max(4, x1 - x0), top: top + (ROW_H - h) / 2, height: h, background: STATUS_BAR[it.status], boxShadow: isCrit ? '0 0 0 1.5px #DC2626' : undefined, opacity: criticalPath && !it.critical ? 0.75 : 1 }}>
                     <div className="h-full rounded-l" style={{ width: `${Math.max(0, Math.min(100, it.progress))}%`, background: 'rgba(0,0,0,0.14)' }} />
                   </div>
-                  <Diamond x={x0} y={top + ROW_H / 2} color={it.progress > 0 ? '#16A34A' : '#94A3B8'} />
-                  {it.end >= today && <Diamond x={x1} y={top + ROW_H / 2} color={STATUS_DOT[it.status]} />}
+                  {it.kind === 'initiative' && <Diamond x={x0} y={top + ROW_H / 2} color={it.progress > 0 ? '#16A34A' : '#94A3B8'} />}
+                  {it.kind === 'initiative' && it.end >= today && <Diamond x={x1} y={top + ROW_H / 2} color={STATUS_DOT[it.status]} />}
                 </div>
               )
             })}
@@ -225,6 +237,6 @@ export function Gantt({ groups, rangeStart, rangeEnd, today, scale, criticalPath
   )
 }
 
-function Diamond({ x, y, color }: { x: number; y: number; color: string }) {
-  return <div className="absolute rotate-45 rounded-[1px] ring-1 ring-white" style={{ left: x - 5, top: y - 5, width: 10, height: 10, background: color }} />
+function Diamond({ x, y, color, size = 10, ring }: { x: number; y: number; color: string; size?: number; ring?: string }) {
+  return <div className="absolute rotate-45 rounded-[1px]" style={{ left: x - size / 2, top: y - size / 2, width: size, height: size, background: color, boxShadow: ring ? `0 0 0 1.5px ${ring}, 0 0 0 2.5px #fff` : '0 0 0 1px #fff' }} />
 }

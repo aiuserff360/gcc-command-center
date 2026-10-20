@@ -1,21 +1,30 @@
-import { useMemo, useState } from 'react'
-import { CheckCircle2, CalendarCheck, Share2, CalendarDays, Target, ChevronLeft, ChevronRight, Plus, ClipboardList, Users, Cpu, Scale, Building2, ArrowLeftRight, Settings2, Wallet, Search } from 'lucide-react'
+import { useMemo, useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { CheckCircle2, CalendarCheck, Share2, CalendarDays, Target, ChevronLeft, ChevronRight, Plus, Flag, Layers, Search, ExternalLink, Info } from 'lucide-react'
 import { PageHeader } from '../components/layout/AppShell'
-import { Card, KpiTile, Badge, Table, ViewAll, Modal, Progress, Tabs, Input, Select, EmptyNote } from '../components/ui'
+import { Card, KpiTile, Badge, Table, ViewAll, Modal, Progress, Tabs, Input, Select } from '../components/ui'
 import { Donut } from '../components/charts'
 import { useCollection, uid } from '../store/useStore'
 import { ProgramKpiEditor } from '../components/ProgramKpiEditor'
-import { seedMilestones, seedProgramKpis, seedDependencies, type Milestone, type ProgramKpis, type Dependency } from '../data/shared'
+import { seedMilestones, seedProgramKpis, seedDependencies, seedRaid, isOpen, type Milestone, type ProgramKpis, type Dependency, type RaidItem } from '../data/shared'
 import { WORKSTREAMS, WORKSTREAM_META, MONTHS, TODAY, CHART_COLORS, type Workstream, type Impact } from '../data/common'
-import { PLAN_GROUPS, seedPlanItems, addDays, type PlanItem } from '../data/planning'
+import { initiativeToPlan, milestoneToPlan, activityToPlan, type PlanItem } from '../data/planning'
+import { seedInitiatives, seedTeamMembers, seedWsBudgetLines, raidWorkstreamOf, type Initiative, type TeamMember, type WsBudgetLine } from '../data/workstreams'
+import { seedActivities, WBS_TO_DASHBOARD, type Activity } from '../data/wbs'
+import { useMoney } from '../data/money'
 import { Gantt, type GanttGroup, type GanttScale } from '../components/planning/Gantt'
-import { PlanItemModal, MilestoneModal, DependencyModal, DependencyForm, MS_STATUSES, MS_PHASES, IMPACTS, DEP_STATUSES } from '../components/planning/Modals'
+import { MilestoneModal, DependencyModal, DependencyForm, MS_STATUSES, MS_PHASES, IMPACTS, DEP_STATUSES } from '../components/planning/Modals'
+import { useWsRows, MilestonesView, InitiativesView, DependenciesView, RisksView, TeamView, BudgetView } from '../components/workstreams/views'
+import { DeliverablesView, ActivityForm } from '../components/workstreams/Deliverables'
+import { InitiativeForm } from '../components/workstreams/forms'
+import { wsIcon, Strip } from '../components/workstreams/common'
 
-/** "23 Oct 2026" with 3-letter months (matches the mock-up; the shared helper renders "Sept") */
+/** "23 Oct 2026" with 3-letter months */
 const fmtDate = (iso: string) => { const d = new Date(iso + 'T00:00:00'); return isNaN(d.getTime()) ? iso : `${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()]} ${d.getFullYear()}` }
 
-const VIEWS = ['Master Plan', 'Workstream', 'Milestones', 'Dependencies'] as const
+const VIEWS = ['Workstream', 'Master Plan', 'Milestones', 'Dependencies'] as const
 type View = (typeof VIEWS)[number]
+const DETAIL_TABS = ['Milestones', 'Initiatives', 'Deliverables', 'Dependencies', 'Risks & Issues', 'Team', 'Budget'] as const
 
 /* Short workstream labels as used in the mock-up tables */
 const WS_SHORT: Record<string, string> = {
@@ -23,12 +32,9 @@ const WS_SHORT: Record<string, string> = {
   'Transition Readiness': 'Transition', 'Operations Setup': 'Operations', 'Finance & Procurement': 'Finance',
 }
 const msShort = (m: Milestone) => (m.name.startsWith('Go/No-Go') ? 'Program' : WS_SHORT[m.workstream] ?? m.workstream)
-
-const GROUP_ICON: Record<number, { icon: React.ReactNode; cls: string }> = {
-  1: { icon: <ClipboardList size={12} />, cls: 'bg-blue-50 text-brand-600' }, 2: { icon: <Users size={12} />, cls: 'bg-blue-50 text-brand-600' },
-  3: { icon: <Cpu size={12} />, cls: 'bg-green-50 text-green-600' }, 4: { icon: <Scale size={12} />, cls: 'bg-violet-50 text-violet-600' },
-  5: { icon: <Building2 size={12} />, cls: 'bg-amber-50 text-amber-600' }, 6: { icon: <ArrowLeftRight size={12} />, cls: 'bg-violet-50 text-violet-600' },
-  7: { icon: <Settings2 size={12} />, cls: 'bg-teal-50 text-teal-600' }, 8: { icon: <Wallet size={12} />, cls: 'bg-green-50 text-green-600' },
+const WS_ICON_CLS: Record<string, string> = {
+  'Talent & Hiring': 'bg-blue-50 text-brand-600', 'Technology & Infrastructure': 'bg-green-50 text-green-600', 'Legal & Compliance': 'bg-violet-50 text-violet-600',
+  'Facilities & Workplace': 'bg-amber-50 text-amber-600', 'Transition Readiness': 'bg-violet-50 text-violet-600', 'Operations Setup': 'bg-teal-50 text-teal-600', 'Finance & Procurement': 'bg-green-50 text-green-600',
 }
 
 /* Heatmap axes (as on the mock-up) */
@@ -41,50 +47,72 @@ const IMPACT_COLOR: Record<Impact, { bg: string; fg: string }> = {
   Critical: { bg: '#EF4444', fg: '#fff' }, High: { bg: '#FB923C', fg: '#7C2D12' }, Medium: { bg: '#FCD34D', fg: '#78350F' }, Low: { bg: '#FEF3C7', fg: '#92400E' },
 }
 
-const newMilestone = (): Milestone => ({ id: uid('ms'), name: '', workstream: 'Talent & Hiring', dueDate: TODAY, status: 'On Track', owner: 'A. Sharma', phase: 'Build', progress: 0, critical: false })
+const newMilestone = (ws: Workstream = 'Talent & Hiring'): Milestone => ({ id: uid('ms'), name: '', workstream: ws, dueDate: TODAY, status: 'On Track', owner: 'A. Sharma', phase: 'Build', progress: 0, critical: false })
 const newDependency = (from: Workstream = 'Talent & Hiring', on: Workstream = 'Technology & Infrastructure'): Dependency =>
   ({ id: uid('dep'), from, on, type: 'System Access', description: '', impact: 'Medium', status: 'On Track', dueDate: TODAY, owner: 'A. Sharma' })
-const newPlanItem = (group: number, existing: PlanItem[]): PlanItem => {
-  const g = PLAN_GROUPS.find((x) => x.n === group) ?? PLAN_GROUPS[0]
-  const n = existing.filter((i) => i.group === g.n).length + 1
-  return { id: uid('pi'), group: g.n, code: `${g.n}.${n}`, name: '', workstream: g.workstream, start: TODAY, end: addDays(TODAY, 30), status: 'Not Started', owner: 'A. Sharma', progress: 0 }
-}
+const newInitiative = (ws: Workstream): Initiative => ({ id: uid('init'), name: '', workstream: ws, owner: 'A. Sharma', status: 'Not Started', start: TODAY, end: '2026-12-31', progress: 0 })
+const newActivity = (ws: Workstream, sub: string, wbs: string, code: string): Activity => ({
+  id: uid('act'), code, name: '', wbsWorkstream: wbs, subWorkstream: sub, workstream: ws, responsible: 'A. Sharma', accountable: 'A. Sharma', vendor: '',
+  baselineStart: TODAY, baselineEnd: '2026-12-31', forecastStart: TODAY, forecastEnd: '2026-12-31', actualStart: '', actualEnd: '', status: 'Not Started', percentComplete: 0, rag: 'Green', daysDelayed: 0,
+  predecessor: '', successor: '', criticalPath: false, budgetLakh: 0, commitmentLakh: 0, actualLakh: 0, forecastLakh: 0, deliverable: '', acceptanceCriteria: '', evidence: '', signOff: 'Pending', lastUpdated: TODAY,
+})
+const byStart = (a: { start: string }, b: { start: string }) => a.start.localeCompare(b.start)
+const byDue = (a: Milestone, b: Milestone) => a.dueDate.localeCompare(b.dueDate)
+const uniq = (a: string[]) => a.filter((v, i) => v && a.indexOf(v) === i)
+const numeric = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true })
 
 export default function Planning() {
-  const [view, setView] = useState<View>('Master Plan')
+  const [params] = useSearchParams()
+  const nav = useNavigate()
+  const [view, setView] = useState<View>(VIEWS.includes(params.get('view') as View) ? (params.get('view') as View) : 'Workstream')
   const [editKpis, setEditKpis] = useState(false)
   const kpisC = useCollection<ProgramKpis>('programKpis', seedProgramKpis)
   const k = kpisC.items[0] ?? seedProgramKpis[0]
   const ms = useCollection<Milestone>('milestones', seedMilestones)
   const deps = useCollection<Dependency>('dependencies', seedDependencies)
-  const plan = useCollection<PlanItem>('planItems', seedPlanItems)
+  const inits = useCollection<Initiative>('initiatives', seedInitiatives)
+  const acts = useCollection<Activity>('activities', seedActivities)
+  const { items: raid } = useCollection<RaidItem>('raid', seedRaid)
+  const { items: team } = useCollection<TeamMember>('teamMembers', seedTeamMembers)
+  const { items: lines } = useCollection<WsBudgetLine>('wsBudgetLines', seedWsBudgetLines)
+  const wss = useWsRows()
+  const money = useMoney()
+
+  /* Selected workstream (deep link: /planning?ws=<name>) */
+  const [ws, setWs] = useState<Workstream>(() => { const p = params.get('ws'); return (p && WORKSTREAMS.includes(p as Workstream) ? p : 'Technology & Infrastructure') as Workstream })
+  useEffect(() => { const p = params.get('ws'); if (p && wss.items.some((w) => w.name === p)) setWs(p as Workstream) }, [params, wss.items])
+  const [detail, setDetail] = useState<(typeof DETAIL_TABS)[number]>('Milestones')
 
   /* Gantt controls */
   const [scale, setScale] = useState<GanttScale>('Months')
   const [critical, setCritical] = useState(true)
   const [scrollStep, setScrollStep] = useState(0)
-  const [wsFilter, setWsFilter] = useState<Workstream>('Talent & Hiring')
+  const [showActs, setShowActs] = useState(true)
 
   /* Modals */
-  const [planEdit, setPlanEdit] = useState<{ item: PlanItem; isNew: boolean } | null>(null)
   const [msEdit, setMsEdit] = useState<{ item: Milestone; isNew: boolean } | null>(null)
   const [depEdit, setDepEdit] = useState<{ item: Dependency; isNew: boolean } | null>(null)
+  const [initEdit, setInitEdit] = useState<{ item: Initiative; isNew: boolean } | null>(null)
+  const [actEdit, setActEdit] = useState<{ item: Activity; isNew: boolean } | null>(null)
   const [cell, setCell] = useState<{ from: Workstream; on: Workstream } | null>(null)
 
-  /* ---------- derived ---------- */
+  /* ---------- program-wide derived ---------- */
+  const scopedMs = useMemo(() => (view === 'Workstream' ? ms.items.filter((m) => m.workstream === ws) : ms.items), [ms.items, view, ws])
   const msCounts = useMemo(() => {
+    const c = (s: string[]) => scopedMs.filter((m) => s.includes(m.status)).length
+    return { onTrack: c(['On Track', 'Completed']), atRisk: c(['At Risk']), delayed: c(['Delayed']), other: c(['Pending', 'Not Started']), total: scopedMs.length }
+  }, [scopedMs])
+  const allMsCounts = useMemo(() => {
     const c = (s: string[]) => ms.items.filter((m) => s.includes(m.status)).length
-    return { onTrack: c(['On Track', 'Completed']), atRisk: c(['At Risk']), delayed: c(['Delayed']), other: c(['Pending', 'Not Started']), total: ms.items.length }
+    return { onTrack: c(['On Track', 'Completed']), atRisk: c(['At Risk']), delayed: c(['Delayed']), total: ms.items.length }
   }, [ms.items])
   const pct = (n: number) => (msCounts.total ? Math.round((n / msCounts.total) * 100) : 0)
-
   const upcoming = useMemo(() => {
-    const limit = addDays(TODAY, 90)
-    const open = ms.items.filter((m) => m.status !== 'Completed' && m.dueDate >= TODAY).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-    const key = open.filter((m) => m.critical && m.dueDate <= limit)
-    return (key.length ? key : open).slice(0, 7)
-  }, [ms.items])
-
+    const open = scopedMs.filter((m) => m.status !== 'Completed' && m.dueDate >= TODAY).sort(byDue)
+    const limit = new Date(TODAY + 'T00:00:00'); limit.setDate(limit.getDate() + 90)
+    const key = open.filter((m) => m.critical && m.dueDate <= limit.toISOString().slice(0, 10))
+    return (view === 'Workstream' ? open : key.length ? key : open).slice(0, 7)
+  }, [scopedMs, view])
   const depCounts = useMemo(() => {
     const by = (i: Impact) => deps.items.filter((d) => d.impact === i).length
     return { Critical: by('Critical'), High: by('High'), Medium: by('Medium'), Low: by('Low'), total: deps.items.length }
@@ -101,24 +129,68 @@ export default function Planning() {
     return m
   }, [deps.items])
 
-  const ganttGroups = useMemo<GanttGroup[]>(() => PLAN_GROUPS.map((g) => ({
-    n: g.n, name: g.name, icon: GROUP_ICON[g.n]?.icon ?? <ClipboardList size={12} />, iconClass: GROUP_ICON[g.n]?.cls ?? 'bg-blue-50 text-brand-600',
-    items: plan.items.filter((i) => i.group === g.n).sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })),
-  })), [plan.items])
-  const wsGroups = useMemo(() => ganttGroups.filter((g) => g.items.some((i) => i.workstream === wsFilter) || PLAN_GROUPS.find((p) => p.n === g.n)?.workstream === wsFilter)
-    .map((g) => ({ ...g, items: g.items.filter((i) => i.workstream === wsFilter) })).filter((g) => g.items.length), [ganttGroups, wsFilter])
-  const planCodes = useMemo(() => plan.items.map((i) => i.code).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })), [plan.items])
-  const planProgress = useMemo(() => {
-    const items = view === 'Workstream' ? wsGroups.flatMap((g) => g.items) : plan.items
-    return items.length ? Math.round(items.reduce((s, i) => s + i.progress, 0) / items.length) : 0
-  }, [plan.items, wsGroups, view])
+  /* ---------- Master plan: one group per workstream, rows = initiatives + key milestones ---------- */
+  const masterGroups = useMemo<GanttGroup[]>(() => wss.items.map((w, gi) => {
+    const n = gi + 1, name = w.name as Workstream
+    const its = inits.items.filter((i) => i.workstream === name).sort(byStart).map((i, idx) => initiativeToPlan(i, n, `${n}.${idx + 1}`, ms.items.find((m) => m.id === i.milestoneId)))
+    const keyMs = ms.items.filter((m) => m.workstream === name && m.critical).sort(byDue).map((m, idx) => milestoneToPlan(m, n, `${n}.M${idx + 1}`))
+    return { n, name, icon: wsIcon(name, 12), iconClass: WS_ICON_CLS[name] ?? 'bg-blue-50 text-brand-600', items: [...its, ...keyMs] }
+  }), [wss.items, inits.items, ms.items])
+
+  /* ---------- Workstream plan: Initiatives, Milestones, then WBS sub-workstreams with their activities ---------- */
+  const wsActs = useMemo(() => acts.items.filter((a) => a.workstream === ws), [acts.items, ws])
+  const subGroupsMeta = useMemo(() => uniq(wsActs.map((a) => a.subWorkstream)).sort(numeric), [wsActs])
+  const wsGroups = useMemo<GanttGroup[]>(() => {
+    const its = inits.items.filter((i) => i.workstream === ws).sort(byStart).map((i, idx) => initiativeToPlan(i, 1, `I${idx + 1}`, ms.items.find((m) => m.id === i.milestoneId)))
+    const mss = ms.items.filter((m) => m.workstream === ws).sort(byDue).map((m, idx) => milestoneToPlan(m, 2, `M${idx + 1}`))
+    const groups: GanttGroup[] = [
+      { n: 1, name: 'Initiatives', label: `Initiatives (${its.length})`, icon: <Flag size={12} />, iconClass: 'bg-blue-50 text-brand-600', items: its },
+      { n: 2, name: 'Milestones', label: `Milestones (${mss.length})`, icon: <CalendarCheck size={12} />, iconClass: 'bg-green-50 text-green-600', items: mss },
+    ]
+    if (showActs) subGroupsMeta.forEach((sub, i) => {
+      const rows = wsActs.filter((a) => a.subWorkstream === sub).sort((a, b) => numeric(a.code, b.code)).map((a) => activityToPlan(a, 3 + i))
+      groups.push({ n: 3 + i, name: sub, label: `${sub} (${rows.length} activities)`, icon: <Layers size={12} />, iconClass: 'bg-slate-100 text-slate-600', items: rows })
+    })
+    return groups
+  }, [inits.items, ms.items, wsActs, subGroupsMeta, ws, showActs])
+  const collapsedSubs = useMemo(() => subGroupsMeta.map((_, i) => 3 + i), [subGroupsMeta])
+
+  /* ---------- Workstream summary strip ---------- */
+  const wsRow = wss.items.find((w) => w.name === ws)
+  const summary = useMemo(() => {
+    const its = inits.items.filter((i) => i.workstream === ws)
+    const mss = ms.items.filter((m) => m.workstream === ws)
+    const done = wsActs.filter((a) => a.status === 'Completed').length
+    const risks = raid.filter((r) => raidWorkstreamOf(r.workstream) === ws && isOpen(r))
+    const dep = deps.items.filter((d) => d.from === ws)
+    const budget = lines.filter((l) => l.workstream === ws)
+    const planned = budget.reduce((s, l) => s + l.plannedCr, 0), actual = budget.reduce((s, l) => s + l.actualCr, 0)
+    const avg = wsActs.length ? Math.round(wsActs.reduce((s, a) => s + a.percentComplete, 0) / wsActs.length) : 0
+    return { its, active: its.filter((i) => i.status !== 'Completed').length, mss, msOk: mss.filter((m) => m.status === 'On Track' || m.status === 'Completed').length, done, avg, risks, dep, planned, actual, team: team.filter((t) => t.workstream === ws).length }
+  }, [inits.items, ms.items, wsActs, raid, deps.items, lines, team, ws])
 
   const dateRange = `${fmtDate(k.timelineStart)} – ${fmtDate(k.timelineEnd)}`
   const maxStep = scale === 'Months' ? 8 : 0
+  const wbsOf = (sub: string) => wsActs.find((a) => a.subWorkstream === sub)?.wbsWorkstream ?? Object.keys(WBS_TO_DASHBOARD).find((w) => WBS_TO_DASHBOARD[w] === ws) ?? ''
+  const nextActCode = (sub: string) => { const n = wsActs.filter((a) => a.subWorkstream === sub).length + 1; return `${sub.split(' ')[0]}.${n}` }
+
+  const openPlanItem = (it: PlanItem) => {
+    if (it.kind === 'initiative') { const i = inits.items.find((x) => x.id === it.sourceId); if (i) setInitEdit({ item: i, isNew: false }) }
+    else if (it.kind === 'milestone') { const m = ms.items.find((x) => x.id === it.sourceId); if (m) setMsEdit({ item: m, isNew: false }) }
+    else { const a = acts.items.find((x) => x.id === it.sourceId); if (a) setActEdit({ item: a, isNew: false }) }
+  }
+  const addToGroup = (g: GanttGroup, scope: Workstream) => {
+    if (view === 'Master Plan') { setInitEdit({ item: newInitiative(g.name as Workstream), isNew: true }); return }
+    if (g.n === 1) setInitEdit({ item: newInitiative(scope), isNew: true })
+    else if (g.n === 2) setMsEdit({ item: newMilestone(scope), isNew: true })
+    else setActEdit({ item: newActivity(scope, g.name, wbsOf(g.name), nextActCode(g.name)), isNew: true })
+  }
 
   const ganttToolbar = (
     <div className="flex items-center gap-2">
-      <button className="btn-secondary !px-2 !py-1 text-[12px]" onClick={() => setPlanEdit({ item: newPlanItem(1, plan.items), isNew: true })}><Plus size={13} /> Add</button>
+      {view === 'Workstream' && (
+        <label className="flex items-center gap-1.5 text-[12px] text-ink-700 cursor-pointer select-none mr-1"><input type="checkbox" checked={showActs} onChange={(e) => setShowActs(e.target.checked)} /> WBS activities</label>
+      )}
       <div className="flex items-center rounded-md border border-line overflow-hidden text-[12px]">
         <button title="Scroll to start" className="px-2 py-1 hover:bg-surface cursor-pointer border-r border-line" onClick={() => setScrollStep(0)}>L</button>
         <button title="Previous" className="px-1.5 py-1 hover:bg-surface cursor-pointer border-r border-line" onClick={() => setScrollStep((s) => Math.max(0, s - 3))}><ChevronLeft size={14} /></button>
@@ -135,69 +207,94 @@ export default function Planning() {
       </label>
     </div>
   )
+  const legend = (
+    <div className="flex items-center gap-4 flex-wrap">
+      <span className="inline-flex items-center gap-1.5"><span className="w-5 h-2.5 rounded-sm bg-navy-900" /> Group summary</span>
+      <span className="inline-flex items-center gap-1.5"><span className="w-5 h-2.5 rounded-sm" style={{ background: '#5B9BF0' }} /> On Track / Completed</span>
+      <span className="inline-flex items-center gap-1.5"><span className="w-5 h-2.5 rounded-sm" style={{ background: '#FBBF24' }} /> At Risk</span>
+      <span className="inline-flex items-center gap-1.5"><span className="w-5 h-2.5 rounded-sm" style={{ background: '#F87171' }} /> Delayed</span>
+      <span className="inline-flex items-center gap-1.5"><span className="w-5 h-2.5 rounded-sm bg-slate-300" /> Not Started / Pending</span>
+      <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rotate-45 bg-green-600" /> Milestone</span>
+      <span className="inline-flex items-center gap-1.5"><span className="w-5 border-t border-dashed border-red-500" /> Today</span>
+    </div>
+  )
 
   const cellDeps = cell ? deps.items.filter((d) => d.from === cell.from && d.on === cell.on) : []
+  const masterCount = masterGroups.reduce((s, g) => s + g.items.length, 0)
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Program Planning" subtitle="Integrated plan, milestones and dependencies across the GCC lifecycle." viewValue={view} viewOptions={VIEWS} onView={(v) => setView(v as View)} dateRange={dateRange} onEdit={() => setEditKpis(true)} editLabel="Edit KPIs" />
+      <PageHeader title="Program Planning" subtitle="Integrated plan, milestones and dependencies across the GCC lifecycle – built from the inputs captured on the Workstreams page." viewValue={view} viewOptions={VIEWS} onView={(v) => setView(v as View)} dateRange={dateRange} onEdit={() => setEditKpis(true)} editLabel="Edit KPIs" />
       <ProgramKpiEditor open={editKpis} onClose={() => setEditKpis(false)} value={k} onSave={(v) => { kpisC.update(v); setEditKpis(false) }} />
 
       {/* KPI tiles */}
       <div className="grid grid-cols-[1fr_1.12fr_1.18fr_1fr_0.9fr] gap-4">
         <KpiTile tone="green" icon={<CheckCircle2 size={22} />} value={`${k.programCompletion}%`} label="Overall Program Progress" trend="up" sub={<span className="text-green-600">+{k.programCompletionDelta}% vs last month</span>} />
-        <KpiTile tone="blue" icon={<CalendarCheck size={22} />} value={msCounts.total} label="Total Milestones" sub={<span><span className="text-green-600">{msCounts.onTrack} On Track</span><span className="text-ink-400 mx-1">|</span><span className="text-amber-600">{msCounts.atRisk} At Risk</span><span className="text-ink-400 mx-1">|</span><span className="text-red-600">{msCounts.delayed} Delayed</span></span>} />
+        <KpiTile tone="blue" icon={<CalendarCheck size={22} />} value={allMsCounts.total} label="Total Milestones" sub={<span><span className="text-green-600">{allMsCounts.onTrack} On Track</span><span className="text-ink-400 mx-1">|</span><span className="text-amber-600">{allMsCounts.atRisk} At Risk</span><span className="text-ink-400 mx-1">|</span><span className="text-red-600">{allMsCounts.delayed} Delayed</span></span>} />
         <KpiTile tone="violet" icon={<Share2 size={22} />} value={depCounts.total} label="Cross-workstream Dependencies" sub={<span className="text-red-600"><span className="text-[9px] align-middle">▼</span> {depCounts.Critical} Critical</span>} />
         <KpiTile tone="orange" icon={<CalendarDays size={22} />} value={fmtDate(k.goLiveTarget)} label="Current Go-Live Target" sub={<span className="text-red-600"><span className="text-[9px] align-middle">▲</span> +{k.goLiveVarianceWeeks} weeks vs baseline</span>} />
         <KpiTile tone="blue" icon={<Target size={22} />} value={`${k.milestoneAdherence}%`} label="Milestone Adherence" trend="up" sub={<span className="text-green-600">+{k.milestoneAdherenceDelta}% vs last month</span>} />
       </div>
 
-      {/* Main area */}
-      {view === 'Master Plan' && (
-        <Card title="Program Timeline" headerRight={ganttToolbar}>
-          <Gantt groups={ganttGroups} rangeStart={k.timelineStart} rangeEnd={k.timelineEnd} today={TODAY} scale={scale} criticalPath={critical} scrollStep={scrollStep}
-            onItemClick={(item) => setPlanEdit({ item, isNew: false })} onAddItem={(g) => setPlanEdit({ item: newPlanItem(g.n, plan.items), isNew: true })} />
-          <div className="flex items-center justify-between mt-3 text-[12px] text-ink-500">
-            <div className="flex items-center gap-4">
-              <span className="inline-flex items-center gap-1.5"><span className="w-5 h-2.5 rounded-sm bg-navy-900" /> Workstream summary</span>
-              <span className="inline-flex items-center gap-1.5"><span className="w-5 h-2.5 rounded-sm" style={{ background: '#5B9BF0' }} /> On Track / Completed</span>
-              <span className="inline-flex items-center gap-1.5"><span className="w-5 h-2.5 rounded-sm" style={{ background: '#FBBF24' }} /> At Risk</span>
-              <span className="inline-flex items-center gap-1.5"><span className="w-5 h-2.5 rounded-sm" style={{ background: '#F87171' }} /> Delayed</span>
-              <span className="inline-flex items-center gap-1.5"><span className="w-5 h-2.5 rounded-sm bg-slate-300" /> Not Started / Pending</span>
-              <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rotate-45 bg-green-600" /> Milestone</span>
-              <span className="inline-flex items-center gap-1.5"><span className="w-5 border-t border-dashed border-red-500" /> Today</span>
+      {/* ---------- Workstream view (default) ---------- */}
+      {view === 'Workstream' && (
+        <>
+          <div className="card px-4 py-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-3">
+                <span className="text-[13px] text-ink-700">Select Workstream</span>
+                <label className="flex items-center gap-2 rounded-lg border border-line bg-white px-3 py-1.5 min-w-[320px] cursor-pointer">
+                  <span className="text-brand-600">{wsIcon(ws, 18)}</span>
+                  <select value={ws} onChange={(e) => { setWs(e.target.value as Workstream); setScrollStep(0) }} className="flex-1 bg-transparent outline-none text-[14px] font-semibold text-ink-900 cursor-pointer">
+                    {wss.items.map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}
+                  </select>
+                </label>
+                {wsRow && <Badge value={wsRow.status} />}
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="hidden xl:inline-flex items-center gap-1.5 text-[12px] text-ink-500"><Info size={13} /> Inputs are managed on the Workstreams page; this view reflects them.</span>
+                <button className="btn-secondary" onClick={() => nav(`/workstreams?ws=${encodeURIComponent(ws)}`)}>Open in Workstreams <ExternalLink size={14} /></button>
+              </div>
             </div>
-            <span>{plan.items.length} plan items · {planProgress}% weighted progress · click a row to edit</span>
+            <div className="mt-3 -mb-3">
+              <Strip items={[
+                { label: 'Progress', value: `${wsRow?.progress ?? 0}%`, color: '#1E5BBE' },
+                { label: 'Lead / Sponsor', value: <span className="text-[14px]">{wsRow?.lead ?? '—'} · {wsRow?.executiveSponsor ?? '—'}</span> },
+                { label: 'Initiatives (active / total)', value: `${summary.active} / ${summary.its.length}` },
+                { label: 'Milestones (on track / total)', value: `${summary.msOk} / ${summary.mss.length}`, color: summary.msOk === summary.mss.length ? '#16A34A' : '#F59E0B' },
+                { label: 'WBS activities complete', value: `${summary.done} / ${wsActs.length}` },
+                { label: 'Avg. activity completion', value: `${summary.avg}%` },
+                { label: 'Open risks & issues', value: summary.risks.length, color: summary.risks.length ? '#DC2626' : '#16A34A' },
+                { label: 'Dependencies on others', value: summary.dep.length },
+                { label: 'Team members', value: summary.team },
+                { label: `Spend / plan (${money.unitLabel})`, value: `${money.num(summary.actual)} / ${money.num(summary.planned)}` },
+              ]} />
+            </div>
           </div>
-        </Card>
+
+          <Card title={`${ws} – Plan`} subtitle={`${summary.its.length} initiatives · ${summary.mss.length} milestones · ${wsActs.length} WBS activities in ${subGroupsMeta.length} sub-workstreams`} headerRight={ganttToolbar}>
+            <Gantt groups={wsGroups} rangeStart={k.timelineStart} rangeEnd={k.timelineEnd} today={TODAY} scale={scale} criticalPath={critical} scrollStep={scrollStep} defaultCollapsed={collapsedSubs}
+              leftHeader="Initiative / Milestone / Activity" onItemClick={openPlanItem} onAddItem={(g) => addToGroup(g, ws)} />
+            <div className="flex items-center justify-between mt-3 text-[12px] text-ink-500">{legend}<span>click a row to edit · expand a sub-workstream to see its activities</span></div>
+          </Card>
+
+          <Tabs tabs={[...DETAIL_TABS]} active={detail} onChange={(t) => setDetail(t as (typeof DETAIL_TABS)[number])} />
+          {detail === 'Milestones' && <MilestonesView ws={ws} />}
+          {detail === 'Initiatives' && <InitiativesView ws={ws} />}
+          {detail === 'Deliverables' && <DeliverablesView ws={ws} />}
+          {detail === 'Dependencies' && <DependenciesView ws={ws} />}
+          {detail === 'Risks & Issues' && <RisksView ws={ws} />}
+          {detail === 'Team' && <TeamView ws={ws} />}
+          {detail === 'Budget' && <BudgetView ws={ws} />}
+        </>
       )}
 
-      {view === 'Workstream' && (
-        <Card title="Workstream Plan" subtitle={`${wsFilter} · ${wsGroups.flatMap((g) => g.items).length} plan items · ${planProgress}% progress`} headerRight={ganttToolbar}>
-          <Tabs size="sm" className="mb-3 !shadow-none" tabs={[...WORKSTREAMS]} active={wsFilter} onChange={(t) => setWsFilter(t as Workstream)} />
-          <Gantt groups={wsGroups} rangeStart={k.timelineStart} rangeEnd={k.timelineEnd} today={TODAY} scale={scale} criticalPath={critical} scrollStep={scrollStep}
-            onItemClick={(item) => setPlanEdit({ item, isNew: false })} onAddItem={(g) => setPlanEdit({ item: newPlanItem(g.n, plan.items), isNew: true })} />
-          <div className="grid grid-cols-3 gap-4 mt-4">
-            <div className="rounded-lg border border-line p-3">
-              <div className="text-[12px] text-ink-500 mb-2">Milestones for {WS_SHORT[wsFilter]}</div>
-              {(['On Track', 'At Risk', 'Delayed', 'Completed'] as const).map((s) => (
-                <div key={s} className="flex items-center justify-between text-[12.5px] py-0.5"><Badge value={s} /><span className="font-medium">{ms.items.filter((m) => m.workstream === wsFilter && m.status === s).length}</span></div>
-              ))}
-            </div>
-            <div className="rounded-lg border border-line p-3">
-              <div className="text-[12px] text-ink-500 mb-2">Dependencies of {WS_SHORT[wsFilter]} on others</div>
-              {IMPACTS.map((i) => (
-                <div key={i} className="flex items-center justify-between text-[12.5px] py-0.5"><Badge value={i} /><span className="font-medium">{deps.items.filter((d) => d.from === wsFilter && d.impact === i).length}</span></div>
-              ))}
-            </div>
-            <div className="rounded-lg border border-line p-3">
-              <div className="text-[12px] text-ink-500 mb-2">Upcoming milestones</div>
-              {ms.items.filter((m) => m.workstream === wsFilter && m.status !== 'Completed' && m.dueDate >= TODAY).sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, 4).map((m) => (
-                <button key={m.id} className="w-full flex items-center justify-between text-[12.5px] py-0.5 cursor-pointer hover:text-brand-600 text-left" onClick={() => setMsEdit({ item: m, isNew: false })}><span className="truncate">{m.name}</span><span className="text-ink-500 shrink-0 ml-2">{fmtDate(m.dueDate)}</span></button>
-              ))}
-              {ms.items.filter((m) => m.workstream === wsFilter && m.status !== 'Completed' && m.dueDate >= TODAY).length === 0 && <EmptyNote>No upcoming milestones.</EmptyNote>}
-            </div>
-          </div>
+      {/* ---------- Master plan ---------- */}
+      {view === 'Master Plan' && (
+        <Card title="Program Timeline" subtitle="All workstreams – initiatives and key milestones as entered on the Workstreams page" headerRight={ganttToolbar}>
+          <Gantt groups={masterGroups} rangeStart={k.timelineStart} rangeEnd={k.timelineEnd} today={TODAY} scale={scale} criticalPath={critical} scrollStep={scrollStep}
+            leftHeader="Workstream / Initiative / Milestone" onItemClick={openPlanItem} onAddItem={(g) => addToGroup(g, g.name as Workstream)} />
+          <div className="flex items-center justify-between mt-3 text-[12px] text-ink-500">{legend}<span>{masterCount} rows across {masterGroups.length} workstreams · click a row to edit</span></div>
         </Card>
       )}
 
@@ -206,7 +303,7 @@ export default function Planning() {
 
       {/* Bottom row */}
       <div className="grid grid-cols-[290px_1fr_392px] gap-4">
-        <Card title="Milestone Status">
+        <Card title={view === 'Workstream' ? `Milestone Status – ${WS_SHORT[ws]}` : 'Milestone Status'}>
           <div className="flex items-center gap-3 pt-1">
             <div className="shrink-0"><Donut size={112} inner={0.74} data={[
               { name: 'On Track', value: msCounts.onTrack, color: CHART_COLORS.green }, { name: 'At Risk', value: msCounts.atRisk, color: CHART_COLORS.amber },
@@ -222,7 +319,7 @@ export default function Planning() {
             </div>
           </div>
         </Card>
-        <Card title={<>Key Upcoming Milestones <span className="font-normal text-[13px] text-ink-700">(Next 90 days)</span></>} action={<div className="flex items-center gap-3"><button className="link inline-flex items-center gap-1" onClick={() => setMsEdit({ item: newMilestone(), isNew: true })}><Plus size={12} /> Add Milestone</button><ViewAll onClick={() => setView('Milestones')} /></div>}>
+        <Card title={<>{view === 'Workstream' ? `Upcoming Milestones – ${WS_SHORT[ws]}` : 'Key Upcoming Milestones'} <span className="font-normal text-[13px] text-ink-700">(Next 90 days)</span></>} action={<div className="flex items-center gap-3"><button className="link inline-flex items-center gap-1" onClick={() => setMsEdit({ item: newMilestone(view === 'Workstream' ? ws : 'Talent & Hiring'), isNew: true })}><Plus size={12} /> Add Milestone</button><ViewAll onClick={() => setView('Milestones')} /></div>}>
           <div className="[&_.td]:text-[11.5px]! [&_.td]:px-1.5! [&_.th]:px-1.5!">
           <Table<Milestone> compact rows={upcoming} onRowClick={(m) => setMsEdit({ item: m, isNew: false })} columns={[
             { key: 'name', header: 'Milestone', className: 'whitespace-nowrap' },
@@ -247,10 +344,11 @@ export default function Planning() {
         </Card>
       </div>
 
-      {/* ---------- Modals ---------- */}
-      {planEdit && <PlanItemModal open value={planEdit.item} isNew={planEdit.isNew} codes={planCodes} onClose={() => setPlanEdit(null)} onSave={(v) => { if (planEdit.isNew) plan.add(v); else plan.update(v); setPlanEdit(null) }} onDelete={(id) => plan.remove(id)} />}
+      {/* ---------- Modals (same forms as the Workstreams page, so edits stay in sync) ---------- */}
       {msEdit && <MilestoneModal open value={msEdit.item} isNew={msEdit.isNew} onClose={() => setMsEdit(null)} onSave={(v) => { if (msEdit.isNew) ms.add(v); else ms.update(v); setMsEdit(null) }} onDelete={(id) => ms.remove(id)} />}
       {depEdit && <DependencyModal open value={depEdit.item} isNew={depEdit.isNew} onClose={() => setDepEdit(null)} onSave={(v) => { if (depEdit.isNew) deps.add(v); else deps.update(v); setDepEdit(null) }} onDelete={(id) => deps.remove(id)} />}
+      {initEdit && <InitiativeForm initial={initEdit.item} isNew={initEdit.isNew} wsOptions={wss.names} milestones={ms.items} onClose={() => setInitEdit(null)} onSave={(v) => { if (initEdit.isNew) inits.add(v); else inits.update(v); setInitEdit(null) }} onDelete={initEdit.isNew ? undefined : () => { inits.remove(initEdit.item.id); setInitEdit(null) }} />}
+      {actEdit && <ActivityForm initial={actEdit.item} isNew={actEdit.isNew} onClose={() => setActEdit(null)} onSave={(v) => { if (actEdit.isNew) acts.add({ ...v, lastUpdated: TODAY }); else acts.update({ ...v, lastUpdated: TODAY }); setActEdit(null) }} onDelete={actEdit.isNew ? undefined : () => { acts.remove(actEdit.item.id); setActEdit(null) }} />}
       {cell && <HeatCellModal from={cell.from} on={cell.on} rows={cellDeps} onClose={() => setCell(null)} onAdd={(d) => deps.add(d)} onEdit={(d) => { setCell(null); setDepEdit({ item: d, isNew: false }) }} />}
     </div>
   )
