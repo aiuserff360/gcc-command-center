@@ -3,11 +3,10 @@ import { Modal, Field, Input, TextArea, Select, FormGrid, ConfirmDelete } from '
 import { OWNERS, WORKSTREAMS, TODAY } from '../../data/common'
 import type { Milestone, RaidItem, Dependency } from '../../data/shared'
 import { RISK_CATEGORIES, LIKELIHOOD, IMPACT_SCALE } from '../../data/shared'
-import type { Activity } from '../../data/wbs'
 import { uid } from '../../store/useStore'
 import {
-  WAVE_STATUSES, WAVE_COLORS, KT_STATUSES, KT_SIGNOFF, KT_FUNCTIONS, READINESS_WORKSTREAMS, DIMENSIONS, READINESS_STATUSES, GAP_STATUSES, assessmentScore,
-  type Wave, type KtItem, type ReadinessAssessment, type ReadinessGap, type ChecklistItem, type TransitionSettings, type Dimension, type GapStatus, type KtStatus, type KtSignOff, type WaveStatus,
+  WAVE_STATUSES, WAVE_COLORS, KT_STATUSES, KT_SIGNOFF, DIMENSIONS, DIM_KEY, READINESS_STATUSES, GAP_STATUSES, PROJECT_STATUSES, assessmentScore, blankAssessment, ktStatusFor,
+  type Wave, type KtItem, type ReadinessAssessment, type ReadinessGap, type ChecklistItem, type TransitionSettings, type Dimension, type GapStatus, type KtStatus, type KtSignOff, type WaveStatus, type TransitionProject, type ProjectStatus, type RaidLink,
 } from '../../data/transition'
 
 /* ---------- small helpers ---------- */
@@ -27,38 +26,83 @@ function FormFooter({ onClose, onSave, onDelete, saveLabel = 'Save' }: Footer) {
     </>
   )
 }
-const waveOptions = (waves: Wave[]) => waves.map((w) => String(w.number))
+const waveOptions = (waves: Wave[]) => [...waves].sort((a, b) => a.number - b.number).map((w) => String(w.number))
+const projectLabel = (p: TransitionProject) => `${p.name} (${p.businessUnit})`
 
-/* ---------- Wave ---------- */
-export function WaveForm({ initial, waves, onClose, onSave, onDelete }: { initial: Wave | null; waves: Wave[]; onClose: () => void; onSave: (w: Wave) => void; onDelete?: () => void }) {
-  const nextNo = (Math.max(0, ...waves.map((w) => w.number)) + 1)
-  const { f, set } = useForm<Wave>(initial ?? { id: uid('wave'), number: nextNo, scope: '', startDate: '2027-02-01', endDate: '2027-02-28', status: 'Not Started', progress: 0, color: WAVE_COLORS[(nextNo - 1) % WAVE_COLORS.length], lead: OWNERS[0] })
+/** Project picker: shows "name (business unit)" and returns the project id. */
+function ProjectSelect({ projects, value, onChange, allowNone, className }: { projects: TransitionProject[]; value: string; onChange: (id: string) => void; allowNone?: boolean; className?: string }) {
+  const sorted = [...projects].sort((a, b) => a.businessUnit.localeCompare(b.businessUnit) || a.wave - b.wave || a.name.localeCompare(b.name))
   return (
-    <Modal open onClose={onClose} title={initial ? `Edit Wave ${initial.number}` : 'Add Transition Wave'} footer={<FormFooter onClose={onClose} onSave={() => onSave(f)} onDelete={onDelete} />}>
+    <select className={`input ${className ?? ''}`} value={value} onChange={(e) => onChange(e.target.value)}>
+      {allowNone && <option value="">– none –</option>}
+      {sorted.map((p) => <option key={p.id} value={p.id}>{projectLabel(p)}</option>)}
+    </select>
+  )
+}
+
+/* ---------- Transition project ---------- */
+export function ProjectForm({ initial, units, waves, businessUnit, wave, onClose, onSave, onDelete }: {
+  initial: TransitionProject | null; units: string[]; waves: Wave[]; businessUnit?: string; wave?: number; onClose: () => void; onSave: (p: TransitionProject) => void; onDelete?: () => void
+}) {
+  const { f, set } = useForm<TransitionProject>(initial ?? {
+    id: uid('proj'), name: '', businessUnit: businessUnit ?? units[0] ?? '', wave: wave ?? waves[0]?.number ?? 1, status: 'Not Started', progress: 0,
+    startDate: TODAY, endDate: TODAY, goLiveDate: TODAY, globalOwner: '', indiaLead: OWNERS[0], region: '', scopeSummary: '', ftes: 0, description: '', notes: '',
+  })
+  return (
+    <Modal open onClose={onClose} title={initial ? `Edit project – ${initial.name}` : 'Add transition project'} width="max-w-3xl" footer={<FormFooter onClose={onClose} onSave={() => onSave(f)} onDelete={onDelete} />}>
       <FormGrid cols={3}>
-        <Field label="Wave number"><Input type="number" min={1} value={f.number} onChange={(e) => set('number', num(e.target.value))} /></Field>
-        <Field label="Scope (comma-separated functions)" className="col-span-2"><Input value={f.scope} placeholder="Finance, HR, Procurement" onChange={(e) => set('scope', e.target.value)} /></Field>
+        <Field label="Project name" className="col-span-2"><Input value={f.name} placeholder="e.g. S/4HANA AMS – Europe" onChange={(e) => set('name', e.target.value)} /></Field>
+        <Field label="Business unit"><Select options={units.includes(f.businessUnit) ? units : [f.businessUnit, ...units]} value={f.businessUnit} onChange={(e) => set('businessUnit', e.target.value)} /></Field>
+        <Field label="Wave"><Select options={waveOptions(waves)} value={String(f.wave)} onChange={(e) => set('wave', Number(e.target.value))} /></Field>
+        <Field label="Status"><Select options={PROJECT_STATUSES} value={f.status} onChange={(e) => set('status', e.target.value as ProjectStatus)} /></Field>
+        <Field label="Progress %"><Input type="number" min={0} max={100} value={f.progress} onChange={(e) => set('progress', Math.max(0, Math.min(100, num(e.target.value))))} /></Field>
         <Field label="Start date"><Input type="date" value={f.startDate} onChange={(e) => set('startDate', e.target.value)} /></Field>
         <Field label="End date"><Input type="date" value={f.endDate} onChange={(e) => set('endDate', e.target.value)} /></Field>
-        <Field label="Status"><Select options={WAVE_STATUSES} value={f.status} onChange={(e) => set('status', e.target.value as WaveStatus)} /></Field>
-        <Field label="Progress %"><Input type="number" min={0} max={100} value={f.progress} onChange={(e) => set('progress', Math.max(0, Math.min(100, num(e.target.value))))} /></Field>
-        <Field label="Wave lead"><Select options={OWNERS} value={f.lead} onChange={(e) => set('lead', e.target.value)} /></Field>
-        <Field label="Colour"><div className="flex items-center gap-1.5 pt-1">{WAVE_COLORS.map((c) => <button key={c} className="w-6 h-6 rounded-full border-2 cursor-pointer" style={{ background: c, borderColor: f.color === c ? '#0B2240' : 'transparent' }} onClick={() => set('color', c)} />)}</div></Field>
+        <Field label="Go-live date"><Input type="date" value={f.goLiveDate} onChange={(e) => set('goLiveDate', e.target.value)} /></Field>
+        <Field label="Global owner"><Input value={f.globalOwner} placeholder="Global process / delivery owner" onChange={(e) => set('globalOwner', e.target.value)} /></Field>
+        <Field label="India lead"><Select options={OWNERS} value={f.indiaLead} onChange={(e) => set('indiaLead', e.target.value)} /></Field>
+        <Field label="FTEs transitioning"><Input type="number" min={0} value={f.ftes} onChange={(e) => set('ftes', num(e.target.value))} /></Field>
+        <Field label="Region / client" className="col-span-3"><Input value={f.region} placeholder="e.g. Europe – DACH & Nordics clients" onChange={(e) => set('region', e.target.value)} /></Field>
+        <Field label="Scope summary" className="col-span-3"><Input value={f.scopeSummary} placeholder="What moves to the GCC" onChange={(e) => set('scopeSummary', e.target.value)} /></Field>
+        <Field label="Description" className="col-span-3"><TextArea value={f.description} onChange={(e) => set('description', e.target.value)} /></Field>
+        <Field label="Notes" className="col-span-3"><TextArea value={f.notes ?? ''} onChange={(e) => set('notes', e.target.value)} /></Field>
       </FormGrid>
     </Modal>
   )
 }
 
-/* ---------- Milestone (shared collection) + wave ---------- */
-export function MilestoneForm({ initial, initialWave, waves, onClose, onSave, onDelete }: {
-  initial: Milestone | null; initialWave?: number; waves: Wave[]; onClose: () => void; onSave: (m: Milestone, wave: number) => void; onDelete?: () => void
+/* ---------- Wave ---------- */
+export function WaveForm({ initial, waves, onClose, onSave, onDelete }: { initial: Wave | null; waves: Wave[]; onClose: () => void; onSave: (w: Wave) => void; onDelete?: () => void }) {
+  const nextNo = (Math.max(0, ...waves.map((w) => w.number)) + 1)
+  const { f, set } = useForm<Wave>(initial ?? { id: uid('wave'), number: nextNo, name: '', startDate: '2027-03-01', endDate: '2027-03-31', status: 'Not Started', color: WAVE_COLORS[(nextNo - 1) % WAVE_COLORS.length], lead: OWNERS[0] })
+  return (
+    <Modal open onClose={onClose} title={initial ? `Edit Wave ${initial.number}` : 'Add Transition Wave'} footer={<FormFooter onClose={onClose} onSave={() => onSave(f)} onDelete={onDelete} />}>
+      <p className="text-[12px] text-ink-500 mb-3">Scope (business units) and progress of a wave are derived from the projects assigned to it.</p>
+      <FormGrid cols={3}>
+        <Field label="Wave number"><Input type="number" min={1} value={f.number} onChange={(e) => set('number', num(e.target.value))} /></Field>
+        <Field label="Wave name" className="col-span-2"><Input value={f.name} placeholder="e.g. Practice scale-up" onChange={(e) => set('name', e.target.value)} /></Field>
+        <Field label="Start date"><Input type="date" value={f.startDate} onChange={(e) => set('startDate', e.target.value)} /></Field>
+        <Field label="End date"><Input type="date" value={f.endDate} onChange={(e) => set('endDate', e.target.value)} /></Field>
+        <Field label="Status"><Select options={WAVE_STATUSES} value={f.status} onChange={(e) => set('status', e.target.value as WaveStatus)} /></Field>
+        <Field label="Wave lead"><Select options={OWNERS} value={f.lead} onChange={(e) => set('lead', e.target.value)} /></Field>
+        <Field label="Colour" className="col-span-2"><div className="flex items-center gap-1.5 pt-1">{WAVE_COLORS.map((c) => <button key={c} className="w-6 h-6 rounded-full border-2 cursor-pointer" style={{ background: c, borderColor: f.color === c ? '#0B2240' : 'transparent' }} onClick={() => set('color', c)} />)}</div></Field>
+      </FormGrid>
+    </Modal>
+  )
+}
+
+/* ---------- Milestone (shared collection) + wave + project link ---------- */
+export function MilestoneForm({ initial, initialWave, initialProject, waves, projects, onClose, onSave, onDelete }: {
+  initial: Milestone | null; initialWave?: number; initialProject?: string; waves: Wave[]; projects: TransitionProject[]; onClose: () => void; onSave: (m: Milestone, wave: number, projectId: string) => void; onDelete?: () => void
 }) {
   const { f, set } = useForm<Milestone>(initial ?? { id: uid('ms'), name: '', workstream: 'Transition Readiness', dueDate: TODAY, status: 'On Track', owner: OWNERS[0], phase: 'Transition', critical: false })
-  const [wave, setWave] = useState(String(initialWave ?? waves[0]?.number ?? 1))
+  const [projectId, setProjectId] = useState(initialProject ?? '')
+  const [wave, setWave] = useState(String(initialWave ?? projects.find((p) => p.id === initialProject)?.wave ?? waves[0]?.number ?? 1))
   return (
-    <Modal open onClose={onClose} title={initial ? 'Edit Milestone' : 'Add Milestone'} footer={<FormFooter onClose={onClose} onSave={() => onSave(f, Number(wave))} onDelete={onDelete} />}>
+    <Modal open onClose={onClose} title={initial ? 'Edit Milestone' : 'Add Milestone'} footer={<FormFooter onClose={onClose} onSave={() => onSave(f, Number(wave), projectId)} onDelete={onDelete} />}>
       <FormGrid cols={2}>
         <Field label="Milestone" className="col-span-2"><Input value={f.name} onChange={(e) => set('name', e.target.value)} /></Field>
+        <Field label="Project (optional)" className="col-span-2"><ProjectSelect projects={projects} value={projectId} allowNone onChange={(id) => { setProjectId(id); const p = projects.find((x) => x.id === id); if (p) setWave(String(p.wave)) }} /></Field>
         <Field label="Wave"><Select options={waveOptions(waves)} value={wave} onChange={(e) => setWave(e.target.value)} /></Field>
         <Field label="Workstream"><Select options={WORKSTREAMS} value={f.workstream} onChange={(e) => set('workstream', e.target.value as Milestone['workstream'])} /></Field>
         <Field label="Target date"><Input type="date" value={f.dueDate} onChange={(e) => set('dueDate', e.target.value)} /></Field>
@@ -70,18 +114,26 @@ export function MilestoneForm({ initial, initialWave, waves, onClose, onSave, on
   )
 }
 
-/* ---------- Risk / Issue (shared 'raid') ---------- */
-export function RaidForm({ initial, existing, onClose, onSave, onDelete }: { initial: RaidItem | null; existing: RaidItem[]; onClose: () => void; onSave: (r: RaidItem) => void; onDelete?: () => void }) {
+/* ---------- Risk / Issue (shared 'raid') + business unit / project link ---------- */
+export function RaidForm({ initial, existing, link, units, projects, businessUnit, projectId, onClose, onSave, onDelete }: {
+  initial: RaidItem | null; existing: RaidItem[]; link?: RaidLink; units: string[]; projects: TransitionProject[]; businessUnit?: string; projectId?: string
+  onClose: () => void; onSave: (r: RaidItem, link: RaidLink | null) => void; onDelete?: () => void
+}) {
   const nextCode = (type: 'Risk' | 'Issue') => `${type === 'Risk' ? 'R' : 'I'}-${String(existing.length + 1).padStart(3, '0')}`
   const { f, set, setF } = useForm<RaidItem>(initial ?? {
     id: uid('raid'), code: nextCode('Risk'), type: 'Risk', title: '', workstream: 'Transition', category: 'Process & Operations', level: 'Medium', status: 'Open', owner: OWNERS[0],
     dueDate: TODAY, openedOn: TODAY, likelihood: 'Medium', impact: 'Medium', impactScore: 5, description: '', mitigation: '',
   })
+  const [bu, setBu] = useState(link?.businessUnit ?? businessUnit ?? projects.find((p) => p.id === projectId)?.businessUnit ?? '')
+  const [pid, setPid] = useState(link?.projectId ?? projectId ?? '')
+  const unitProjects = projects.filter((p) => !bu || p.businessUnit === bu)
   return (
-    <Modal open onClose={onClose} title={initial ? `Edit ${initial.code}` : 'Log Issue / Risk'} footer={<FormFooter onClose={onClose} onSave={() => onSave(f)} onDelete={onDelete} saveLabel={initial ? 'Save' : 'Log'} />}>
+    <Modal open onClose={onClose} title={initial ? `Edit ${initial.code}` : 'Log Issue / Risk'} footer={<FormFooter onClose={onClose} onSave={() => onSave(f, bu ? { id: f.id, businessUnit: bu, projectId: pid || undefined } : null)} onDelete={onDelete} saveLabel={initial ? 'Save' : 'Log'} />}>
       <FormGrid cols={3}>
         <Field label="Type"><Select options={['Risk', 'Issue']} value={f.type} onChange={(e) => { const t = e.target.value as 'Risk' | 'Issue'; setF({ ...f, type: t, code: initial ? f.code : nextCode(t) }) }} /></Field>
         <Field label="Title" className="col-span-2"><Input value={f.title} onChange={(e) => set('title', e.target.value)} /></Field>
+        <Field label="Business unit"><select className="input" value={bu} onChange={(e) => { setBu(e.target.value); setPid('') }}><option value="">– program-wide –</option>{units.map((u) => <option key={u} value={u}>{u}</option>)}</select></Field>
+        <Field label="Project (optional)" className="col-span-2"><ProjectSelect projects={unitProjects} value={pid} allowNone onChange={(id) => { setPid(id); const p = projects.find((x) => x.id === id); if (p) setBu(p.businessUnit) }} /></Field>
         <Field label="Workstream"><Input value={f.workstream} onChange={(e) => set('workstream', e.target.value)} /></Field>
         <Field label="Category"><Select options={RISK_CATEGORIES} value={f.category} onChange={(e) => set('category', e.target.value as RaidItem['category'])} /></Field>
         <Field label="Level"><Select options={['Critical', 'High', 'Medium', 'Low']} value={f.level} onChange={(e) => set('level', e.target.value as RaidItem['level'])} /></Field>
@@ -99,23 +151,25 @@ export function RaidForm({ initial, existing, onClose, onSave, onDelete }: { ini
 }
 
 /* ---------- KT item ---------- */
-export function KtForm({ initial, waves, onClose, onSave, onDelete }: { initial: KtItem | null; waves: Wave[]; onClose: () => void; onSave: (k: KtItem) => void; onDelete?: () => void }) {
-  const { f, set, setF } = useForm<KtItem>(initial ?? { id: uid('kt'), process: '', function: KT_FUNCTIONS[0], wave: waves[0]?.number ?? 1, globalOwner: '', indiaOwner: OWNERS[0], sessionsPlanned: 6, sessionsDone: 0, status: 'Not Started', signOff: 'Not Started', targetDate: TODAY })
+export function KtForm({ initial, projects, projectId, onClose, onSave, onDelete }: { initial: KtItem | null; projects: TransitionProject[]; projectId?: string; onClose: () => void; onSave: (k: KtItem) => void; onDelete?: () => void }) {
+  const p0 = projects.find((p) => p.id === projectId) ?? projects[0]
+  const { f, set, setF } = useForm<KtItem>(initial ?? { id: uid('kt'), projectId: p0?.id ?? '', businessUnit: p0?.businessUnit ?? '', process: '', wave: p0?.wave ?? 1, globalOwner: p0?.globalOwner ?? '', indiaOwner: p0?.indiaLead ?? OWNERS[0], sessionsPlanned: 6, sessionsDone: 0, status: 'Not Started', signOff: 'Not Started', targetDate: TODAY })
   const setSessions = (planned: number, done: number) => {
-    const status: KtStatus = done >= planned && planned > 0 ? 'Completed' : done > 0 ? 'In Progress' : 'Not Started'
+    const status = ktStatusFor(planned, done)
     setF({ ...f, sessionsPlanned: planned, sessionsDone: done, status, signOff: status === 'Completed' ? (f.signOff === 'Not Started' ? 'Pending' : f.signOff) : f.signOff })
   }
+  const setProject = (id: string) => { const p = projects.find((x) => x.id === id); if (p) setF({ ...f, projectId: p.id, businessUnit: p.businessUnit, wave: p.wave, globalOwner: f.globalOwner || p.globalOwner, indiaOwner: f.indiaOwner || p.indiaLead }) }
   return (
     <Modal open onClose={onClose} title={initial ? 'Edit Knowledge Transfer Item' : 'Add Knowledge Transfer Item'} footer={<FormFooter onClose={onClose} onSave={() => onSave(f)} onDelete={onDelete} />}>
       <FormGrid cols={3}>
-        <Field label="Process / activity" className="col-span-2"><Input value={f.process} onChange={(e) => set('process', e.target.value)} /></Field>
-        <Field label="Function"><Select options={KT_FUNCTIONS} value={f.function} onChange={(e) => set('function', e.target.value)} /></Field>
-        <Field label="Wave"><Select options={waveOptions(waves)} value={String(f.wave)} onChange={(e) => set('wave', Number(e.target.value))} /></Field>
+        <Field label="Project" className="col-span-3"><ProjectSelect projects={projects} value={f.projectId} onChange={setProject} /></Field>
+        <Field label="Process / activity" className="col-span-3"><Input value={f.process} onChange={(e) => set('process', e.target.value)} /></Field>
         <Field label="Global owner"><Input value={f.globalOwner} onChange={(e) => set('globalOwner', e.target.value)} /></Field>
         <Field label="India owner"><Select options={OWNERS} value={f.indiaOwner} onChange={(e) => set('indiaOwner', e.target.value)} /></Field>
+        <Field label="Target date"><Input type="date" value={f.targetDate} onChange={(e) => set('targetDate', e.target.value)} /></Field>
         <Field label="Sessions planned"><Input type="number" min={0} value={f.sessionsPlanned} onChange={(e) => setSessions(num(e.target.value), f.sessionsDone)} /></Field>
         <Field label="Sessions done"><Input type="number" min={0} value={f.sessionsDone} onChange={(e) => setSessions(f.sessionsPlanned, num(e.target.value))} /></Field>
-        <Field label="Target date"><Input type="date" value={f.targetDate} onChange={(e) => set('targetDate', e.target.value)} /></Field>
+        <Field label="Wave (from project)"><Input value={`Wave ${f.wave} · ${f.businessUnit}`} readOnly className="bg-surface text-ink-500" /></Field>
         <Field label="Status"><Select options={KT_STATUSES} value={f.status} onChange={(e) => set('status', e.target.value as KtStatus)} /></Field>
         <Field label="Sign-off"><Select options={KT_SIGNOFF} value={f.signOff} onChange={(e) => set('signOff', e.target.value as KtSignOff)} /></Field>
       </FormGrid>
@@ -124,25 +178,28 @@ export function KtForm({ initial, waves, onClose, onSave, onDelete }: { initial:
 }
 
 /* ---------- Readiness assessment ---------- */
-export function AssessmentForm({ initial, waves, onClose, onSave, onDelete }: { initial: ReadinessAssessment | null; waves: Wave[]; onClose: () => void; onSave: (a: ReadinessAssessment) => void; onDelete?: () => void }) {
-  const { f, set, setF } = useForm<ReadinessAssessment>(initial ?? {
-    id: uid('ra'), wave: waves[0]?.number ?? 1, workstream: READINESS_WORKSTREAMS[0], dims: Object.fromEntries(DIMENSIONS.map((d) => [d, 50])) as Record<Dimension, number>, status: 'On Track', nextAction: '', assessedOn: TODAY,
-  })
+export function AssessmentForm({ initial, projects, projectId, onClose, onSave, onDelete }: { initial: ReadinessAssessment | null; projects: TransitionProject[]; projectId?: string; onClose: () => void; onSave: (a: ReadinessAssessment) => void; onDelete?: () => void }) {
+  const p0 = projects.find((p) => p.id === projectId) ?? projects[0]
+  const { f, set, setF } = useForm<ReadinessAssessment>(initial ?? (p0 ? blankAssessment(uid('ra'), p0) : { id: uid('ra'), projectId: '', businessUnit: '', wave: 1, people: 50, process: 50, technology: 50, facilities: 50, controls: 50, status: 'Not Started', nextAction: '', assessedOn: TODAY }))
   const score = assessmentScore(f)
+  const setProject = (id: string) => { const p = projects.find((x) => x.id === id); if (p) setF({ ...f, projectId: p.id, businessUnit: p.businessUnit, wave: p.wave }) }
   return (
     <Modal open onClose={onClose} title="Update Readiness Assessment" footer={<FormFooter onClose={onClose} onSave={() => onSave({ ...f, assessedOn: TODAY })} onDelete={onDelete} />}>
       <FormGrid cols={3}>
-        <Field label="Wave"><Select options={waveOptions(waves)} value={String(f.wave)} onChange={(e) => set('wave', Number(e.target.value))} /></Field>
-        <Field label="Workstream" className="col-span-2"><Select options={READINESS_WORKSTREAMS} value={f.workstream} onChange={(e) => set('workstream', e.target.value)} /></Field>
+        <Field label="Project" className="col-span-2"><ProjectSelect projects={projects} value={f.projectId} onChange={setProject} /></Field>
+        <Field label="Business unit · wave"><Input value={`${f.businessUnit} · Wave ${f.wave}`} readOnly className="bg-surface text-ink-500" /></Field>
       </FormGrid>
       <div className="mt-3 space-y-2">
-        {DIMENSIONS.map((d) => (
-          <div key={d} className="flex items-center gap-3 text-[12.5px]">
-            <span className="w-[190px] text-ink-700">{d}</span>
-            <input type="range" min={0} max={100} value={f.dims[d]} onChange={(e) => setF({ ...f, dims: { ...f.dims, [d]: num(e.target.value) } })} className="flex-1 accent-brand-600" />
-            <Input type="number" min={0} max={100} value={f.dims[d]} onChange={(e) => setF({ ...f, dims: { ...f.dims, [d]: Math.max(0, Math.min(100, num(e.target.value))) } })} className="!w-20" />
-          </div>
-        ))}
+        {DIMENSIONS.map((d) => {
+          const k = DIM_KEY[d]
+          return (
+            <div key={d} className="flex items-center gap-3 text-[12.5px]">
+              <span className="w-[190px] text-ink-700">{d}</span>
+              <input type="range" min={0} max={100} value={f[k]} onChange={(e) => set(k, num(e.target.value))} className="flex-1 accent-brand-600" />
+              <Input type="number" min={0} max={100} value={f[k]} onChange={(e) => set(k, Math.max(0, Math.min(100, num(e.target.value))))} className="!w-20" />
+            </div>
+          )
+        })}
         <div className="flex items-center justify-between text-[12.5px] pt-1"><span className="text-ink-500">Overall readiness score (average of dimensions)</span><span className="text-[16px] font-bold text-ink-900">{score}%</span></div>
       </div>
       <FormGrid cols={3}>
@@ -154,17 +211,20 @@ export function AssessmentForm({ initial, waves, onClose, onSave, onDelete }: { 
 }
 
 /* ---------- Readiness gap ---------- */
-export function GapForm({ initial, waves, existing, onClose, onSave, onDelete }: { initial: ReadinessGap | null; waves: Wave[]; existing: ReadinessGap[]; onClose: () => void; onSave: (g: ReadinessGap) => void; onDelete?: () => void }) {
-  const { f, set } = useForm<ReadinessGap>(initial ?? {
-    id: uid('gap'), code: `G-${String(existing.length + 1).padStart(3, '0')}`, wave: waves[0]?.number ?? 1, dimension: DIMENSIONS[0], workstream: READINESS_WORKSTREAMS[0], description: '', severity: 'Medium', owner: OWNERS[0], status: 'New', raised: TODAY, due: TODAY,
+export function GapForm({ initial, projects, projectId, existing, onClose, onSave, onDelete }: { initial: ReadinessGap | null; projects: TransitionProject[]; projectId?: string; existing: ReadinessGap[]; onClose: () => void; onSave: (g: ReadinessGap) => void; onDelete?: () => void }) {
+  const p0 = projects.find((p) => p.id === projectId) ?? projects[0]
+  const nextCode = existing.reduce((m, g) => Math.max(m, parseInt(g.code.split('-')[1] ?? '0', 10) || 0), 0) + 1
+  const { f, set, setF } = useForm<ReadinessGap>(initial ?? {
+    id: uid('gap'), code: `G-${String(nextCode).padStart(3, '0')}`, projectId: p0?.id ?? '', businessUnit: p0?.businessUnit ?? '', wave: p0?.wave ?? 1, dimension: DIMENSIONS[0], description: '', severity: 'Medium', owner: OWNERS[0], status: 'New', raised: TODAY, due: TODAY,
   })
+  const setProject = (id: string) => { const p = projects.find((x) => x.id === id); if (p) setF({ ...f, projectId: p.id, businessUnit: p.businessUnit, wave: p.wave }) }
   return (
     <Modal open onClose={onClose} title={initial ? `Edit Gap ${initial.code}` : 'Add Readiness Gap'} footer={<FormFooter onClose={onClose} onSave={() => onSave(f)} onDelete={onDelete} />}>
       <FormGrid cols={3}>
         <Field label="Description" className="col-span-3"><Input value={f.description} onChange={(e) => set('description', e.target.value)} /></Field>
-        <Field label="Wave"><Select options={waveOptions(waves)} value={String(f.wave)} onChange={(e) => set('wave', Number(e.target.value))} /></Field>
+        <Field label="Project" className="col-span-2"><ProjectSelect projects={projects} value={f.projectId} onChange={setProject} /></Field>
+        <Field label="Business unit · wave"><Input value={`${f.businessUnit} · Wave ${f.wave}`} readOnly className="bg-surface text-ink-500" /></Field>
         <Field label="Dimension"><Select options={DIMENSIONS} value={f.dimension} onChange={(e) => set('dimension', e.target.value as Dimension)} /></Field>
-        <Field label="Workstream"><Select options={READINESS_WORKSTREAMS} value={f.workstream} onChange={(e) => set('workstream', e.target.value)} /></Field>
         <Field label="Severity"><Select options={['Critical', 'High', 'Medium', 'Low']} value={f.severity} onChange={(e) => set('severity', e.target.value as ReadinessGap['severity'])} /></Field>
         <Field label="Owner"><Select options={OWNERS} value={f.owner} onChange={(e) => set('owner', e.target.value)} /></Field>
         <Field label="Status"><Select options={GAP_STATUSES} value={f.status} onChange={(e) => set('status', e.target.value as GapStatus)} /></Field>
@@ -208,42 +268,19 @@ export function DependencyForm({ initial, onClose, onSave, onDelete }: { initial
   )
 }
 
-/* ---------- WBS activity (shared 'activities') ---------- */
-export function ActivityForm({ initial, onClose, onSave }: { initial: Activity; onClose: () => void; onSave: (a: Activity) => void }) {
-  const { f, set } = useForm<Activity>(initial)
-  return (
-    <Modal open onClose={onClose} title={`${f.code} ${f.name}`} footer={<FormFooter onClose={onClose} onSave={() => onSave({ ...f, lastUpdated: TODAY })} />}>
-      <FormGrid cols={3}>
-        <Field label="Status"><Select options={['Not Started', 'In Progress', 'On Track', 'At Risk', 'Delayed', 'Completed']} value={f.status} onChange={(e) => set('status', e.target.value as Activity['status'])} /></Field>
-        <Field label="% complete"><Input type="number" min={0} max={100} value={f.percentComplete} onChange={(e) => set('percentComplete', Math.max(0, Math.min(100, num(e.target.value))))} /></Field>
-        <Field label="RAG"><Select options={['Green', 'Amber', 'Red']} value={f.rag} onChange={(e) => set('rag', e.target.value as Activity['rag'])} /></Field>
-        <Field label="Forecast start"><Input type="date" value={f.forecastStart} onChange={(e) => set('forecastStart', e.target.value)} /></Field>
-        <Field label="Forecast end"><Input type="date" value={f.forecastEnd} onChange={(e) => set('forecastEnd', e.target.value)} /></Field>
-        <Field label="Responsible"><Select options={OWNERS} value={f.responsible} onChange={(e) => set('responsible', e.target.value)} /></Field>
-        <Field label="Deliverable" className="col-span-3"><Input value={f.deliverable} onChange={(e) => set('deliverable', e.target.value)} /></Field>
-        <Field label="Sign-off"><Select options={['Pending', 'Signed']} value={f.signOff} onChange={(e) => set('signOff', e.target.value as Activity['signOff'])} /></Field>
-      </FormGrid>
-    </Modal>
-  )
-}
-
 /* ---------- Settings (non-derivable KPI numbers) ---------- */
 export function SettingsForm({ initial, waves, onClose, onSave }: { initial: TransitionSettings; waves: Wave[]; onClose: () => void; onSave: (s: TransitionSettings) => void }) {
   const { f, set, setF } = useForm<TransitionSettings>(initial)
   const arr = (key: 'trendPlanned' | 'trendActual', i: number, v: number) => setF({ ...f, [key]: f[key].map((x, j) => (j === i ? v : x)) })
   return (
     <Modal open onClose={onClose} title="Update Transition KPIs" footer={<FormFooter onClose={onClose} onSave={() => onSave(f)} />}>
+      <p className="text-[12px] text-ink-500 mb-3">Knowledge transfer, readiness gaps, stabilization readiness, readiness by dimension and the go-live date are derived from the projects, KT items, assessments, gaps and checklist. Only the numbers below are entered.</p>
       <FormGrid cols={3}>
         <Field label="Go-live wave"><Select options={waveOptions(waves)} value={String(f.goLiveWave)} onChange={(e) => set('goLiveWave', Number(e.target.value))} /></Field>
-        <Field label="Target go-live date"><Input type="date" value={f.goLiveDate} onChange={(e) => set('goLiveDate', e.target.value)} /></Field>
         <Field label="Go-live status"><Select options={['On track', 'At risk', 'Delayed']} value={f.goLiveStatus} onChange={(e) => set('goLiveStatus', e.target.value as TransitionSettings['goLiveStatus'])} /></Field>
+        <Field label="Readiness 'complete' threshold (%)"><Input type="number" min={0} max={100} value={f.readinessThreshold} onChange={(e) => set('readinessThreshold', num(e.target.value))} /></Field>
         <Field label="KT change vs last month (%)"><Input type="number" value={f.ktDeltaPct} onChange={(e) => set('ktDeltaPct', num(e.target.value))} /></Field>
         <Field label="Stabilization change vs last month (%)"><Input type="number" value={f.stabilizationDeltaPct} onChange={(e) => set('stabilizationDeltaPct', num(e.target.value))} /></Field>
-        <Field label="Readiness 'complete' threshold (%)"><Input type="number" min={0} max={100} value={f.readinessThreshold} onChange={(e) => set('readinessThreshold', num(e.target.value))} /></Field>
-      </FormGrid>
-      <h4 className="text-[13px] font-semibold mt-4 mb-2">Transition Readiness by Dimension (%)</h4>
-      <FormGrid cols={3}>
-        {DIMENSIONS.map((d) => <Field key={d} label={d}><Input type="number" min={0} max={100} value={f.dims[d]} onChange={(e) => setF({ ...f, dims: { ...f.dims, [d]: Math.max(0, Math.min(100, num(e.target.value))) } })} /></Field>)}
       </FormGrid>
       <h4 className="text-[13px] font-semibold mt-4 mb-2">Transition Milestone Trend (% complete)</h4>
       <table className="w-full tbl text-[12.5px]">

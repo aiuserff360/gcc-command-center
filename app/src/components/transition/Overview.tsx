@@ -1,28 +1,52 @@
-import { useMemo } from 'react'
+/**
+ * Transition Overview – business units and the projects under them are the base of the page.
+ * 1. business-unit selector (cards + dropdown), 2. deep dive for the selected unit (header strip, projects table with
+ * drill-down links, KT / readiness / timeline / go-live charts), 3. program-wide context cards from the mock-up.
+ */
+import { useMemo, type ReactNode } from 'react'
+import clsx from 'clsx'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from 'recharts'
-import { Users, GitBranch, Database, Building2, ShieldCheck, FileText, ClipboardCheck, AlertTriangle, BookOpen, ChevronRight } from 'lucide-react'
-import { Card, Badge, Progress, Table, ViewAll, Legend } from '../ui'
+import { Users, GitBranch, Database, Building2, ShieldCheck, FileText, ClipboardCheck, AlertTriangle, BookOpen, ChevronRight, Plus, Rocket } from 'lucide-react'
+import { Card, Badge, Progress, Table, ViewAll, Legend, EmptyNote } from '../ui'
 import { tooltipStyle } from '../charts'
-import { CHART_COLORS, TODAY } from '../../data/common'
-import type { Milestone, RaidItem } from '../../data/shared'
+import { CHART_COLORS, SERIES, TODAY } from '../../data/common'
+import type { RaidItem } from '../../data/shared'
 import { isOpen } from '../../data/shared'
 import {
-  ktStats, milestoneWave, isTransitionMilestone, isTransitionRaid, raidLabel, TRANSITION_RAID_LABELS, waveProgressColor, assessmentScore, readinessColor, DIMENSIONS, READINESS_WORKSTREAMS, waveFunctions, fmtD,
-  type Wave, type KtItem, type ReadinessAssessment, type Dimension,
+  ktStats, projectKt, unitKt, projectReadiness, avgScore, assessmentScore, dimAverage, isTransitionRaid, raidLabel, raidLink, TRANSITION_RAID_LABELS, waveProgressColor, waveScope, waveUnits, waveProgress, waveHasStarted, waveGoLive, nextGoLive, isInTransition, projectStatusColor, readinessColor, fmtD, fmtLong, DIMENSIONS, TIMELINE_START, TIMELINE_END,
+  type Wave, type KtItem, type Dimension, type TransitionProject, type ReadinessAssessment,
 } from '../../data/transition'
 import type { Tx } from './types'
 
 /** Compact table styling for the dense overview cards (mock-up uses ~11.5px cells). */
 export const TIGHT = '[&_.td]:px-1! [&_.th]:px-1! [&_.td]:py-1.5! [&_.td]:text-[11.5px]! [&_.th]:text-[11px]! [&_td_.rounded-md]:px-1! [&_td_.rounded-md]:text-[11px]!'
 
-export const DIM_ICON: Record<Dimension, React.ReactNode> = {
+export const DIM_ICON: Record<Dimension, ReactNode> = {
   'People & Organization': <Users size={15} />, 'Process & Governance': <GitBranch size={15} />, 'Technology & Data': <Database size={15} />,
   'Facilities & Infrastructure': <Building2 size={15} />, 'Controls & Compliance': <ShieldCheck size={15} />,
 }
 
 export function WaveDot({ wave, size = 26 }: { wave?: Wave; size?: number }) {
   if (!wave) return <span className="text-ink-500">–</span>
-  return <span className="inline-flex items-center justify-center rounded-full text-white font-semibold" style={{ width: size, height: size, background: wave.color, fontSize: size * 0.46 }}>{wave.number}</span>
+  return <span className="inline-flex items-center justify-center rounded-full text-white font-semibold shrink-0" style={{ width: size, height: size, background: wave.color, fontSize: size * 0.46 }}>{wave.number}</span>
+}
+
+/** Status badge that also knows the project-only "Stabilizing" state. */
+export function StatusBadge({ value }: { value: string }) {
+  return <Badge value={value} className={value === 'Stabilizing' ? 'bg-violet-50 text-violet-700' : undefined} />
+}
+
+/** Blue project name that opens the project drill-down (stops the row's own click). */
+export function ProjectLink({ project, onClick, className }: { project: TransitionProject; onClick: () => void; className?: string }) {
+  return <button type="button" className={clsx('text-brand-600 font-medium hover:underline cursor-pointer text-left', className)} onClick={(e) => { e.stopPropagation(); onClick() }}>{project.name}</button>
+}
+
+export const sortWaves = (w: Wave[]) => [...w].sort((a, b) => a.number - b.number)
+export const unitColor = (unitNames: string[], unit: string) => SERIES[Math.max(0, unitNames.indexOf(unit)) % SERIES.length]
+/** Assessments of projects whose wave has started – the program-wide readiness population. */
+export function activeAssessments(tx: Tx): ReadinessAssessment[] {
+  const started = tx.waves.items.filter((w) => waveHasStarted(w)).map((w) => w.number)
+  return tx.assessments.items.filter((a) => started.includes(a.wave))
 }
 
 export function ktByWave(waves: Wave[], kt: KtItem[]) {
@@ -33,50 +57,214 @@ export function ktByWave(waves: Wave[], kt: KtItem[]) {
   })
 }
 
+function Mini({ label, value, sub, tone = 'text-ink-900' }: { label: string; value: ReactNode; sub?: ReactNode; tone?: string }) {
+  return (
+    <div className="rounded-lg border border-line bg-white px-3 py-2 min-w-0">
+      <div className="text-[11px] text-ink-500 truncate">{label}</div>
+      <div className={`text-[18px] font-bold leading-tight mt-0.5 ${tone}`}>{value}</div>
+      {sub && <div className="text-[11px] text-ink-500 mt-0.5 truncate">{sub}</div>}
+    </div>
+  )
+}
+
+/* ================================================================== */
+/* Page                                                                */
+/* ================================================================== */
 export default function Overview({ tx }: { tx: Tx }) {
-  const { waves, kt, assessments, milestones, msWaves, raid, settings, view, currentWave, open, setTab } = tx
-  const sortedWaves = useMemo(() => [...waves.items].sort((a, b) => a.number - b.number), [waves.items])
-  const ktData = useMemo(() => ktByWave(sortedWaves, kt.items), [sortedWaves, kt.items])
-
-  const upcoming = useMemo(() =>
-    milestones.items.filter(isTransitionMilestone).filter((m) => m.status !== 'Completed').sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, 5), [milestones.items])
-
-  const keyRisks = useMemo(() => {
-    const open = raid.items.filter(isTransitionRaid).filter(isOpen)
-    const order = Object.keys(TRANSITION_RAID_LABELS)
-    const pinned = order.map((c) => open.find((r) => r.code === c)).filter((r): r is RaidItem => !!r)
-    const rest = open.filter((r) => !order.includes(r.code)).sort((a, b) => b.impactScore - a.impactScore)
-    return [...pinned, ...rest].slice(0, 5)
-  }, [raid.items])
-
-  const waveReadiness = useMemo(() => {
-    const rows = READINESS_WORKSTREAMS.map((ws) => assessments.items.find((a) => a.wave === currentWave.number && a.workstream === ws)).filter((a): a is ReadinessAssessment => !!a)
-    const extra = assessments.items.filter((a) => a.wave === currentWave.number && !READINESS_WORKSTREAMS.includes(a.workstream as never))
-    return [...rows, ...extra]
-  }, [assessments.items, currentWave])
-  const readyCount = waveReadiness.filter((a) => assessmentScore(a) >= settings.readinessThreshold).length
-
-  const trend = settings.trendMonths.map((m, i) => ({ month: m, Planned: settings.trendPlanned[i] ?? 0, Actual: settings.trendActual[i] ?? 0 }))
-  const waveOf = (n?: number) => sortedWaves.find((w) => w.number === n)
-
   return (
     <div className="space-y-4">
-      {/* Row 1 */}
-      <div className="grid grid-cols-[1.65fr_0.85fr_1fr] gap-4">
-        {view === 'Workstream' ? <WorkstreamCard tx={tx} /> : view === 'Function' ? <FunctionCard tx={tx} /> : (
-          <Card title="Transition Waves" action={<ViewAll label="View Plan" onClick={() => setTab('Wave Plan')} />}>
-            <div className={TIGHT}><Table<Wave> compact rows={sortedWaves} onRowClick={(w) => open({ kind: 'wave', item: w })} columns={[
-              { key: 'number', header: 'Wave', render: (w) => <WaveDot wave={w} /> },
-              { key: 'scope', header: 'Scope', render: (w) => <span className="whitespace-nowrap">{w.scope}</span> },
-              { key: 'startDate', header: 'Start Date', render: (w) => <span className="whitespace-nowrap">{fmtD(w.startDate)}</span> },
-              { key: 'endDate', header: 'End Date', render: (w) => <span className="whitespace-nowrap">{fmtD(w.endDate)}</span> },
-              { key: 'status', header: 'Status', render: (w) => <Badge value={w.status} /> },
-              { key: 'progress', header: 'Progress', width: '92px', render: (w) => <span className="flex items-center gap-1.5"><Progress value={w.progress} color={waveProgressColor(w)} className="w-[48px]" /><span className="font-medium w-7 text-right">{w.progress}%</span></span> },
-            ]} /></div>
-          </Card>
-        )}
+      <UnitSelector tx={tx} />
+      <UnitDeepDive tx={tx} />
+      <ProgramCards tx={tx} />
+    </div>
+  )
+}
 
-        <Card title={<span className="whitespace-nowrap">Knowledge Transfer Completion</span>}>
+/* ================================================================== */
+/* 1. Business unit selector                                           */
+/* ================================================================== */
+export function UnitSelector({ tx, subtitle = 'Pick a business unit to see its transition projects, knowledge transfer, readiness and go-lives.' }: { tx: Tx; subtitle?: string }) {
+  const { units, unitNames, projects, kt, assessments, unit, setUnit } = tx
+  const cards = useMemo(() => unitNames.map((name) => {
+    const ps = projects.items.filter((p) => p.businessUnit === name)
+    const u = units.find((b) => b.name === name)
+    const ra = assessments.items.filter((a) => ps.some((p) => p.id === a.projectId))
+    return { name, kind: u?.kind ?? '', color: unitColor(unitNames, name), projects: ps.length, inTransition: ps.filter(isInTransition).length, completed: ps.filter((p) => p.status === 'Completed').length, kt: unitKt(name, kt.items).pct, readiness: avgScore(ra), next: nextGoLive(ps) }
+  }), [unitNames, units, projects.items, kt.items, assessments.items])
+  return (
+    <Card title="Transition by business unit" subtitle={subtitle} headerRight={
+      <label className="flex items-center gap-2 rounded-lg border border-line bg-white px-3 py-1.5 min-w-[300px] cursor-pointer">
+        <Building2 size={16} className="text-brand-600" />
+        <select value={unit} onChange={(e) => setUnit(e.target.value)} className="flex-1 bg-transparent outline-none text-[13.5px] font-semibold text-ink-900 cursor-pointer">
+          {unitNames.map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
+      </label>}>
+      <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(cards.length, 1), 7)}, minmax(0, 1fr))` }}>
+        {cards.map((c) => (
+          <button key={c.name} onClick={() => setUnit(c.name)} className={clsx('text-left rounded-lg border px-3 py-2.5 cursor-pointer transition-colors min-w-0', c.name === unit ? 'border-brand-600 bg-brand-50 ring-1 ring-brand-600' : 'border-line bg-white hover:bg-surface')}>
+            <div className="flex items-center gap-1.5 mb-1"><span className="w-2 h-2 rounded-full shrink-0" style={{ background: c.color }} /><span className="text-[12.5px] font-semibold text-ink-900 truncate" title={c.name}>{c.name}</span></div>
+            <div className="text-[10.5px] text-ink-500 truncate">{c.kind}</div>
+            <div className="mt-1.5 text-[20px] font-bold text-navy-900 leading-none">{c.projects}<span className="text-[11px] font-medium text-ink-500"> project{c.projects === 1 ? '' : 's'}</span></div>
+            <div className="text-[10.5px] text-ink-500">{c.inTransition} in transition · {c.completed} completed</div>
+            <div className="flex items-center gap-1.5 mt-1.5 text-[10.5px] whitespace-nowrap"><span className="text-green-600">KT {c.kt}%</span><span className="text-ink-400">·</span><span className={c.readiness >= 65 ? 'text-brand-600' : 'text-amber-600'}>ready {c.readiness}%</span></div>
+            <div className="text-[10.5px] text-ink-500 truncate">{c.next ? `go-live ${fmtD(c.next)}` : 'no go-live pending'}</div>
+          </button>
+        ))}
+      </div>
+    </Card>
+  )
+}
+
+/* ================================================================== */
+/* 2. Selected business unit deep dive                                 */
+/* ================================================================== */
+function UnitDeepDive({ tx }: { tx: Tx }) {
+  const { units, projects, waves, kt, assessments, gaps, raid, raidLinks, unit, open, openProject } = tx
+  const u = units.find((b) => b.name === unit)
+  const sorted = sortWaves(waves.items)
+  const ps = useMemo(() => projects.items.filter((p) => p.businessUnit === unit).sort((a, b) => a.wave - b.wave || a.goLiveDate.localeCompare(b.goLiveDate)), [projects.items, unit])
+  const ra = useMemo(() => assessments.items.filter((a) => ps.some((p) => p.id === a.projectId)), [assessments.items, ps])
+  const ks = unitKt(unit, kt.items)
+  const openGaps = gaps.items.filter((g) => g.businessUnit === unit && g.status !== 'Resolved').length
+  const risks = raid.items.filter((r) => raidLink(r, raidLinks.items)?.businessUnit === unit).filter(isOpen)
+  const next = nextGoLive(ps)
+  const waveOf = (n: number) => sorted.find((w) => w.number === n)
+
+  const ktRows = ps.map((p) => { const s = projectKt(p, kt.items); return { name: p.name, Done: s.done, Remaining: Math.max(0, s.planned - s.done), pct: s.pct, planned: s.planned } })
+  const goLives = ps.filter((p) => p.status !== 'Completed').sort((a, b) => a.goLiveDate.localeCompare(b.goLiveDate))
+
+  return (
+    <>
+      {/* header strip */}
+      <Card>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap"><h3 className="text-[18px] font-bold text-navy-900">{unit}</h3>{u && <Badge value={u.status} />}{u && <span className="text-[11.5px] text-ink-500">{u.kind} · owner {u.owner} · footprint {u.wave}</span>}</div>
+            {u?.description && <p className="text-[12.5px] text-ink-700 mt-0.5 max-w-3xl">{u.description}</p>}
+          </div>
+          <button className="btn-primary" onClick={() => open({ kind: 'project', item: null, businessUnit: unit })}><Plus size={14} /> Add project</button>
+        </div>
+        <div className="grid grid-cols-8 gap-3 mt-3">
+          <Mini label="Projects" value={ps.length} sub={`${ps.reduce((s, p) => s + p.ftes, 0)} FTEs transitioning`} />
+          <Mini label="In transition" value={ps.filter(isInTransition).length} sub={`${ps.filter((p) => p.status === 'Not Started').length} not started`} tone="text-brand-600" />
+          <Mini label="Completed" value={ps.filter((p) => p.status === 'Completed').length} sub={`${ps.filter((p) => p.status === 'Stabilizing').length} stabilizing`} tone="text-green-600" />
+          <Mini label="Knowledge transfer" value={`${ks.pct}%`} sub={`${ks.done} / ${ks.planned} sessions`} tone="text-green-600" />
+          <Mini label="Readiness" value={`${avgScore(ra)}%`} sub={`${ra.filter((a) => assessmentScore(a) >= tx.settings.readinessThreshold).length} of ${ra.length} projects ready`} tone={avgScore(ra) >= 65 ? 'text-brand-600' : 'text-amber-600'} />
+          <Mini label="Open gaps" value={openGaps} sub={`${gaps.items.filter((g) => g.businessUnit === unit && g.status === 'Resolved').length} resolved`} tone={openGaps ? 'text-amber-600' : 'text-green-600'} />
+          <Mini label="Open risks & issues" value={risks.length} sub={`${risks.filter((r) => r.level === 'Critical' || r.level === 'High').length} critical / high`} tone={risks.length ? 'text-red-600' : 'text-green-600'} />
+          <Mini label="Next go-live" value={next ? fmtD(next) : '—'} sub={next ? ps.find((p) => p.goLiveDate === next && p.status !== 'Completed')?.name : 'nothing pending'} />
+        </div>
+      </Card>
+
+      {/* projects table */}
+      <Card title={`Transition projects – ${unit}`} subtitle={`${ps.length} projects · click a project name for the deep dive (KT items, readiness, gaps, milestones, risks)`}>
+        <Table<TransitionProject> compact rows={ps} onRowClick={(p) => openProject(p.id)} empty="No transition projects for this business unit yet. Use “Add project” to create one." columns={[
+          { key: 'name', header: 'Project', render: (p) => <span className="block min-w-[200px]"><ProjectLink project={p} onClick={() => openProject(p.id)} /><span className="block text-[11px] text-ink-500 truncate max-w-[300px]" title={p.scopeSummary}>{p.scopeSummary}</span></span> },
+          { key: 'wave', header: 'Wave', render: (p) => <WaveDot wave={waveOf(p.wave)} size={22} /> },
+          { key: 'status', header: 'Status', render: (p) => <StatusBadge value={p.status} /> },
+          { key: 'progress', header: 'Progress', width: '120px', render: (p) => <span className="flex items-center gap-1.5"><Progress value={p.progress} color={projectStatusColor(p.status)} className="w-[64px]" /><span className="text-[12px] font-medium w-8 text-right">{p.progress}%</span></span> },
+          { key: 'kt', header: 'KT %', className: 'text-right', render: (p) => { const s = projectKt(p, kt.items); return <span className="font-medium" title={`${s.done} / ${s.planned} sessions`}>{s.pct}%</span> } },
+          { key: 'readiness', header: 'Readiness', render: (p) => { const s = projectReadiness(p, assessments.items); return <span className="inline-flex items-center justify-center w-11 h-5.5 rounded-md text-[11.5px] font-semibold text-white" style={{ background: readinessColor(s) }}>{s}%</span> } },
+          { key: 'goLiveDate', header: 'Go-live', className: 'whitespace-nowrap', render: (p) => <span className={p.goLiveDate < TODAY && !['Completed', 'Stabilizing'].includes(p.status) ? 'text-red-600 font-medium' : ''}>{fmtD(p.goLiveDate)}</span> },
+          { key: 'globalOwner', header: 'Global owner', className: 'whitespace-nowrap' },
+          { key: 'indiaLead', header: 'India lead', className: 'whitespace-nowrap' },
+          { key: 'ftes', header: 'FTEs', className: 'text-right' },
+          { key: 'c', header: '', render: () => <ChevronRight size={14} className="text-ink-400" /> },
+        ]} />
+      </Card>
+
+      {/* charts */}
+      <div className="grid grid-cols-[1.2fr_1fr_1fr] gap-4">
+        <Card title="Knowledge transfer by project" subtitle="Sessions delivered vs remaining">
+          {ktRows.length ? (
+            <>
+              <Legend items={[{ label: 'Delivered', color: CHART_COLORS.green }, { label: 'Remaining', color: CHART_COLORS.blueFaint }]} />
+              <div style={{ height: Math.max(120, ktRows.length * 44 + 24) }} className="mt-1">
+                <ResponsiveContainer>
+                  <BarChart data={ktRows} layout="vertical" margin={{ top: 4, right: 40, left: 0, bottom: 0 }} barCategoryGap="28%">
+                    <CartesianGrid horizontal={false} />
+                    <XAxis type="number" tickLine={false} axisLine={false} tick={{ fontSize: 10.5 }} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" width={150} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+                    <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v, n) => [`${v} sessions`, String(n)]} />
+                    <Bar isAnimationActive={false} dataKey="Done" stackId="a" fill={CHART_COLORS.green} />
+                    <Bar isAnimationActive={false} dataKey="Remaining" stackId="a" fill={CHART_COLORS.blueFaint} radius={[0, 3, 3, 0]}>
+                      <LabelList dataKey="pct" position="right" formatter={(v) => `${v}%`} style={{ fontSize: 11, fill: '#111827', fontWeight: 600 }} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          ) : <EmptyNote>No projects yet.</EmptyNote>}
+        </Card>
+        <Card title="Readiness by dimension" subtitle={`Average across ${ra.length} assessed project${ra.length === 1 ? '' : 's'}`}>
+          <div className="space-y-3 pt-0.5">
+            {DIMENSIONS.map((d) => { const v = dimAverage(ra, d); return (
+              <div key={d} className="flex items-center gap-2.5 text-[12.5px]">
+                <span className="w-7 h-7 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">{DIM_ICON[d]}</span>
+                <span className="w-[150px] text-[12px] text-ink-700 truncate" title={d}>{d}</span>
+                <span className="w-9 text-right font-semibold text-ink-900">{v}%</span>
+                <Progress value={v} className="flex-1" color={readinessColor(v)} />
+              </div>) })}
+          </div>
+          <div className="mt-3 pt-2 border-t border-line text-[12px] text-ink-500 flex items-center justify-between"><span>Unit readiness score</span><span className="text-[15px] font-bold" style={{ color: readinessColor(avgScore(ra)) }}>{avgScore(ra)}%</span></div>
+        </Card>
+        <Card title="Upcoming go-lives" subtitle="Projects of this business unit by go-live date">
+          {goLives.length ? (
+            <div className="space-y-1.5">
+              {goLives.map((p) => (
+                <button key={p.id} onClick={() => openProject(p.id)} className="w-full flex items-center gap-2.5 rounded-lg border border-line px-2.5 py-2 text-left hover:bg-brand-50/50 cursor-pointer">
+                  <span className={clsx('w-8 h-8 rounded-full flex items-center justify-center shrink-0', p.goLiveDate < TODAY ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600')}><Rocket size={15} /></span>
+                  <span className="flex-1 min-w-0"><span className="block text-[12.5px] font-medium text-ink-900 truncate">{p.name}</span><span className="block text-[11px] text-ink-500">Wave {p.wave} · {p.status} · {p.progress}%</span></span>
+                  <span className={clsx('text-[12px] font-semibold whitespace-nowrap', p.goLiveDate < TODAY ? 'text-red-600' : 'text-ink-900')}>{fmtD(p.goLiveDate)}</span>
+                </button>
+              ))}
+            </div>
+          ) : <EmptyNote>All projects of this unit are live.</EmptyNote>}
+        </Card>
+      </div>
+
+      <Card title={`Project timeline – ${unit}`} subtitle="Bars show project duration across the waves; darker overlay shows progress, the flag marks go-live">
+        <GanttRows rows={ps.map((p) => ({ id: p.id, label: p.name, start: p.startDate, end: p.endDate, color: waveOf(p.wave)?.color ?? '#94A3B8', progress: p.progress, marker: p.goLiveDate, title: `${p.name} · Wave ${p.wave} · ${fmtD(p.startDate)} – ${fmtD(p.endDate)} · go-live ${fmtD(p.goLiveDate)}`, onClick: () => openProject(p.id) }))} labelWidth={190} />
+      </Card>
+    </>
+  )
+}
+
+/* ================================================================== */
+/* 3. Program-wide context cards                                       */
+/* ================================================================== */
+function ProgramCards({ tx }: { tx: Tx }) {
+  const { waves, kt, projects, raid, raidLinks, settings, open, setTab, setUnit, openProject } = tx
+  const sortedWaves = useMemo(() => sortWaves(waves.items), [waves.items])
+  const ktData = useMemo(() => ktByWave(sortedWaves, kt.items), [sortedWaves, kt.items])
+  const active = activeAssessments(tx)
+
+  const keyRisks = useMemo(() => {
+    const openItems = raid.items.filter((r) => isTransitionRaid(r, raidLinks.items)).filter(isOpen)
+    const order = Object.keys(TRANSITION_RAID_LABELS)
+    const pinned = order.map((c) => openItems.find((r) => r.code === c)).filter((r): r is RaidItem => !!r)
+    const rest = openItems.filter((r) => !order.includes(r.code)).sort((a, b) => b.impactScore - a.impactScore)
+    return [...pinned, ...rest].slice(0, 5)
+  }, [raid.items, raidLinks.items])
+
+  const trend = settings.trendMonths.map((m, i) => ({ month: m, Planned: settings.trendPlanned[i] ?? 0, Actual: settings.trendActual[i] ?? 0 }))
+
+  return (
+    <>
+      <div className="flex items-center gap-2 pt-1"><span className="text-[13px] font-semibold text-ink-900">Program-wide transition context</span><span className="text-[12px] text-ink-500">· all business units</span></div>
+      <div className="grid grid-cols-[1.65fr_0.85fr_1fr] gap-4">
+        <Card title="Transition Waves" subtitle="Scope = business units with projects in the wave" action={<ViewAll label="View Plan" onClick={() => setTab('Wave Plan')} />}>
+          <div className={TIGHT}><Table<Wave> compact rows={sortedWaves} onRowClick={(w) => open({ kind: 'wave', item: w })} columns={[
+            { key: 'number', header: 'Wave', render: (w) => <WaveDot wave={w} /> },
+            { key: 'scope', header: 'Scope (business units)', render: (w) => <span className="block max-w-[230px] leading-snug" title={waveUnits(w, projects.items).join(', ')}>{waveScope(w, projects.items) || <span className="text-ink-400">no projects</span>}</span> },
+            { key: 'startDate', header: 'Start Date', render: (w) => <span className="whitespace-nowrap">{fmtD(w.startDate)}</span> },
+            { key: 'endDate', header: 'End Date', render: (w) => <span className="whitespace-nowrap">{fmtD(w.endDate)}</span> },
+            { key: 'status', header: 'Status', render: (w) => <Badge value={w.status} /> },
+            { key: 'progress', header: 'Progress', width: '92px', render: (w) => { const p = waveProgress(w, projects.items); return <span className="flex items-center gap-1.5"><Progress value={p} color={waveProgressColor(w)} className="w-[48px]" /><span className="font-medium w-7 text-right">{p}%</span></span> } },
+          ]} /></div>
+        </Card>
+
+        <Card title={<span className="whitespace-nowrap">Knowledge Transfer Completion</span>} subtitle="By wave">
           <Legend items={[{ label: 'Completed', color: CHART_COLORS.green }, { label: 'In Progress', color: CHART_COLORS.blueLight }, { label: 'Not Started', color: CHART_COLORS.blueFaint }]} />
           <div className="h-[196px] mt-2">
             <ResponsiveContainer>
@@ -95,12 +283,12 @@ export default function Overview({ tx }: { tx: Tx }) {
           </div>
         </Card>
 
-        <Card title={<span className="whitespace-nowrap text-[14px]">Transition Readiness by Dimension</span>} action={<ViewAll label="View Details" onClick={() => setTab('Readiness & Stabilization')} />}>
+        <Card title={<span className="whitespace-nowrap text-[14px]">Transition Readiness by Dimension</span>} subtitle={`Projects in started waves (${active.length})`} action={<ViewAll label="View Details" onClick={() => setTab('Readiness & Stabilization')} />}>
           <div className="space-y-3 pt-0.5">
             {DIMENSIONS.map((d) => {
-              const v = settings.dims[d]
+              const v = dimAverage(active, d)
               return (
-                <div key={d} className="flex items-center gap-2.5 text-[12.5px] cursor-pointer" onClick={() => open({ kind: 'settings' })}>
+                <div key={d} className="flex items-center gap-2.5 text-[12.5px]">
                   <span className="w-7 h-7 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">{DIM_ICON[d]}</span>
                   <span className="w-[148px] text-[12px] text-ink-700 truncate">{d}</span>
                   <span className="w-9 text-right font-semibold text-ink-900">{v}%</span>
@@ -112,49 +300,7 @@ export default function Overview({ tx }: { tx: Tx }) {
         </Card>
       </div>
 
-      {/* Row 2 */}
-      <div className="grid grid-cols-[1.4fr_0.95fr_1.05fr] gap-4">
-        <Card title="Upcoming Milestones" action={<ViewAll onClick={() => setTab('Wave Plan')} />}>
-          <div className={TIGHT}><Table<Milestone> compact rows={upcoming} onRowClick={(m) => open({ kind: 'milestone', item: m, wave: milestoneWave(m, sortedWaves, msWaves.items) })} columns={[
-            { key: 'name', header: 'Milestone' },
-            { key: 'wave', header: 'Wave', render: (m) => { const n = milestoneWave(m, sortedWaves, msWaves.items); return <span className="font-semibold" style={{ color: waveOf(n)?.color ?? '#6B7280' }}>{n ?? '–'}</span> } },
-            { key: 'dueDate', header: 'Target Date', render: (m) => <span className="whitespace-nowrap">{fmtD(m.dueDate)}</span> },
-            { key: 'status', header: 'Status', render: (m) => <Badge value={m.status} /> },
-            { key: 'owner', header: 'Owner', render: (m) => <span className="whitespace-nowrap">{m.owner}</span> },
-          ]} /></div>
-        </Card>
-
-        <Card title="Transition Timeline" action={<ViewAll label="Wave Plan" onClick={() => setTab('Wave Plan')} />}>
-          <Gantt waves={sortedWaves} onClick={(w) => open({ kind: 'wave', item: w })} />
-        </Card>
-
-        <Card title="Key Risks & Issues" action={<ViewAll onClick={() => setTab('Risks & Issues')} />}>
-          <div className={TIGHT}><Table<RaidItem> compact rows={keyRisks} onRowClick={(r) => open({ kind: 'raid', item: r })} columns={[
-            { key: 'title', header: 'Risk / Issue', render: (r) => <span className="whitespace-nowrap">{raidLabel(r)}</span> },
-            { key: 'level', header: 'Impact', render: (r) => <Badge value={r.level} /> },
-            { key: 'status', header: 'Status', render: (r) => <Badge value={r.status} /> },
-            { key: 'owner', header: 'Owner', render: (r) => <span className="whitespace-nowrap">{r.owner}</span> },
-          ]} /></div>
-        </Card>
-      </div>
-
-      {/* Row 3 */}
-      <div className="grid grid-cols-[1.4fr_0.95fr_1.05fr] gap-4">
-        <Card title={`Wave ${currentWave.number} – Transition Readiness`} headerRight={
-          <div className="flex flex-col items-end gap-1 w-[150px]">
-            <span className="text-[11.5px] text-ink-500">{readyCount} of {waveReadiness.length} complete</span>
-            <Progress value={waveReadiness.length ? (readyCount / waveReadiness.length) * 100 : 0} color="#16A34A" height="h-1.5" />
-          </div>
-        }>
-          <div className={TIGHT}><Table<ReadinessAssessment> compact rows={waveReadiness} onRowClick={(a) => open({ kind: 'assessment', item: a })} columns={[
-            { key: 'workstream', header: 'Workstream', render: (a) => <span className="whitespace-nowrap">{a.workstream}</span> },
-            { key: 'readiness', header: 'Readiness', width: '60px', render: (a) => { const s = assessmentScore(a); return <Progress value={s} color={readinessColor(s)} className="w-[48px]" /> } },
-            { key: 'score', header: 'Score', render: (a) => <span className="font-medium">{assessmentScore(a)}%</span> },
-            { key: 'status', header: 'Status', render: (a) => <Badge value={a.status} /> },
-            { key: 'nextAction', header: 'Next Action', render: (a) => <span className="leading-snug">{a.nextAction}</span> },
-          ]} /></div>
-        </Card>
-
+      <div className="grid grid-cols-[0.95fr_1.4fr_1.05fr] gap-4">
         <Card title="Transition Milestone Trend" action={<ViewAll label="View Details" onClick={() => setTab('Reports')} />}>
           <div className="flex justify-end"><Legend items={[{ label: 'Planned', color: '#9CA3AF', dashed: true }, { label: 'Actual', color: CHART_COLORS.blue }]} /></div>
           <div className="h-[200px] mt-1">
@@ -173,13 +319,23 @@ export default function Overview({ tx }: { tx: Tx }) {
           </div>
         </Card>
 
+        <Card title="Key Risks & Issues" subtitle="Open transition risks and issues by business unit / project" action={<ViewAll onClick={() => setTab('Risks & Issues')} />}>
+          <div className={TIGHT}><Table<RaidItem> compact rows={keyRisks} onRowClick={(r) => open({ kind: 'raid', item: r })} columns={[
+            { key: 'title', header: 'Risk / Issue', render: (r) => <span className="whitespace-nowrap font-medium">{raidLabel(r)}</span> },
+            { key: 'unit', header: 'Business unit / project', render: (r) => { const l = raidLink(r, raidLinks.items); const p = l?.projectId ? projects.items.find((x) => x.id === l.projectId) : undefined; return l ? <span className="block leading-snug"><button className="text-brand-600 hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); setUnit(l.businessUnit) }}>{l.businessUnit}</button>{p && <span className="block text-ink-500"><button className="hover:underline cursor-pointer" onClick={(e) => { e.stopPropagation(); openProject(p.id) }}>{p.name}</button></span>}</span> : <span className="text-ink-400">program-wide</span> } },
+            { key: 'level', header: 'Impact', render: (r) => <Badge value={r.level} /> },
+            { key: 'status', header: 'Status', render: (r) => <Badge value={r.status} /> },
+            { key: 'owner', header: 'Owner', render: (r) => <span className="whitespace-nowrap">{r.owner}</span> },
+          ]} /></div>
+        </Card>
+
         <Card title="Quick Actions">
           <div className="space-y-2">
             {[
-              { icon: <FileText size={17} />, title: 'View Transition Plan', sub: 'Wave details, milestones and owners', go: () => setTab('Wave Plan') },
-              { icon: <ClipboardCheck size={17} />, title: 'Update Readiness Assessment', sub: 'Capture current readiness status', go: () => open({ kind: 'assessment', item: waveReadiness[0] ?? null }) },
-              { icon: <AlertTriangle size={17} className="text-red-500" />, title: 'Log Issue / Risk', sub: 'Raise and track transition risks', go: () => open({ kind: 'raid', item: null }) },
-              { icon: <BookOpen size={17} />, title: 'View Knowledge Transfer Tracker', sub: 'Monitor KT completion by workstream', go: () => setTab('Knowledge Transfer') },
+              { icon: <FileText size={17} />, title: 'View Transition Plan', sub: 'Waves, business units, projects and milestones', go: () => setTab('Wave Plan') },
+              { icon: <ClipboardCheck size={17} />, title: 'Update Readiness Assessment', sub: 'Score a project on the five dimensions', go: () => open({ kind: 'assessment', item: null, projectId: projects.items.find((p) => p.businessUnit === tx.unit)?.id }) },
+              { icon: <AlertTriangle size={17} className="text-red-500" />, title: 'Log Issue / Risk', sub: 'Raise a transition risk for a business unit or project', go: () => open({ kind: 'raid', item: null, businessUnit: tx.unit }) },
+              { icon: <BookOpen size={17} />, title: 'View Knowledge Transfer Tracker', sub: 'KT completion by business unit and project', go: () => setTab('Knowledge Transfer') },
             ].map((a) => (
               <button key={a.title} onClick={a.go} className="w-full flex items-center gap-3 rounded-lg bg-surface hover:bg-brand-50 px-3 py-2.5 text-left cursor-pointer transition-colors">
                 <span className="w-8 h-8 rounded-md bg-white border border-line text-brand-600 flex items-center justify-center shrink-0">{a.icon}</span>
@@ -188,50 +344,60 @@ export default function Overview({ tx }: { tx: Tx }) {
               </button>
             ))}
           </div>
+          <div className="mt-3 pt-2 border-t border-line text-[11.5px] text-ink-500">Target go-live Wave {settings.goLiveWave}: <b className="text-ink-900">{(() => { const d = waveGoLive(settings.goLiveWave, projects.items); return d ? fmtLong(d) : '—' })()}</b> · {settings.goLiveStatus}</div>
         </Card>
       </div>
-    </div>
+    </>
   )
 }
 
-/* ---------- Gantt ---------- */
+/* ================================================================== */
+/* Gantt-like rows (waves or projects) on a fixed Sep '26 – Mar '27 window */
+/* ================================================================== */
+export interface GanttRow { id: string; label: ReactNode; start: string; end: string; color: string; progress?: number; marker?: string; title?: string; onClick?: () => void }
 const DAY = 86400000
-const monthStart = (iso: string) => { const d = new Date(iso); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)) }
-export function Gantt({ waves, onClick, height = 22 }: { waves: Wave[]; onClick?: (w: Wave) => void; height?: number }) {
-  if (!waves.length) return <p className="text-[12.5px] text-ink-500 italic py-6 text-center">No waves defined.</p>
-  const minS = waves.reduce((m, w) => (w.startDate < m ? w.startDate : m), waves[0].startDate)
-  const maxE = waves.reduce((m, w) => (w.endDate > m ? w.endDate : m), waves[0].endDate)
+const utc = (iso: string) => { const [y, m, d] = iso.split('-').map(Number); return Date.UTC(y, m - 1, d) }
+const monthStart = (iso: string) => { const d = new Date(utc(iso)); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)) }
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+export function GanttRows({ rows, rangeStart = TIMELINE_START, rangeEnd = TIMELINE_END, labelWidth = 56, height = 20, empty = 'Nothing to show on the timeline yet.' }: {
+  rows: GanttRow[]; rangeStart?: string; rangeEnd?: string; labelWidth?: number; height?: number; empty?: string
+}) {
+  if (!rows.length) return <EmptyNote>{empty}</EmptyNote>
+  const minS = rows.reduce((m, r) => (r.start < m ? r.start : m), rangeStart)
+  const maxE = rows.reduce((m, r) => (r.end > m ? r.end : m), rangeEnd)
   const start = monthStart(minS)
   const endM = monthStart(maxE); const end = new Date(Date.UTC(endM.getUTCFullYear(), endM.getUTCMonth() + 1, 1))
   const total = end.getTime() - start.getTime()
   const months: { label: string; left: number; width: number }[] = []
   for (let d = new Date(start); d < end; d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1))) {
     const next = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1))
-    months.push({ label: `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getUTCMonth()]} '${String(d.getUTCFullYear()).slice(2)}`, left: ((d.getTime() - start.getTime()) / total) * 100, width: ((next.getTime() - d.getTime()) / total) * 100 })
+    months.push({ label: `${MON[d.getUTCMonth()]} '${String(d.getUTCFullYear()).slice(2)}`, left: ((d.getTime() - start.getTime()) / total) * 100, width: ((next.getTime() - d.getTime()) / total) * 100 })
   }
-  const pct = (iso: string, endOfDay = false) => Math.max(0, Math.min(100, ((new Date(iso).getTime() + (endOfDay ? DAY : 0) - start.getTime()) / total) * 100))
+  const pct = (iso: string, endOfDay = false) => Math.max(0, Math.min(100, ((utc(iso) + (endOfDay ? DAY : 0) - start.getTime()) / total) * 100))
   const today = pct(TODAY)
   const showToday = today > 0 && today < 100
   return (
     <div className="text-[11.5px]">
       <div className="flex">
-        <div className="w-14 shrink-0" />
+        <div className="shrink-0" style={{ width: labelWidth }} />
         <div className="relative flex-1 h-5 text-ink-500">
           {months.map((m) => <span key={m.label} className="absolute top-0 text-center" style={{ left: `${m.left}%`, width: `${m.width}%` }}>{m.label}</span>)}
         </div>
       </div>
       <div className="flex">
-        <div className="w-14 shrink-0">
-          {waves.map((w) => <div key={w.id} className="text-ink-700 flex items-center" style={{ height: height + 8 }}>Wave {w.number}</div>)}
+        <div className="shrink-0 pr-2" style={{ width: labelWidth }}>
+          {rows.map((r) => <div key={r.id} className="text-ink-700 flex items-center truncate" style={{ height: height + 8 }} title={typeof r.label === 'string' ? r.label : undefined}>{r.label}</div>)}
         </div>
         <div className="relative flex-1 border-l border-line">
           {months.map((m) => <span key={m.label} className="absolute top-0 bottom-0 border-r border-line/80" style={{ left: `${m.left}%`, width: `${m.width}%` }} />)}
-          {waves.map((w) => (
-            <div key={w.id} className="relative" style={{ height: height + 8 }}>
-              <button title={`Wave ${w.number}: ${w.scope} (${fmtD(w.startDate)} – ${fmtD(w.endDate)})`} onClick={() => onClick?.(w)} className="absolute rounded-full cursor-pointer hover:opacity-90"
-                style={{ left: `${pct(w.startDate)}%`, width: `${Math.max(1.5, pct(w.endDate, true) - pct(w.startDate))}%`, top: 4, height, background: w.color }}>
-                <span className="absolute inset-y-0 left-0 rounded-full bg-black/15" style={{ width: `${w.progress}%` }} />
+          {rows.map((r) => (
+            <div key={r.id} className="relative" style={{ height: height + 8 }}>
+              <button title={r.title} onClick={r.onClick} className={clsx('absolute rounded-full', r.onClick && 'cursor-pointer hover:opacity-90')}
+                style={{ left: `${pct(r.start)}%`, width: `${Math.max(1.5, pct(r.end, true) - pct(r.start))}%`, top: 4, height, background: r.color }}>
+                {r.progress !== undefined && <span className="absolute inset-y-0 left-0 rounded-full bg-black/15" style={{ width: `${r.progress}%` }} />}
               </button>
+              {r.marker && <span className="absolute -translate-x-1/2 text-[10px] leading-none pointer-events-none" style={{ left: `${pct(r.marker)}%`, top: 2 }} title={`Go-live ${fmtD(r.marker)}`}><Rocket size={12} className="text-navy-900" /></span>}
             </div>
           ))}
           {showToday && (
@@ -247,32 +413,7 @@ export function Gantt({ waves, onClick, height = 22 }: { waves: Wave[]; onClick?
   )
 }
 
-/* ---------- Alternative first cards for "View by" ---------- */
-function WorkstreamCard({ tx }: { tx: Tx }) {
-  const { assessments, waves, open } = tx
-  const sorted = [...waves.items].sort((a, b) => a.number - b.number)
-  const rows = READINESS_WORKSTREAMS.map((ws) => ({ id: ws, ws, scores: sorted.map((w) => assessments.items.find((a) => a.wave === w.number && a.workstream === ws)) }))
-  return (
-    <Card title="Readiness by Workstream" subtitle="Readiness score per workstream across transition waves" action={<ViewAll label="View Details" onClick={() => tx.setTab('Readiness & Stabilization')} />}>
-      <div className="overflow-x-auto"><table className="w-full tbl"><thead><tr><th className="th">Workstream</th>{sorted.map((w) => <th key={w.id} className="th text-center">Wave {w.number}</th>)}</tr></thead>
-        <tbody>{rows.map((r) => <tr key={r.id}><td className="td font-medium">{r.ws}</td>{r.scores.map((a, i) => <td key={i} className="td text-center">{a ? <button className="inline-flex items-center justify-center w-11 h-6 rounded-md text-[12px] font-semibold text-white cursor-pointer" style={{ background: readinessColor(assessmentScore(a)) }} onClick={() => open({ kind: 'assessment', item: a })}>{assessmentScore(a)}%</button> : <span className="text-ink-400">–</span>}</td>)}</tr>)}</tbody></table></div>
-    </Card>
-  )
-}
-function FunctionCard({ tx }: { tx: Tx }) {
-  const { kt, waves, open, setTab } = tx
-  const fns = Array.from(new Set(kt.items.map((k) => k.function)))
-  const rows = fns.map((fn) => { const items = kt.items.filter((k) => k.function === fn); const s = ktStats(items); const w = waves.items.find((x) => waveFunctions(x).includes(fn)); return { id: fn, fn, wave: w, ...s } })
-  return (
-    <Card title="Knowledge Transfer by Function" subtitle="Sessions delivered vs planned per function" action={<ViewAll label="Tracker" onClick={() => setTab('Knowledge Transfer')} />}>
-      <Table compact rows={rows} onRowClick={(r) => { const first = kt.items.find((k) => k.function === r.fn); if (first) open({ kind: 'kt', item: first }) }} columns={[
-        { key: 'fn', header: 'Function' },
-        { key: 'wave', header: 'Wave', render: (r) => <WaveDot wave={r.wave} size={22} /> },
-        { key: 'total', header: 'Items' },
-        { key: 'sessions', header: 'Sessions', render: (r) => `${r.done} / ${r.planned}` },
-        { key: 'pct', header: 'Completion', render: (r) => <span className="flex items-center gap-2"><Progress value={r.pct} className="w-[64px]" /><span className="text-[12.5px] font-medium">{r.pct}%</span></span> },
-        { key: 'signed', header: 'Signed off', render: (r) => `${r.signed} / ${r.total}` },
-      ]} />
-    </Card>
-  )
+/** Wave Gantt built on the generic rows. */
+export function WaveGantt({ waves, projects, onClick, height = 22 }: { waves: Wave[]; projects: TransitionProject[]; onClick?: (w: Wave) => void; height?: number }) {
+  return <GanttRows height={height} empty="No waves defined." rows={sortWaves(waves).map((w) => ({ id: w.id, label: `Wave ${w.number}`, start: w.startDate, end: w.endDate, color: w.color, progress: waveProgress(w, projects), title: `Wave ${w.number}: ${waveScope(w, projects)} (${fmtD(w.startDate)} – ${fmtD(w.endDate)})`, onClick: onClick ? () => onClick(w) : undefined }))} />
 }

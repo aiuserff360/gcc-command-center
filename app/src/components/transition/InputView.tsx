@@ -1,22 +1,22 @@
 /**
- * Transition Management – Input view: the registers and settings behind the transition dashboards.
- * Inline edits write straight to the collections; the pencil opens the full form (modals owned by the page).
+ * Transition Management – Input view: the registers and settings behind the transition dashboards, based on
+ * business units and the projects under them. Inline edits write straight to the collections; the pencil opens the full form.
  */
 import { useMemo, useState } from 'react'
 import clsx from 'clsx'
-import { CheckCircle2, Circle, Save, Check } from 'lucide-react'
-import { Card, Field, Input, Select, FormGrid, Badge } from '../ui'
+import { CheckCircle2, Circle, Save, Check, Building2 } from 'lucide-react'
+import { Card, Field, Input, Select, FormGrid, Badge, Progress } from '../ui'
 import { Grid, Row, Td, TextCell, NumCell, DateCell, SelectCell, CheckCell, RemoveBtn, EditBtn, AddBtn, GridToolbar, cellCls, selectCls } from '../ui/InlineGrid'
 import { InputLayout } from '../layout/InputLayout'
 import { uid } from '../../store/useStore'
 import { OWNERS, WORKSTREAMS, TODAY } from '../../data/common'
 import type { Milestone } from '../../data/shared'
 import {
-  WAVE_STATUSES, WAVE_COLORS, KT_STATUSES, KT_SIGNOFF, KT_FUNCTIONS, READINESS_WORKSTREAMS, DIMENSIONS, READINESS_STATUSES, GAP_STATUSES,
-  assessmentScore, readinessColor, milestoneWave, ktStats, waveLabel,
-  type Wave, type KtItem, type ReadinessAssessment, type ReadinessGap, type ChecklistItem, type TransitionSettings, type Dimension, type KtStatus,
+  WAVE_STATUSES, WAVE_COLORS, KT_STATUSES, KT_SIGNOFF, DIMENSIONS, DIM_KEY, DIM_SHORT, READINESS_STATUSES, GAP_STATUSES, PROJECT_STATUSES,
+  assessmentScore, readinessColor, milestoneWave, ktStats, ktStatusFor, waveLabel, waveScope, waveProgress, projectKt, projectReadiness, blankAssessment, avgScore, dimAverage, unitKt,
+  type Wave, type KtItem, type ReadinessAssessment, type ReadinessGap, type ChecklistItem, type TransitionSettings, type TransitionProject,
 } from '../../data/transition'
-import { WaveDot } from './Overview'
+import { WaveDot, StatusBadge } from './Overview'
 import type { Tx } from './types'
 
 const MS_STATUSES = ['On Track', 'At Risk', 'Delayed', 'Pending', 'Not Started', 'Completed'] as const
@@ -24,28 +24,91 @@ const AREAS = ['Governance', 'Support', 'Performance', 'Process', 'People', 'Tec
 const SEVERITIES = ['Critical', 'High', 'Medium', 'Low'] as const
 const sortWaves = (w: Wave[]) => [...w].sort((a, b) => a.number - b.number)
 const waveNos = (waves: Wave[]) => sortWaves(waves).map((w) => String(w.number))
+const projectName = (projects: TransitionProject[], id: string) => projects.find((p) => p.id === id)?.name ?? '–'
+
+/** Business-unit picker (same pattern as the Output view): cards + dropdown. */
+function UnitPicker({ tx, counts }: { tx: Tx; counts: (unit: string) => string }) {
+  const { unitNames, unit, setUnit } = tx
+  return (
+    <div className="flex items-center gap-2 flex-wrap mb-3">
+      <label className="flex items-center gap-2 rounded-lg border border-line bg-white px-3 py-1.5 min-w-[280px] cursor-pointer">
+        <Building2 size={15} className="text-brand-600" />
+        <select value={unit} onChange={(e) => setUnit(e.target.value)} className="flex-1 bg-transparent outline-none text-[13px] font-semibold text-ink-900 cursor-pointer">{unitNames.map((n) => <option key={n} value={n}>{n}</option>)}</select>
+      </label>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {unitNames.map((n) => <button key={n} onClick={() => setUnit(n)} className={clsx('rounded-md border px-2 py-1 text-[11.5px] cursor-pointer whitespace-nowrap', n === unit ? 'border-brand-600 bg-brand-50 text-brand-600 font-semibold' : 'border-line bg-white text-ink-700 hover:bg-surface')}>{n}<span className="text-ink-400 ml-1">{counts(n)}</span></button>)}
+      </div>
+    </div>
+  )
+}
+
+/* ================================================================== */
+/* Projects by business unit                                           */
+/* ================================================================== */
+function ProjectsTab({ tx }: { tx: Tx }) {
+  const { projects, waves, kt, assessments, unit, unitNames, open, openProject } = tx
+  const sorted = sortWaves(waves.items)
+  const rows = useMemo(() => projects.items.filter((p) => p.businessUnit === unit).sort((a, b) => a.wave - b.wave || a.startDate.localeCompare(b.startDate)), [projects.items, unit])
+  const set = <K extends keyof TransitionProject>(p: TransitionProject, k: K, v: TransitionProject[K]) => projects.update({ ...p, [k]: v })
+  const setWave = (p: TransitionProject, wave: number) => {
+    projects.update({ ...p, wave })
+    kt.items.filter((k) => k.projectId === p.id).forEach((k) => kt.update({ ...k, wave }))
+    assessments.items.filter((a) => a.projectId === p.id).forEach((a) => assessments.update({ ...a, wave }))
+    tx.gaps.items.filter((g) => g.projectId === p.id).forEach((g) => tx.gaps.update({ ...g, wave }))
+  }
+  const add = () => projects.add({ id: uid('proj'), name: '', businessUnit: unit, wave: sorted[0]?.number ?? 1, status: 'Not Started', progress: 0, startDate: TODAY, endDate: TODAY, goLiveDate: TODAY, globalOwner: '', indiaLead: OWNERS[0], region: '', scopeSummary: '', ftes: 0, description: '', notes: '' })
+  const remove = (p: TransitionProject) => { kt.items.filter((k) => k.projectId === p.id).forEach((k) => kt.remove(k.id)); assessments.items.filter((a) => a.projectId === p.id).forEach((a) => assessments.remove(a.id)); tx.gaps.items.filter((g) => g.projectId === p.id).forEach((g) => tx.gaps.remove(g.id)); projects.remove(p.id) }
+  return (
+    <Card title="Transition projects by business unit" subtitle={`${projects.items.length} projects across ${unitNames.length} business units. Wave, status, progress, dates, owners and FTEs drive the unit cards, wave scope and timeline; KT % and readiness are derived from the KT items and assessments.`} action={<AddBtn label={`Add project to ${unit}`} onClick={add} />}>
+      <UnitPicker tx={tx} counts={(n) => String(projects.items.filter((p) => p.businessUnit === n).length)} />
+      <Grid count={rows.length} minWidth={1700} headers={['Project', 'Wave', 'Status', { label: 'Progress %', right: true }, 'Start', 'End', 'Go-live', 'Global owner', 'India lead', { label: 'FTEs', right: true }, 'Region / client', 'Scope summary', { label: 'KT %', right: true }, { label: 'Readiness', right: true }, '']}>
+        {rows.map((p) => (
+          <Row key={p.id}>
+            <Td min={240}><TextCell value={p.name} placeholder="Project name" className="font-medium" onChange={(v) => set(p, 'name', v)} /></Td>
+            <Td><span className="flex items-center gap-1"><WaveDot wave={sorted.find((w) => w.number === p.wave)} size={20} /><SelectCell value={String(p.wave)} options={waveNos(sorted)} onChange={(v) => setWave(p, Number(v))} className="w-[52px]" /></span></Td>
+            <Td><SelectCell value={p.status} options={PROJECT_STATUSES} onChange={(v) => set(p, 'status', v)} /></Td>
+            <Td><NumCell value={p.progress} min={0} max={100} className="w-[60px]" onChange={(v) => set(p, 'progress', v)} /></Td>
+            <Td><DateCell value={p.startDate} onChange={(v) => set(p, 'startDate', v)} /></Td>
+            <Td><DateCell value={p.endDate} onChange={(v) => set(p, 'endDate', v)} /></Td>
+            <Td><DateCell value={p.goLiveDate} onChange={(v) => set(p, 'goLiveDate', v)} /></Td>
+            <Td min={110}><TextCell value={p.globalOwner} placeholder="Global owner" onChange={(v) => set(p, 'globalOwner', v)} /></Td>
+            <Td><SelectCell value={p.indiaLead} options={OWNERS} onChange={(v) => set(p, 'indiaLead', v)} /></Td>
+            <Td><NumCell value={p.ftes} min={0} className="w-[56px]" onChange={(v) => set(p, 'ftes', v)} /></Td>
+            <Td min={170}><TextCell value={p.region} placeholder="Region / client" onChange={(v) => set(p, 'region', v)} /></Td>
+            <Td min={260}><TextCell value={p.scopeSummary} placeholder="What moves to the GCC" onChange={(v) => set(p, 'scopeSummary', v)} /></Td>
+            <Td className="text-right text-[12px] pr-2">{projectKt(p, kt.items).pct}%</Td>
+            <Td className="text-right pr-2">{(() => { const s = projectReadiness(p, assessments.items); return <span className="inline-flex items-center justify-center w-11 h-5 rounded-md text-[11px] font-semibold text-white" style={{ background: readinessColor(s) }}>{s}%</span> })()}</Td>
+            <Td sticky><button className="link text-[11.5px] mr-1" onClick={() => openProject(p.id)}>Deep dive</button><EditBtn onClick={() => open({ kind: 'project', item: p })} /><RemoveBtn name={p.name || 'this project'} onClick={() => remove(p)} /></Td>
+          </Row>
+        ))}
+      </Grid>
+    </Card>
+  )
+}
 
 /* ================================================================== */
 /* Waves                                                               */
 /* ================================================================== */
 function WavesTab({ tx }: { tx: Tx }) {
-  const { waves, kt, open } = tx
+  const { waves, kt, projects, open } = tx
   const sorted = sortWaves(waves.items)
   const set = <K extends keyof Wave>(w: Wave, k: K, v: Wave[K]) => waves.update({ ...w, [k]: v })
-  const add = () => { const n = Math.max(0, ...sorted.map((w) => w.number)) + 1; const last = sorted[sorted.length - 1]; waves.add({ id: uid('wave'), number: n, scope: '', startDate: last?.endDate ?? TODAY, endDate: last?.endDate ?? TODAY, status: 'Not Started', progress: 0, color: WAVE_COLORS[(n - 1) % WAVE_COLORS.length], lead: OWNERS[0] }) }
+  const add = () => { const n = Math.max(0, ...sorted.map((w) => w.number)) + 1; const last = sorted[sorted.length - 1]; waves.add({ id: uid('wave'), number: n, name: '', startDate: last?.endDate ?? TODAY, endDate: last?.endDate ?? TODAY, status: 'Not Started', color: WAVE_COLORS[(n - 1) % WAVE_COLORS.length], lead: OWNERS[0] }) }
   return (
-    <Card title="Transition waves" subtitle="Each wave moves a set of functions to the GCC. Scope is a comma-separated list of functions; progress and status drive the wave tiles and timeline." action={<AddBtn label="Add wave" onClick={add} />}>
-      <Grid count={sorted.length} minWidth={1000} headers={['Wave', 'Scope (functions, comma-separated)', 'Start', 'End', 'Status', { label: 'Progress %', right: true }, 'Wave lead', 'Colour', { label: 'KT items', right: true }, '']}>
+    <Card title="Transition waves" subtitle="Each wave moves a set of business-unit projects to the GCC. Scope (business units) and progress are derived from the projects assigned to the wave in the Projects tab; dates, status and lead are entered here." action={<AddBtn label="Add wave" onClick={add} />}>
+      <Grid count={sorted.length} minWidth={1100} headers={['Wave', 'Name', 'Business units in scope (derived)', 'Start', 'End', 'Status', { label: 'Progress', right: true }, 'Wave lead', 'Colour', { label: 'Projects', right: true }, { label: 'KT items', right: true }, '']}>
         {sorted.map((w) => (
           <Row key={w.id}>
             <Td><span className="flex items-center gap-1.5 pl-1"><WaveDot wave={w} size={22} /><NumCell value={w.number} min={1} className="w-[52px]" onChange={(v) => set(w, 'number', v)} /></span></Td>
-            <Td min={300}><TextCell value={w.scope} placeholder="Finance, HR, Procurement" onChange={(v) => set(w, 'scope', v)} className="font-medium" /></Td>
+            <Td min={200}><TextCell value={w.name} placeholder="Wave name" onChange={(v) => set(w, 'name', v)} className="font-medium" /></Td>
+            <Td min={220}><span className="block px-1.5 text-[12px] text-ink-700 leading-snug">{waveScope(w, projects.items) || <span className="text-ink-400">no projects yet</span>}</span></Td>
             <Td><DateCell value={w.startDate} onChange={(v) => set(w, 'startDate', v)} /></Td>
             <Td><DateCell value={w.endDate} onChange={(v) => set(w, 'endDate', v)} /></Td>
             <Td><SelectCell value={w.status} options={WAVE_STATUSES} onChange={(v) => set(w, 'status', v)} /></Td>
-            <Td><NumCell value={w.progress} min={0} max={100} onChange={(v) => set(w, 'progress', v)} /></Td>
+            <Td className="text-right text-[12px] pr-2"><span className="inline-flex items-center gap-1.5"><Progress value={waveProgress(w, projects.items)} className="w-[48px]" />{waveProgress(w, projects.items)}%</span></Td>
             <Td><SelectCell value={w.lead} options={OWNERS} onChange={(v) => set(w, 'lead', v)} /></Td>
             <Td><span className="flex items-center gap-1 px-1">{WAVE_COLORS.map((c) => <button key={c} title={c} className="w-4 h-4 rounded-full border-2 cursor-pointer" style={{ background: c, borderColor: w.color === c ? '#0B2240' : 'transparent' }} onClick={() => set(w, 'color', c)} />)}</span></Td>
+            <Td className="text-right text-[12px] pr-2">{projects.items.filter((p) => p.wave === w.number).length}</Td>
             <Td className="text-right text-[12px] pr-2">{kt.items.filter((k) => k.wave === w.number).length}</Td>
             <Td sticky><EditBtn onClick={() => open({ kind: 'wave', item: w })} /><RemoveBtn name={`Wave ${w.number}`} onClick={() => waves.remove(w.id)} /></Td>
           </Row>
@@ -59,29 +122,32 @@ function WavesTab({ tx }: { tx: Tx }) {
 /* Knowledge transfer                                                  */
 /* ================================================================== */
 function KtTab({ tx }: { tx: Tx }) {
-  const { waves, kt, open } = tx
+  const { waves, kt, projects, unit, open } = tx
   const sorted = sortWaves(waves.items)
   const [q, setQ] = useState('')
-  const [fWave, setFWave] = useState('All')
-  const rows = useMemo(() => kt.items.filter((k) => (fWave === 'All' || k.wave === Number(fWave)) && (!q || `${k.process} ${k.function} ${k.globalOwner} ${k.indiaOwner}`.toLowerCase().includes(q.toLowerCase()))).sort((a, b) => a.wave - b.wave || a.targetDate.localeCompare(b.targetDate)), [kt.items, q, fWave])
-  const s = ktStats(kt.items)
+  const [fProject, setFProject] = useState('All')
+  const unitProjects = projects.items.filter((p) => p.businessUnit === unit)
+  const rows = useMemo(() => kt.items.filter((k) => k.businessUnit === unit && (fProject === 'All' || k.projectId === fProject) && (!q || `${k.process} ${projectName(projects.items, k.projectId)} ${k.globalOwner} ${k.indiaOwner}`.toLowerCase().includes(q.toLowerCase()))).sort((a, b) => a.wave - b.wave || projectName(projects.items, a.projectId).localeCompare(projectName(projects.items, b.projectId)) || a.targetDate.localeCompare(b.targetDate)), [kt.items, projects.items, unit, q, fProject])
+  const s = unitKt(unit, kt.items)
   const setSessions = (k: KtItem, planned: number, done: number) => {
-    const status: KtStatus = done >= planned && planned > 0 ? 'Completed' : done > 0 ? 'In Progress' : 'Not Started'
+    const status = ktStatusFor(planned, done)
     kt.update({ ...k, sessionsPlanned: planned, sessionsDone: done, status, signOff: status === 'Completed' && k.signOff === 'Not Started' ? 'Pending' : k.signOff })
   }
   const set = <K extends keyof KtItem>(k: KtItem, key: K, v: KtItem[K]) => kt.update({ ...k, [key]: v })
-  const add = () => kt.add({ id: uid('kt'), process: '', function: KT_FUNCTIONS[0], wave: fWave === 'All' ? (sorted[0]?.number ?? 1) : Number(fWave), globalOwner: '', indiaOwner: OWNERS[0], sessionsPlanned: 6, sessionsDone: 0, status: 'Not Started', signOff: 'Not Started', targetDate: TODAY })
+  const setProject = (k: KtItem, id: string) => { const p = projects.items.find((x) => x.id === id); if (p) kt.update({ ...k, projectId: p.id, businessUnit: p.businessUnit, wave: p.wave }) }
+  const add = () => { const p = unitProjects.find((x) => x.id === fProject) ?? unitProjects[0]; if (!p) return; kt.add({ id: uid('kt'), projectId: p.id, businessUnit: p.businessUnit, process: '', wave: p.wave, globalOwner: p.globalOwner, indiaOwner: p.indiaLead, sessionsPlanned: 6, sessionsDone: 0, status: 'Not Started', signOff: 'Not Started', targetDate: TODAY }) }
   return (
-    <Card title="Knowledge transfer items" subtitle={`${s.total} items · ${s.done} of ${s.planned} sessions delivered (${s.pct}%) · ${s.signed} signed off. Status follows the sessions; sign-off is recorded by the global owner.`} action={<AddBtn label="Add KT item" onClick={add} />}>
-      <GridToolbar q={q} onQ={setQ} placeholder="Search process, function, owner…" count={rows.length}>
-        <select className="input py-1.5 w-auto text-[12.5px]" value={fWave} onChange={(e) => setFWave(e.target.value)}>{['All', ...waveNos(sorted)].map((w) => <option key={w} value={w}>{w === 'All' ? 'All waves' : waveLabel(Number(w))}</option>)}</select>
+    <Card title="Knowledge transfer items by project" subtitle={`${unit}: ${s.total} items · ${s.done} of ${s.planned} sessions delivered (${s.pct}%) · ${s.signed} signed off. Status follows the sessions; sign-off is recorded by the global owner. Business unit and wave follow the project.`} action={<AddBtn label="Add KT item" onClick={add} />}>
+      <UnitPicker tx={tx} counts={(n) => String(kt.items.filter((k) => k.businessUnit === n).length)} />
+      <GridToolbar q={q} onQ={setQ} placeholder="Search process, project, owner…" count={rows.length}>
+        <select className="input py-1.5 w-auto text-[12.5px]" value={unitProjects.some((p) => p.id === fProject) ? fProject : 'All'} onChange={(e) => setFProject(e.target.value)}><option value="All">All projects of {unit}</option>{unitProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
       </GridToolbar>
-      <Grid count={rows.length} minWidth={1180} headers={['Process / activity', 'Function', 'Wave', 'Global owner', 'India owner', { label: 'Planned', right: true }, { label: 'Done', right: true }, 'Status', 'Sign-off', 'Target date', '']}>
+      <Grid count={rows.length} minWidth={1260} headers={['Process / activity', 'Project', 'Wave', 'Global owner', 'India owner', { label: 'Planned', right: true }, { label: 'Done', right: true }, 'Status', 'Sign-off', 'Target date', '']} empty={unitProjects.length ? 'No KT items yet. Use "Add KT item" to create one.' : 'Add a project to this business unit first (Projects tab).'}>
         {rows.map((k) => (
           <Row key={k.id}>
             <Td min={240}><TextCell value={k.process} placeholder="Process or activity" className="font-medium" onChange={(v) => set(k, 'process', v)} /></Td>
-            <Td><SelectCell value={k.function} options={KT_FUNCTIONS} onChange={(v) => set(k, 'function', v)} /></Td>
-            <Td><span className="flex items-center gap-1"><WaveDot wave={sorted.find((w) => w.number === k.wave)} size={20} /><SelectCell value={String(k.wave)} options={waveNos(sorted)} onChange={(v) => set(k, 'wave', Number(v))} className="w-[52px]" /></span></Td>
+            <Td min={200}><select className={clsx(selectCls, 'cursor-pointer max-w-[260px]')} value={k.projectId} onChange={(e) => setProject(k, e.target.value)}>{(unitProjects.some((p) => p.id === k.projectId) ? unitProjects : [...projects.items.filter((p) => p.id === k.projectId), ...unitProjects]).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Td>
+            <Td><span className="flex items-center gap-1 px-1"><WaveDot wave={sorted.find((w) => w.number === k.wave)} size={20} /><span className="text-[12px] text-ink-500 whitespace-nowrap">{waveLabel(k.wave)}</span></span></Td>
             <Td min={110}><TextCell value={k.globalOwner} placeholder="Global owner" onChange={(v) => set(k, 'globalOwner', v)} /></Td>
             <Td><SelectCell value={k.indiaOwner} options={OWNERS} onChange={(v) => set(k, 'indiaOwner', v)} /></Td>
             <Td><NumCell value={k.sessionsPlanned} min={0} className="w-[60px]" onChange={(v) => setSessions(k, v, k.sessionsDone)} /></Td>
@@ -101,32 +167,28 @@ function KtTab({ tx }: { tx: Tx }) {
 /* Readiness assessments                                               */
 /* ================================================================== */
 function AssessmentsTab({ tx }: { tx: Tx }) {
-  const { waves, assessments, open } = tx
+  const { waves, assessments, projects, unit, open } = tx
   const sorted = sortWaves(waves.items)
-  const [sel, setSel] = useState<number>(tx.currentWave.number)
-  const wave = sorted.find((w) => w.number === sel) ?? sorted[0]
-  const wsList = Array.from(new Set([...READINESS_WORKSTREAMS, ...assessments.items.map((a) => a.workstream)]))
-  const rows = wsList.map((ws) => ({ ws, a: assessments.items.find((x) => x.wave === wave?.number && x.workstream === ws) }))
-  const setDim = (a: ReadinessAssessment, d: Dimension, v: number) => assessments.update({ ...a, dims: { ...a.dims, [d]: v }, assessedOn: TODAY })
-  const create = (ws: string) => assessments.add({ id: uid('ra'), wave: wave?.number ?? 1, workstream: ws, dims: Object.fromEntries(DIMENSIONS.map((d) => [d, 50])) as Record<Dimension, number>, status: 'Not Started', nextAction: '', assessedOn: TODAY })
-  const avg = (d: Dimension) => { const list = rows.map((r) => r.a).filter((a): a is ReadinessAssessment => !!a); return list.length ? Math.round(list.reduce((s, a) => s + a.dims[d], 0) / list.length) : 0 }
-  const waveAvg = (() => { const list = rows.map((r) => r.a).filter((a): a is ReadinessAssessment => !!a); return list.length ? Math.round(list.reduce((s, a) => s + assessmentScore(a), 0) / list.length) : 0 })()
+  const rows = projects.items.filter((p) => p.businessUnit === unit).sort((a, b) => a.wave - b.wave).map((p) => ({ p, a: assessments.items.find((x) => x.projectId === p.id) }))
+  const list = rows.map((r) => r.a).filter((a): a is ReadinessAssessment => !!a)
+  const setDim = (a: ReadinessAssessment, key: keyof ReadinessAssessment, v: number) => assessments.update({ ...a, [key]: v, assessedOn: TODAY })
   return (
-    <Card title="Readiness assessments" subtitle="Score each workstream on the five readiness dimensions (0–100) per wave. The overall score is the average of the dimensions and feeds the readiness matrix."
-      headerRight={<div className="flex items-center gap-1">{sorted.map((w) => <button key={w.id} onClick={() => setSel(w.number)} className={clsx('rounded-full border-2 cursor-pointer transition-all', sel === w.number ? 'border-navy-900' : 'border-transparent')} title={`Wave ${w.number} – ${w.scope}`}><WaveDot wave={w} size={24} /></button>)}</div>}>
-      {wave && <div className="text-[12.5px] text-ink-700 mb-3">Wave {wave.number} – {wave.scope} · average readiness <b>{waveAvg}%</b></div>}
-      <Grid count={rows.length} minWidth={1120} headers={['Workstream', ...DIMENSIONS.map((d) => ({ label: d.replace(' & ', ' & '), right: true })), { label: 'Score', right: true }, 'Status', 'Next action', '']}>
-        {rows.map(({ ws, a }) => (
-          <Row key={ws}>
-            <Td min={170}><span className="px-1.5 text-[12.5px] font-medium">{ws}</span></Td>
-            {DIMENSIONS.map((d) => <Td key={d}>{a ? <NumCell value={a.dims[d] ?? 0} min={0} max={100} className="w-[64px]" onChange={(v) => setDim(a, d, v)} /> : <span className="block text-right text-ink-400 pr-2">–</span>}</Td>)}
+    <Card title="Readiness assessments by project" subtitle="Score each project on the five readiness dimensions (0–100). The overall score is the average of the dimensions and feeds the project table, unit cards and the readiness matrix.">
+      <UnitPicker tx={tx} counts={(n) => `${assessments.items.filter((a) => a.businessUnit === n).length}/${projects.items.filter((p) => p.businessUnit === n).length}`} />
+      <div className="text-[12.5px] text-ink-700 mb-3">{unit} · {list.length} of {rows.length} projects assessed · average readiness <b>{avgScore(list)}%</b></div>
+      <Grid count={rows.length} minWidth={1180} headers={['Project', 'Wave', ...DIMENSIONS.map((d) => ({ label: DIM_SHORT[d], right: true })), { label: 'Score', right: true }, 'Status', 'Next action', '']} empty="Add a project to this business unit first (Projects tab).">
+        {rows.map(({ p, a }) => (
+          <Row key={p.id}>
+            <Td min={200}><span className="block px-1.5 leading-snug"><span className="text-[12.5px] font-medium">{p.name}</span><span className="block text-[10.5px] text-ink-500"><StatusBadge value={p.status} /></span></span></Td>
+            <Td><span className="px-1"><WaveDot wave={sorted.find((w) => w.number === p.wave)} size={20} /></span></Td>
+            {DIMENSIONS.map((d) => <Td key={d}>{a ? <NumCell value={a[DIM_KEY[d]] ?? 0} min={0} max={100} className="w-[64px]" onChange={(v) => setDim(a, DIM_KEY[d], v)} /> : <span className="block text-right text-ink-400 pr-2">–</span>}</Td>)}
             <Td className="text-right">{a ? <span className="inline-flex items-center justify-center w-12 h-6 rounded-md text-[12px] font-semibold text-white" style={{ background: readinessColor(assessmentScore(a)) }}>{assessmentScore(a)}%</span> : <span className="text-ink-400 pr-2">–</span>}</Td>
             <Td>{a ? <SelectCell value={a.status} options={READINESS_STATUSES} onChange={(v) => assessments.update({ ...a, status: v as ReadinessAssessment['status'] })} /> : null}</Td>
-            <Td min={220}>{a ? <TextCell value={a.nextAction} placeholder="Next action" onChange={(v) => assessments.update({ ...a, nextAction: v })} /> : <button className="link px-1.5" onClick={() => create(ws)}>+ Assess this workstream</button>}</Td>
-            <Td sticky>{a && <><EditBtn onClick={() => open({ kind: 'assessment', item: a })} /><RemoveBtn name={`the ${ws} assessment for Wave ${a.wave}`} onClick={() => assessments.remove(a.id)} /></>}</Td>
+            <Td min={240}>{a ? <TextCell value={a.nextAction} placeholder="Next action" onChange={(v) => assessments.update({ ...a, nextAction: v })} /> : <button className="link px-1.5" onClick={() => assessments.add(blankAssessment(uid('ra'), p))}>+ Assess this project</button>}</Td>
+            <Td sticky>{a && <><EditBtn onClick={() => open({ kind: 'assessment', item: a })} /><RemoveBtn name={`the assessment for ${p.name}`} onClick={() => assessments.remove(a.id)} /></>}</Td>
           </Row>
         ))}
-        <tr><td className="text-[12px] text-ink-500 px-2 py-2">Wave average</td>{DIMENSIONS.map((d) => <td key={d} className="text-right text-[12.5px] font-semibold px-2 py-2">{avg(d)}%</td>)}<td className="text-right text-[12.5px] font-semibold px-2 py-2">{waveAvg}%</td><td colSpan={3} /></tr>
+        <tr><td className="text-[12px] text-ink-500 px-2 py-2" colSpan={2}>Business unit average</td>{DIMENSIONS.map((d) => <td key={d} className="text-right text-[12.5px] font-semibold px-2 py-2">{dimAverage(list, d)}%</td>)}<td className="text-right text-[12.5px] font-semibold px-2 py-2">{avgScore(list)}%</td><td colSpan={3} /></tr>
       </Grid>
     </Card>
   )
@@ -136,27 +198,32 @@ function AssessmentsTab({ tx }: { tx: Tx }) {
 /* Readiness gaps                                                      */
 /* ================================================================== */
 function GapsTab({ tx }: { tx: Tx }) {
-  const { waves, gaps, open } = tx
+  const { waves, gaps, projects, open } = tx
   const sorted = sortWaves(waves.items)
   const [q, setQ] = useState('')
   const [fStatus, setFStatus] = useState('All')
-  const rows = useMemo(() => gaps.items.filter((g) => (fStatus === 'All' || g.status === fStatus) && (!q || `${g.code} ${g.description} ${g.owner} ${g.workstream}`.toLowerCase().includes(q.toLowerCase()))).sort((a, b) => (a.status === 'Resolved' ? 1 : 0) - (b.status === 'Resolved' ? 1 : 0) || b.raised.localeCompare(a.raised)), [gaps.items, q, fStatus])
+  const [fUnit, setFUnit] = useState('All')
+  const rows = useMemo(() => gaps.items.filter((g) => (fStatus === 'All' || g.status === fStatus) && (fUnit === 'All' || g.businessUnit === fUnit) && (!q || `${g.code} ${g.description} ${g.owner} ${g.businessUnit} ${projectName(projects.items, g.projectId)}`.toLowerCase().includes(q.toLowerCase()))).sort((a, b) => (a.status === 'Resolved' ? 1 : 0) - (b.status === 'Resolved' ? 1 : 0) || b.raised.localeCompare(a.raised)), [gaps.items, projects.items, q, fStatus, fUnit])
   const set = <K extends keyof ReadinessGap>(g: ReadinessGap, k: K, v: ReadinessGap[K]) => gaps.update({ ...g, [k]: v })
-  const add = () => { const n = gaps.items.reduce((m, g) => Math.max(m, parseInt(g.code.split('-')[1] ?? '0', 10) || 0), 0) + 1; gaps.add({ id: uid('gap'), code: `G-${String(n).padStart(3, '0')}`, wave: sorted[0]?.number ?? 1, dimension: DIMENSIONS[0], workstream: READINESS_WORKSTREAMS[0], description: '', severity: 'Medium', owner: OWNERS[0], status: 'New', raised: TODAY, due: TODAY }) }
+  const setProject = (g: ReadinessGap, id: string) => { const p = projects.items.find((x) => x.id === id); if (p) gaps.update({ ...g, projectId: p.id, businessUnit: p.businessUnit, wave: p.wave }) }
+  const add = () => { const n = gaps.items.reduce((m, g) => Math.max(m, parseInt(g.code.split('-')[1] ?? '0', 10) || 0), 0) + 1; const p = projects.items.find((x) => fUnit === 'All' || x.businessUnit === fUnit) ?? projects.items[0]; if (!p) return; gaps.add({ id: uid('gap'), code: `G-${String(n).padStart(3, '0')}`, projectId: p.id, businessUnit: p.businessUnit, wave: p.wave, dimension: DIMENSIONS[0], description: '', severity: 'Medium', owner: OWNERS[0], status: 'New', raised: TODAY, due: TODAY }) }
   const count = (s: string) => gaps.items.filter((g) => g.status === s).length
+  const sortedProjects = [...projects.items].sort((a, b) => a.businessUnit.localeCompare(b.businessUnit) || a.name.localeCompare(b.name))
   return (
-    <Card title="Readiness gaps" subtitle={`${gaps.items.length} gaps · ${count('New')} new · ${count('Open')} open · ${count('Resolved')} resolved. New and resolved counts feed the Readiness Gaps tile.`} action={<AddBtn label="Add gap" onClick={add} />}>
+    <Card title="Readiness gaps" subtitle={`${gaps.items.length} gaps · ${count('New')} new · ${count('Open')} open · ${count('Resolved')} resolved. Each gap belongs to a project (business unit and wave follow it). New and resolved counts feed the Readiness Gaps tile.`} action={<AddBtn label="Add gap" onClick={add} />}>
       <GridToolbar q={q} onQ={setQ} placeholder="Search gaps…" count={rows.length}>
+        <select className="input py-1.5 w-auto text-[12.5px]" value={fUnit} onChange={(e) => setFUnit(e.target.value)}>{['All', ...tx.unitNames].map((u) => <option key={u} value={u}>{u === 'All' ? 'All business units' : u}</option>)}</select>
         <select className="input py-1.5 w-auto text-[12.5px]" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>{['All', ...GAP_STATUSES].map((s) => <option key={s}>{s}</option>)}</select>
       </GridToolbar>
-      <Grid count={rows.length} minWidth={1240} headers={['ID', 'Gap', 'Wave', 'Dimension', 'Workstream', 'Severity', 'Owner', 'Status', 'Raised', 'Due', '']}>
+      <Grid count={rows.length} minWidth={1360} headers={['ID', 'Gap', 'Project', 'Business unit', 'Wave', 'Dimension', 'Severity', 'Owner', 'Status', 'Raised', 'Due', '']}>
         {rows.map((g) => (
           <Row key={g.id} muted={g.status === 'Resolved'}>
             <Td><TextCell value={g.code} className="w-[64px] text-ink-500" onChange={(v) => set(g, 'code', v)} /></Td>
             <Td min={280}><TextCell value={g.description} placeholder="Describe the gap" className="font-medium" onChange={(v) => set(g, 'description', v)} /></Td>
-            <Td><SelectCell value={String(g.wave)} options={waveNos(sorted)} onChange={(v) => set(g, 'wave', Number(v))} className="w-[52px]" /></Td>
+            <Td min={200}><select className={clsx(selectCls, 'cursor-pointer max-w-[240px]')} value={g.projectId} onChange={(e) => setProject(g, e.target.value)}>{sortedProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Td>
+            <Td><span className="px-1.5 text-[12px] text-ink-700 whitespace-nowrap">{g.businessUnit}</span></Td>
+            <Td><span className="px-1"><WaveDot wave={sorted.find((w) => w.number === g.wave)} size={20} /></span></Td>
             <Td><SelectCell value={g.dimension} options={DIMENSIONS} onChange={(v) => set(g, 'dimension', v)} /></Td>
-            <Td><SelectCell value={g.workstream} options={READINESS_WORKSTREAMS} onChange={(v) => set(g, 'workstream', v)} /></Td>
             <Td><SelectCell value={g.severity} options={SEVERITIES} onChange={(v) => set(g, 'severity', v)} /></Td>
             <Td><SelectCell value={g.owner} options={OWNERS} onChange={(v) => set(g, 'owner', v)} /></Td>
             <Td><SelectCell value={g.status} options={GAP_STATUSES} onChange={(v) => set(g, 'status', v)} /></Td>
@@ -201,24 +268,26 @@ function ChecklistTab({ tx }: { tx: Tx }) {
 /* Transition milestones (shared 'milestones' collection)              */
 /* ================================================================== */
 function MilestonesTab({ tx }: { tx: Tx }) {
-  const { waves, milestones, msWaves, open } = tx
+  const { waves, milestones, msWaves, msProjects, projects, open } = tx
   const sorted = sortWaves(waves.items)
-  const rows = useMemo(() => milestones.items.filter((m) => m.phase === 'Transition').map((m) => ({ m, wave: milestoneWave(m, sorted, msWaves.items) })).sort((a, b) => a.m.dueDate.localeCompare(b.m.dueDate)), [milestones.items, msWaves.items, sorted])
+  const rows = useMemo(() => milestones.items.filter((m) => m.phase === 'Transition').map((m) => ({ m, wave: milestoneWave(m, sorted, msWaves.items, projects.items, msProjects.items), projectId: msProjects.items.find((l) => l.id === m.id)?.projectId ?? '' })).sort((a, b) => a.m.dueDate.localeCompare(b.m.dueDate)), [milestones.items, msWaves.items, msProjects.items, projects.items, sorted])
   const set = <K extends keyof Milestone>(m: Milestone, k: K, v: Milestone[K]) => milestones.update({ ...m, [k]: v })
   const add = () => { const id = uid('ms'); milestones.add({ id, name: '', workstream: 'Transition Readiness', dueDate: TODAY, status: 'Not Started', owner: OWNERS[0], phase: 'Transition', critical: false }); msWaves.update({ id, wave: tx.currentWave.number }) }
+  const sortedProjects = [...projects.items].sort((a, b) => a.businessUnit.localeCompare(b.businessUnit) || a.name.localeCompare(b.name))
   return (
-    <Card title="Transition milestones" subtitle="Milestones in the Transition phase of the shared program milestone list. Setting the wave here overrides the wave derived from the milestone name or date." action={<AddBtn label="Add milestone" onClick={add} />}>
-      <Grid count={rows.length} minWidth={1000} headers={['Milestone', 'Wave', 'Workstream', 'Target date', 'Status', 'Owner', { label: 'Key', width: '50px' }, '']}>
-        {rows.map(({ m, wave }) => (
+    <Card title="Transition milestones" subtitle="Milestones in the Transition phase of the shared program milestone list. Link a milestone to a project to show it in the project deep dive; the wave follows the project unless set explicitly." action={<AddBtn label="Add milestone" onClick={add} />}>
+      <Grid count={rows.length} minWidth={1200} headers={['Milestone', 'Project (optional)', 'Wave', 'Workstream', 'Target date', 'Status', 'Owner', { label: 'Key', width: '50px' }, '']}>
+        {rows.map(({ m, wave, projectId }) => (
           <Row key={m.id}>
-            <Td min={300}><TextCell value={m.name} placeholder="Milestone" className="font-medium" onChange={(v) => set(m, 'name', v)} /></Td>
+            <Td min={280}><TextCell value={m.name} placeholder="Milestone" className="font-medium" onChange={(v) => set(m, 'name', v)} /></Td>
+            <Td min={220}><select className={clsx(selectCls, 'cursor-pointer max-w-[260px]')} value={projectId} onChange={(e) => (e.target.value ? msProjects.update({ id: m.id, projectId: e.target.value }) : msProjects.remove(m.id))}><option value="">– none –</option>{sortedProjects.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.businessUnit})</option>)}</select></Td>
             <Td><span className="flex items-center gap-1"><WaveDot wave={sorted.find((w) => w.number === wave)} size={20} /><SelectCell value={wave ? String(wave) : '–'} options={['–', ...waveNos(sorted)]} className="w-[56px]" onChange={(v) => (v === '–' ? msWaves.remove(m.id) : msWaves.update({ id: m.id, wave: Number(v) }))} /></span></Td>
             <Td><SelectCell value={m.workstream} options={WORKSTREAMS} onChange={(v) => set(m, 'workstream', v as Milestone['workstream'])} /></Td>
             <Td><DateCell value={m.dueDate} onChange={(v) => set(m, 'dueDate', v)} /></Td>
             <Td><SelectCell value={m.status} options={MS_STATUSES} onChange={(v) => set(m, 'status', v as Milestone['status'])} /></Td>
             <Td><SelectCell value={m.owner} options={OWNERS} onChange={(v) => set(m, 'owner', v)} /></Td>
             <Td><CheckCell value={!!m.critical} title="Key milestone (shown on the Dashboard)" onChange={(v) => set(m, 'critical', v)} /></Td>
-            <Td sticky><EditBtn onClick={() => open({ kind: 'milestone', item: m, wave })} /><RemoveBtn name={m.name || 'this milestone'} onClick={() => { milestones.remove(m.id); msWaves.remove(m.id) }} /></Td>
+            <Td sticky><EditBtn onClick={() => open({ kind: 'milestone', item: m, wave, projectId: projectId || undefined })} /><RemoveBtn name={m.name || 'this milestone'} onClick={() => { milestones.remove(m.id); msWaves.remove(m.id); msProjects.remove(m.id) }} /></Td>
           </Row>
         ))}
       </Grid>
@@ -230,7 +299,7 @@ function MilestonesTab({ tx }: { tx: Tx }) {
 /* Settings                                                            */
 /* ================================================================== */
 function SettingsTab({ tx, onSave }: { tx: Tx; onSave: (s: TransitionSettings) => void }) {
-  const { settings, waves } = tx
+  const { settings, waves, projects, kt, assessments, gaps, checklist } = tx
   const sorted = sortWaves(waves.items)
   const [f, setF] = useState<TransitionSettings>(settings)
   const [saved, setSaved] = useState(false)
@@ -238,16 +307,16 @@ function SettingsTab({ tx, onSave }: { tx: Tx; onSave: (s: TransitionSettings) =
   const num = (v: string) => (v === '' ? 0 : Number(v))
   const save = () => { onSave(f); setSaved(true); setTimeout(() => setSaved(false), 2500) }
   const arr = (key: 'trendPlanned' | 'trendActual', i: number, v: number) => setF({ ...f, [key]: f[key].map((x, j) => (j === i ? v : x)) })
+  const done = checklist.items.filter((c) => c.done).length
   return (
     <div className="grid grid-cols-[1.1fr_1fr] gap-4">
-      <Card title="Headline KPIs and go-live" subtitle="Numbers that cannot be derived from the registers: month-on-month deltas and the target go-live.">
+      <Card title="Headline KPIs and go-live" subtitle="Numbers that cannot be derived from the registers: month-on-month deltas, the go-live wave and status, and the readiness threshold.">
         <FormGrid cols={3}>
           <Field label="Go-live wave"><Select options={waveNos(sorted)} value={String(f.goLiveWave)} onChange={(e) => setF({ ...f, goLiveWave: Number(e.target.value) })} /></Field>
-          <Field label="Target go-live date"><Input type="date" value={f.goLiveDate} onChange={(e) => setF({ ...f, goLiveDate: e.target.value })} /></Field>
           <Field label="Go-live status"><Select options={['On track', 'At risk', 'Delayed']} value={f.goLiveStatus} onChange={(e) => setF({ ...f, goLiveStatus: e.target.value as TransitionSettings['goLiveStatus'] })} /></Field>
+          <Field label="Readiness 'complete' threshold (%)"><Input type="number" min={0} max={100} value={f.readinessThreshold} onChange={(e) => setF({ ...f, readinessThreshold: num(e.target.value) })} /></Field>
           <Field label="KT change vs last month (%)"><Input type="number" value={f.ktDeltaPct} onChange={(e) => setF({ ...f, ktDeltaPct: num(e.target.value) })} /></Field>
           <Field label="Stabilization change vs last month (%)"><Input type="number" value={f.stabilizationDeltaPct} onChange={(e) => setF({ ...f, stabilizationDeltaPct: num(e.target.value) })} /></Field>
-          <Field label="Readiness 'complete' threshold (%)"><Input type="number" min={0} max={100} value={f.readinessThreshold} onChange={(e) => setF({ ...f, readinessThreshold: num(e.target.value) })} /></Field>
         </FormGrid>
         <h4 className="text-[13px] font-semibold mt-4 mb-2">Transition milestone trend (% complete)</h4>
         <table className="w-full tbl text-[12.5px]">
@@ -259,18 +328,18 @@ function SettingsTab({ tx, onSave }: { tx: Tx; onSave: (s: TransitionSettings) =
         </table>
         <SaveBar dirty={dirty} saved={saved} onSave={save} onDiscard={() => setF(settings)} />
       </Card>
-      <Card title="Program-level readiness by dimension" subtitle="Scores shown on the Transition Readiness by Dimension card (0–100).">
-        <div className="space-y-3">
-          {DIMENSIONS.map((d) => (
-            <div key={d} className="flex items-center gap-3 text-[12.5px]">
-              <span className="w-[190px] text-ink-700">{d}</span>
-              <input type="range" min={0} max={100} value={f.dims[d]} onChange={(e) => setF({ ...f, dims: { ...f.dims, [d]: num(e.target.value) } })} className="flex-1 accent-brand-600" />
-              <Input type="number" min={0} max={100} value={f.dims[d]} onChange={(e) => setF({ ...f, dims: { ...f.dims, [d]: Math.max(0, Math.min(100, num(e.target.value))) } })} className="!w-20" />
-            </div>
-          ))}
+      <Card title="Derived headline numbers" subtitle="These come straight from the registers – change the projects, KT items, assessments, gaps and checklist to move them.">
+        <div className="space-y-1">
+          {[
+            ['Transition projects', `${projects.items.length} across ${tx.unitNames.length} business units`],
+            ['Knowledge transfer (all waves)', `${ktStats(kt.items).pct}% – ${ktStats(kt.items).done} of ${ktStats(kt.items).planned} sessions`],
+            ['Readiness (all projects)', `${avgScore(assessments.items)}% average`],
+            ['Readiness gaps', `${gaps.items.length} (${gaps.items.filter((g) => g.status === 'New').length} new · ${gaps.items.filter((g) => g.status === 'Resolved').length} resolved)`],
+            ['Stabilization readiness', `${checklist.items.length ? Math.round((done / checklist.items.length) * 100) : 0}% (${done} of ${checklist.items.length} items)`],
+            ['Wave progress', sorted.map((w) => `W${w.number} ${waveProgress(w, projects.items)}%`).join(' · ')],
+          ].map(([l, v]) => <div key={l} className="flex items-center justify-between text-[12.5px] py-1.5 border-b border-line/70 last:border-b-0"><span className="text-ink-500">{l}</span><span className="font-medium text-ink-900 text-right">{v}</span></div>)}
         </div>
-        <div className="flex items-center justify-between text-[12.5px] mt-4 pt-3 border-t border-line"><span className="text-ink-500">Average readiness</span><Badge value={Math.round(DIMENSIONS.reduce((s, d) => s + f.dims[d], 0) / DIMENSIONS.length) >= f.readinessThreshold ? 'On Track' : 'At Risk'} /></div>
-        <SaveBar dirty={dirty} saved={saved} onSave={save} onDiscard={() => setF(settings)} />
+        <div className="flex items-center justify-between text-[12.5px] mt-4 pt-3 border-t border-line"><span className="text-ink-500">Program readiness vs threshold</span><Badge value={avgScore(assessments.items.filter((a) => sorted.filter((w) => w.startDate <= TODAY).some((w) => w.number === a.wave))) >= f.readinessThreshold ? 'On Track' : 'At Risk'} /></div>
       </Card>
     </div>
   )
@@ -291,13 +360,14 @@ function SaveBar({ dirty, saved, onSave, onDiscard }: { dirty: boolean; saved: b
 /* ================================================================== */
 export function TransitionInput({ tx, onSaveSettings }: { tx: Tx; onSaveSettings: (s: TransitionSettings) => void }) {
   return (
-    <InputLayout title="Transition Management" subtitle="Maintain the waves, knowledge transfer tracker, readiness scores, gaps and stabilization checklist that drive the transition dashboards."
+    <InputLayout title="Transition Management" subtitle="Maintain the transition projects of each business unit, their knowledge transfer items, readiness scores and gaps, the waves and the stabilization checklist that drive the transition dashboards."
       tabs={[
-        { name: 'Waves', content: <WavesTab tx={tx} /> },
+        { name: 'Projects by business unit', content: <ProjectsTab tx={tx} /> },
         { name: 'Knowledge transfer items', content: <KtTab tx={tx} /> },
         { name: 'Readiness assessments', content: <AssessmentsTab tx={tx} /> },
         { name: 'Readiness gaps', content: <GapsTab tx={tx} /> },
         { name: 'Stabilization checklist', content: <ChecklistTab tx={tx} /> },
+        { name: 'Waves', content: <WavesTab tx={tx} /> },
         { name: 'Transition milestones', content: <MilestonesTab tx={tx} /> },
         { name: 'Settings', content: <SettingsTab tx={tx} onSave={onSaveSettings} /> },
       ]} />
