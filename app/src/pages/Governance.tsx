@@ -1,11 +1,13 @@
 import { useMemo, useState, type ChangeEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from 'recharts'
-import { Gavel, ListChecks, FileDiff, Flag, ShieldCheck, Plus, Check, X, Pencil, Calendar, Users, Crown, UserCog, Briefcase } from 'lucide-react'
+import { Gavel, ListChecks, FileDiff, Flag, ShieldCheck, Plus, Check, X, Pencil, Calendar, Users, Crown, UserCog, Briefcase, Save } from 'lucide-react'
 import { PageHeader } from '../components/layout/AppShell'
 import { Card, KpiTile, Badge, Tabs, Table, Modal, Field, Input, TextArea, Select, FormGrid, Legend, ConfirmDelete, ViewAll, Stat, SectionTitle, Progress } from '../components/ui'
+import { Grid, Row, Td, TextCell, NumCell, DateCell, SelectCell, RemoveBtn, EditBtn, AddBtn, GridToolbar, cellCls, selectCls } from '../components/ui/InlineGrid'
+import { InputLayout } from '../components/layout/InputLayout'
 import { Donut, tooltipStyle } from '../components/charts'
-import { useCollection, uid } from '../store/useStore'
+import { useCollection, useStore, uid } from '../store/useStore'
 import { seedRaid, seedWorkstreamSummaries, isOpen, type RaidItem, type WorkstreamSummary } from '../data/shared'
 import { WORKSTREAMS, WORKSTREAM_META, OWNERS, CHART_COLORS, fmtDate, TODAY, type Workstream } from '../data/common'
 import { useMoney, type Money } from '../data/money'
@@ -45,6 +47,7 @@ function ModalFooter({ onClose, onSave, onDelete, isNew, saveLabel = 'Save' }: {
 
 export default function Governance() {
   const nav = useNavigate()
+  const mode = useStore((s) => s.mode)
   const [tab, setTab] = useState(TABS[0])
   const [view, setView] = useState<string>('All Workstreams')
   const money = useMoney()
@@ -62,7 +65,8 @@ export default function Governance() {
   const controlsC = useCollection<Control>('controls', seedControls)
   const ragC = useCollection<RagCriterion>('ragCriteria', seedRagCriteria)
   const { items: raid } = useCollection<RaidItem>('raid', seedRaid)
-  const { items: wss } = useCollection<WorkstreamSummary>('workstreamSummaries', seedWorkstreamSummaries)
+  const wssC = useCollection<WorkstreamSummary>('workstreamSummaries', seedWorkstreamSummaries)
+  const wss = wssC.items
 
   const inView = (ws: string) => view === 'All Workstreams' || ws === view
   const decisions = useMemo(() => decisionsC.items.filter((d) => inView(d.workstream)), [decisionsC.items, view]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -109,8 +113,15 @@ export default function Governance() {
   const decide = (d: Decision, status: Decision['status']) => decisionsC.update({ ...d, status, decidedOn: status === 'Pending' ? undefined : TODAY })
   const decideCr = (c: ChangeRequest, status: ChangeRequest['status']) => crC.update({ ...c, status, decidedOn: status === 'Approved' || status === 'Rejected' ? TODAY : undefined })
 
+  const inputProps: GovInputProps = {
+    gs, settingsC, meetingsC, packC, decisionsC, crC, actionsC, stakeholdersC, raciC, eventsC, controlsC, ragC, wss: wssC,
+    newMeeting, newDecision, newCr, newAction, newStakeholder, newEvent, newControl,
+    openMeeting: setMeetingEdit, openDecision: setDecisionEdit, openCr: setCrEdit, openAction: setActionEdit, openStakeholder: setStEdit, openEvent: setEventEdit, openControl: setControlEdit, openRag: setRagEdit,
+  }
+
   return (
     <div>
+      {mode === 'input' ? <GovernanceInput {...inputProps} /> : <>
       <PageHeader title="Governance" subtitle="Steer decisions, escalations, changes and compliance across the GCC program." viewValue={view} viewOptions={VIEW_OPTIONS} onView={setView} onEdit={() => setStructEdit(true)} editLabel="Edit governance" />
 
       <div className="grid grid-cols-5 gap-4 mb-4">
@@ -371,29 +382,7 @@ export default function Governance() {
               </div>
             </Card>
           </div>
-          <Card title="RACI Matrix – Workstreams × Key Roles" subtitle="Click a cell to cycle R → A → C → I → blank" headerRight={<Legend items={[{ label: 'R Responsible', color: CHART_COLORS.blue }, { label: 'A Accountable', color: CHART_COLORS.red }, { label: 'C Consulted', color: CHART_COLORS.amber }, { label: 'I Informed', color: CHART_COLORS.gray }]} />}>
-            <div className="overflow-x-auto scroll-thin">
-              <table className="w-full border-separate border-spacing-0 tbl">
-                <thead><tr><th className="th">Workstream</th>{RACI_ROLES.map((r) => <th key={r} className="th text-center">{r}</th>)}</tr></thead>
-                <tbody>
-                  {raciC.items.map((row) => (
-                    <tr key={row.id}>
-                      <td className="td font-medium">{row.workstream}</td>
-                      {RACI_ROLES.map((r) => {
-                        const v = row.cells[r] ?? ''
-                        const cls = v === 'R' ? 'bg-blue-50 text-brand-600' : v === 'A' ? 'bg-red-50 text-red-600' : v === 'C' ? 'bg-amber-50 text-amber-700' : v === 'I' ? 'bg-slate-100 text-slate-600' : 'bg-white text-ink-400 border border-dashed border-line'
-                        return (
-                          <td key={r} className="td text-center">
-                            <button className={`w-8 h-8 rounded-md text-[12.5px] font-bold cursor-pointer ${cls}`} onClick={() => raciC.update({ ...row, cells: { ...row.cells, [r]: nextRaci(v) } })}>{v || '–'}</button>
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+          <RaciMatrix raciC={raciC} />
         </div>
       )}
 
@@ -440,7 +429,9 @@ export default function Governance() {
         </div>
       )}
 
-      {/* ============================ MODALS ============================ */}
+      </>}
+
+      {/* ============================ MODALS (both views) ============================ */}
       {structEdit && <StructureModal value={gs} onClose={() => setStructEdit(false)} onSave={(v) => { settingsC.update(v); setStructEdit(false) }} />}
       {meetingEdit && <MeetingModal key={meetingEdit.id} value={meetingEdit} isNew={!meetingsC.items.some((m) => m.id === meetingEdit.id)} onClose={() => setMeetingEdit(null)} onSave={(v) => { meetingsC.update(v); setMeetingEdit(null) }} onDelete={() => { meetingsC.remove(meetingEdit.id); setMeetingEdit(null) }} />}
       {decisionEdit && <DecisionModal key={decisionEdit.id} value={decisionEdit} isNew={!decisionsC.items.some((d) => d.id === decisionEdit.id)} onClose={() => setDecisionEdit(null)} onSave={(v) => { decisionsC.update(v); setDecisionEdit(null) }} onDelete={() => { decisionsC.remove(decisionEdit.id); setDecisionEdit(null) }} />}
@@ -455,6 +446,37 @@ export default function Governance() {
 }
 
 function nextRaci(v: RaciValue): RaciValue { return v === 'R' ? 'A' : v === 'A' ? 'C' : v === 'C' ? 'I' : v === 'I' ? '' : 'R' }
+const RACI_LEGEND = [{ label: 'R Responsible', color: CHART_COLORS.blue }, { label: 'A Accountable', color: CHART_COLORS.red }, { label: 'C Consulted', color: CHART_COLORS.amber }, { label: 'I Informed', color: CHART_COLORS.gray }]
+
+function RaciMatrix({ raciC, editable }: { raciC: ReturnType<typeof useCollection<RaciRow>>; editable?: boolean }) {
+  const add = () => { const used = raciC.items.map((r) => r.workstream); const ws = WORKSTREAMS.find((w) => !used.includes(w)) ?? WORKSTREAMS[0]; raciC.add({ id: uid('raci'), workstream: ws, cells: Object.fromEntries(RACI_ROLES.map((r) => [r, ''])) }) }
+  return (
+    <Card title="RACI Matrix – Workstreams × Key Roles" subtitle="Click a cell to cycle R → A → C → I → blank" headerRight={<Legend items={RACI_LEGEND} />} action={editable ? <AddBtn label="Add row" onClick={add} /> : undefined}>
+      <div className="overflow-x-auto scroll-thin">
+        <table className="w-full border-separate border-spacing-0 tbl">
+          <thead><tr><th className="th">Workstream</th>{RACI_ROLES.map((r) => <th key={r} className="th text-center">{r}</th>)}{editable && <th className="th" />}</tr></thead>
+          <tbody>
+            {raciC.items.map((row) => (
+              <tr key={row.id}>
+                <td className="td font-medium">{editable ? <SelectCell value={row.workstream} options={WORKSTREAMS} className="font-medium min-w-[200px]" onChange={(v) => raciC.update({ ...row, workstream: v as Workstream })} /> : row.workstream}</td>
+                {RACI_ROLES.map((r) => {
+                  const v = row.cells[r] ?? ''
+                  const cls = v === 'R' ? 'bg-blue-50 text-brand-600' : v === 'A' ? 'bg-red-50 text-red-600' : v === 'C' ? 'bg-amber-50 text-amber-700' : v === 'I' ? 'bg-slate-100 text-slate-600' : 'bg-white text-ink-400 border border-dashed border-line'
+                  return (
+                    <td key={r} className="td text-center">
+                      <button className={`w-8 h-8 rounded-md text-[12.5px] font-bold cursor-pointer ${cls}`} onClick={() => raciC.update({ ...row, cells: { ...row.cells, [r]: nextRaci(v) } })}>{v || '–'}</button>
+                    </td>
+                  )
+                })}
+                {editable && <td className="td"><RemoveBtn name={`the ${row.workstream} RACI row`} onClick={() => raciC.remove(row.id)} /></td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  )
+}
 
 /* ====================================================================== */
 /* Decision Log tab                                                        */
@@ -829,5 +851,355 @@ function RagModal({ value, onClose, onSave }: { value: RagCriterion; onClose: ()
         <Field label="Red threshold"><TextArea value={f.red} onChange={s('red')} /></Field>
       </FormGrid>
     </Modal>
+  )
+}
+
+/* ====================================================================== */
+/* Input view                                                              */
+/* ====================================================================== */
+type Coll<T extends { id: string }> = ReturnType<typeof useCollection<T>>
+interface GovInputProps {
+  gs: GovernanceSettings; settingsC: Coll<GovernanceSettings>
+  meetingsC: Coll<SteeringMeeting>; packC: Coll<PackItem>; decisionsC: Coll<Decision>; crC: Coll<ChangeRequest>; actionsC: Coll<ActionItem>
+  stakeholdersC: Coll<Stakeholder>; raciC: Coll<RaciRow>; eventsC: Coll<GovEvent>; controlsC: Coll<Control>; ragC: Coll<RagCriterion>; wss: Coll<WorkstreamSummary>
+  newMeeting: () => SteeringMeeting; newDecision: () => Decision; newCr: () => ChangeRequest; newAction: () => ActionItem; newStakeholder: () => Stakeholder; newEvent: () => GovEvent; newControl: () => Control
+  openMeeting: (m: SteeringMeeting) => void; openDecision: (d: Decision) => void; openCr: (c: ChangeRequest) => void; openAction: (a: ActionItem) => void
+  openStakeholder: (s: Stakeholder) => void; openEvent: (e: GovEvent) => void; openControl: (c: Control) => void; openRag: (r: RagCriterion) => void
+}
+const DECISION_STATUSES = ['Pending', 'Approved', 'Rejected', 'Deferred'] as const
+const FORUMS = ['Steering Committee', 'Program Director', 'Workstream Lead'] as const
+const IMPACTS = ['Critical', 'High', 'Medium', 'Low'] as const
+const CR_STATUSES = ['Draft', 'In Review', 'Approved', 'Rejected'] as const
+const ACTION_STATUSES = ['Open', 'In Progress', 'Completed', 'Overdue'] as const
+const LEVELS3 = ['High', 'Medium', 'Low'] as const
+const ENGAGEMENTS = ['Weekly', 'Fortnightly', 'Monthly', 'Quarterly', 'As needed'] as const
+const ST_GROUPS = ['Global Executive', 'Global Functional', 'India Leadership', 'External'] as const
+const SENTIMENTS = ['Supportive', 'Neutral', 'Concerned'] as const
+const CADENCE_OPTS = ['Weekly', 'Monthly', 'Quarterly', 'One-off'] as const
+const CONTROL_STATUSES = ['Active', 'In Progress', 'Planned', 'Needs Review'] as const
+const PEOPLE = [...OWNERS, 'R. Banerjee', 'L. Moreau', 'T. Okafor', 'H. Patel', 'J. Whitfield', 'N. Krishnan'] as const
+
+function GovernanceInput(p: GovInputProps) {
+  return (
+    <InputLayout title="Governance" subtitle="Maintain the governance structure, steering meetings, decisions, change requests, actions, stakeholders and controls that drive the governance dashboards."
+      tabs={[
+        { name: 'Governance structure', content: <StructureTab p={p} /> },
+        { name: 'Steering meetings', content: <MeetingsTab p={p} /> },
+        { name: 'Decisions', content: <DecisionsTab p={p} /> },
+        { name: 'Change requests', content: <CrTab p={p} /> },
+        { name: 'Actions', content: <ActionsTab p={p} /> },
+        { name: 'Stakeholders & RACI', content: <StakeholdersTab p={p} /> },
+        { name: 'Calendar events', content: <EventsTab p={p} /> },
+        { name: 'Controls & RAG criteria', content: <ControlsTab p={p} /> },
+      ]} />
+  )
+}
+
+function SaveBar({ dirty, saved, onSave, onDiscard }: { dirty: boolean; saved: boolean; onSave: () => void; onDiscard: () => void }) {
+  return (
+    <div className="flex items-center justify-end gap-2 mt-4">
+      {saved && !dirty && <span className="text-[12px] text-green-600 inline-flex items-center gap-1"><Check size={13} /> Saved</span>}
+      <button className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed" disabled={!dirty} onClick={onDiscard}>Discard</button>
+      <button className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed" disabled={!dirty} onClick={onSave}><Save size={14} /> Save</button>
+    </div>
+  )
+}
+
+/* ---- Governance structure ---- */
+function StructureTab({ p }: { p: GovInputProps }) {
+  const { gs, settingsC, wss } = p
+  const [f, setF] = useState<GovernanceSettings>(gs)
+  const [saved, setSaved] = useState(false)
+  const dirty = JSON.stringify(f) !== JSON.stringify(gs)
+  const save = () => { settingsC.update(f); setSaved(true); setTimeout(() => setSaved(false), 2500) }
+  const setMember = (i: number, v: string) => setF({ ...f, steeringMembers: f.steeringMembers.map((m, j) => (j === i ? v : m)) })
+  const setWs = <K extends keyof WorkstreamSummary>(w: WorkstreamSummary, k: K, v: WorkstreamSummary[K]) => wss.update({ ...w, [k]: v })
+  return (
+    <div className="grid grid-cols-[1.1fr_1fr] gap-4">
+      <div className="space-y-4">
+        <Card title="Sponsors and program leadership" subtitle="Shown on the Governance Structure card and used as defaults across the registers.">
+          <FormGrid cols={2}>
+            <Field label="Global Executive Sponsor"><Input value={f.globalExecutiveSponsor} onChange={(e) => setF({ ...f, globalExecutiveSponsor: e.target.value })} /></Field>
+            <Field label="India Program Sponsor"><Input value={f.indiaProgramSponsor} onChange={(e) => setF({ ...f, indiaProgramSponsor: e.target.value })} /></Field>
+            <Field label="GCC Program Director"><Input value={f.programDirector} onChange={(e) => setF({ ...f, programDirector: e.target.value })} /></Field>
+            <Field label="Program Manager"><Input value={f.programManager} onChange={(e) => setF({ ...f, programManager: e.target.value })} /></Field>
+            <Field label="PMO Lead"><Input value={f.pmoLead} onChange={(e) => setF({ ...f, pmoLead: e.target.value })} /></Field>
+            <Field label="Planned steering committees (year)"><Input type="number" min={0} value={f.plannedSteeringMeetings} onChange={(e) => setF({ ...f, plannedSteeringMeetings: parseInt(e.target.value) || 0 })} /></Field>
+            <Field label="Program health score (0–100)"><Input type="number" min={0} max={100} value={f.programHealthScore} onChange={(e) => setF({ ...f, programHealthScore: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) })} /></Field>
+            <Field label="Governance health (derived)"><div className="pt-1.5"><Badge value={f.programHealthScore >= 80 ? 'Green' : f.programHealthScore >= 65 ? 'Amber' : 'Red'} /> <span className="text-[11.5px] text-ink-500 ml-1">≥ 80 Green · 65–79 Amber · &lt; 65 Red</span></div></Field>
+          </FormGrid>
+          <SaveBar dirty={dirty} saved={saved} onSave={save} onDiscard={() => setF(gs)} />
+        </Card>
+        <Card title="Steering Committee members" subtitle="Name and role, one per row." action={<AddBtn label="Add member" onClick={() => setF({ ...f, steeringMembers: [...f.steeringMembers, ''] })} />}>
+          <div className="space-y-0.5">
+            {f.steeringMembers.map((m, i) => (
+              <div key={i} className="flex items-center gap-1 border-b border-slate-200">
+                <span className="text-[11.5px] text-ink-500 w-6 text-right pr-1">{i + 1}</span>
+                <input className={cellCls} value={m} placeholder="Name (role)" onChange={(e) => setMember(i, e.target.value)} />
+                <RemoveBtn name={m || 'this member'} onClick={() => setF({ ...f, steeringMembers: f.steeringMembers.filter((_, j) => j !== i) })} />
+              </div>
+            ))}
+            {f.steeringMembers.length === 0 && <p className="text-[12.5px] text-ink-500 italic text-center py-4">No members yet.</p>}
+          </div>
+          <SaveBar dirty={dirty} saved={saved} onSave={save} onDiscard={() => setF(gs)} />
+        </Card>
+      </div>
+      <Card title="Workstream leads" subtitle="Lead, accountable owner and executive sponsor per workstream (shared with GCC Setup and Workstreams).">
+        <Grid count={wss.items.length} minWidth={520} headers={['Workstream', 'Lead', 'Accountable owner', 'Executive sponsor']}>
+          {wss.items.map((w) => (
+            <Row key={w.id}>
+              <Td><span className="px-1.5 text-[12.5px] font-medium whitespace-nowrap">{w.name}</span></Td>
+              <Td><SelectCell value={w.lead} options={OWNERS} onChange={(v) => setWs(w, 'lead', v)} /></Td>
+              <Td><SelectCell value={w.owner} options={OWNERS} onChange={(v) => setWs(w, 'owner', v)} /></Td>
+              <Td min={160}><TextCell value={w.executiveSponsor} placeholder="Executive sponsor" onChange={(v) => setWs(w, 'executiveSponsor', v)} /></Td>
+            </Row>
+          ))}
+        </Grid>
+      </Card>
+    </div>
+  )
+}
+
+/* ---- Steering meetings + pack checklist ---- */
+function MeetingsTab({ p }: { p: GovInputProps }) {
+  const { meetingsC, packC, newMeeting, openMeeting } = p
+  const rows = [...meetingsC.items].sort((a, b) => b.date.localeCompare(a.date))
+  const set = <K extends keyof SteeringMeeting>(m: SteeringMeeting, k: K, v: SteeringMeeting[K]) => meetingsC.update({ ...m, [k]: v })
+  const setP = <K extends keyof PackItem>(i: PackItem, k: K, v: PackItem[K]) => packC.update({ ...i, [k]: v })
+  return (
+    <div className="space-y-4">
+      <Card title="Steering committee meetings" subtitle={`${meetingsC.items.filter((m) => m.status === 'Completed').length} held · ${meetingsC.items.filter((m) => m.status === 'Scheduled').length} scheduled. Agenda, decisions and actions are ;-separated lists; open the form to edit them in full.`} action={<AddBtn label="Add meeting" onClick={() => meetingsC.add(newMeeting())} />}>
+        <Grid count={rows.length} minWidth={1300} headers={['ID', 'Date', 'Meeting', 'Status', 'Minutes', 'Agenda', 'Attendees', 'Decisions taken', 'Actions agreed', '']}>
+          {rows.map((m) => (
+            <Row key={m.id} muted={m.status === 'Cancelled'}>
+              <Td><TextCell value={m.code} className="w-[64px] text-ink-500" onChange={(v) => set(m, 'code', v)} /></Td>
+              <Td><DateCell value={m.date} onChange={(v) => set(m, 'date', v)} /></Td>
+              <Td min={240}><TextCell value={m.title} placeholder="Meeting title" className="font-medium" onChange={(v) => set(m, 'title', v)} /></Td>
+              <Td><SelectCell value={m.status} options={['Scheduled', 'Completed', 'Cancelled']} onChange={(v) => set(m, 'status', v)} /></Td>
+              <Td><SelectCell value={m.minutesStatus} options={['Scheduled', 'Draft', 'Circulated', 'Approved']} onChange={(v) => set(m, 'minutesStatus', v)} /></Td>
+              <Td min={200}><TextCell value={m.agenda} placeholder="Item; item; item" onChange={(v) => set(m, 'agenda', v)} /></Td>
+              <Td min={150}><TextCell value={m.attendees} placeholder="Attendees" onChange={(v) => set(m, 'attendees', v)} /></Td>
+              <Td min={200}><TextCell value={m.decisionsTaken} placeholder="Decision; decision" onChange={(v) => set(m, 'decisionsTaken', v)} /></Td>
+              <Td min={180}><TextCell value={m.actions} placeholder="Action; action" onChange={(v) => set(m, 'actions', v)} /></Td>
+              <Td sticky><EditBtn onClick={() => openMeeting(m)} /><RemoveBtn name={m.code} onClick={() => meetingsC.remove(m.id)} /></Td>
+            </Row>
+          ))}
+        </Grid>
+      </Card>
+      <Card title="Next meeting pack checklist" subtitle={`${packC.items.filter((i) => i.done).length} of ${packC.items.length} items ready. Tick items as they are prepared.`} action={<AddBtn label="Add item" onClick={() => packC.add({ id: uid('pk'), item: '', owner: 'A. Sharma', done: false })} />}>
+        <div className="max-w-[860px]">
+          {packC.items.length === 0 && <p className="text-[12.5px] text-ink-500 italic text-center py-4">No checklist items yet.</p>}
+          {packC.items.map((i) => (
+            <div key={i.id} className="flex items-center gap-2 border-b border-slate-200 py-0.5 hover:bg-brand-50/40 rounded">
+              <input type="checkbox" className="accent-brand-600 ml-2" checked={i.done} onChange={(e) => setP(i, 'done', e.target.checked)} />
+              <input className={`${cellCls} flex-1 min-w-0 ${i.done ? 'line-through text-ink-500' : 'font-medium'}`} value={i.item} placeholder="Pack item" onChange={(e) => setP(i, 'item', e.target.value)} />
+              <select className={`${selectCls} shrink-0 cursor-pointer`} value={i.owner} onChange={(e) => setP(i, 'owner', e.target.value)}>{(PEOPLE.includes(i.owner as (typeof PEOPLE)[number]) ? PEOPLE : [i.owner, ...PEOPLE]).map((o) => <option key={o}>{o}</option>)}</select>
+              <RemoveBtn name={i.item || 'this item'} onClick={() => packC.remove(i.id)} />
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+/* ---- Decisions ---- */
+function DecisionsTab({ p }: { p: GovInputProps }) {
+  const { decisionsC, newDecision, openDecision } = p
+  const [q, setQ] = useState('')
+  const [fStatus, setFStatus] = useState('All')
+  const rows = decisionsC.items.filter((d) => (fStatus === 'All' || d.status === fStatus) && (!q || `${d.code} ${d.title} ${d.decisionOwner} ${d.requestedBy}`.toLowerCase().includes(q.toLowerCase()))).sort((a, b) => (a.status === 'Pending' ? 0 : 1) - (b.status === 'Pending' ? 0 : 1) || a.requiredBy.localeCompare(b.requiredBy))
+  const set = <K extends keyof Decision>(d: Decision, k: K, v: Decision[K]) => decisionsC.update({ ...d, [k]: v })
+  const setStatus = (d: Decision, status: Decision['status']) => decisionsC.update({ ...d, status, decidedOn: status === 'Pending' ? undefined : (d.decidedOn ?? TODAY) })
+  return (
+    <Card title="Decision log" subtitle={`${decisionsC.items.length} decisions · ${decisionsC.items.filter((d) => d.status === 'Pending').length} pending. Approving, rejecting or deferring stamps today's date as the decision date.`} action={<AddBtn label="Add decision" onClick={() => decisionsC.add(newDecision())} />}>
+      <GridToolbar q={q} onQ={setQ} placeholder="Search decisions…" count={rows.length}>
+        <select className="input py-1.5 w-auto text-[12.5px]" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>{['All', ...DECISION_STATUSES].map((s) => <option key={s}>{s}</option>)}</select>
+      </GridToolbar>
+      <Grid count={rows.length} minWidth={1400} headers={['ID', 'Decision', 'Workstream', 'Requested by', 'Decision owner', 'Forum', 'Required by', 'Impact', 'Status', 'Decided on', 'Rationale', '']}>
+        {rows.map((d) => (
+          <Row key={d.id} muted={d.status !== 'Pending'}>
+            <Td><TextCell value={d.code} className="w-[64px] text-ink-500" onChange={(v) => set(d, 'code', v)} /></Td>
+            <Td min={260}><TextCell value={d.title} placeholder="What needs to be decided?" className="font-medium" onChange={(v) => set(d, 'title', v)} /></Td>
+            <Td><SelectCell value={d.workstream} options={WS_OPTIONS} onChange={(v) => set(d, 'workstream', v as Decision['workstream'])} /></Td>
+            <Td><SelectCell value={d.requestedBy} options={PEOPLE} onChange={(v) => set(d, 'requestedBy', v)} /></Td>
+            <Td min={140}><TextCell value={d.decisionOwner} placeholder="Owner" onChange={(v) => set(d, 'decisionOwner', v)} /></Td>
+            <Td><SelectCell value={d.forum} options={FORUMS} onChange={(v) => set(d, 'forum', v)} /></Td>
+            <Td><DateCell value={d.requiredBy} onChange={(v) => set(d, 'requiredBy', v)} /></Td>
+            <Td><SelectCell value={d.impact} options={IMPACTS} onChange={(v) => set(d, 'impact', v)} /></Td>
+            <Td><SelectCell value={d.status} options={DECISION_STATUSES} onChange={(v) => setStatus(d, v)} /></Td>
+            <Td><DateCell value={d.decidedOn ?? ''} onChange={(v) => set(d, 'decidedOn', v || undefined)} /></Td>
+            <Td min={220}><TextCell value={d.rationale} placeholder="Rationale / options considered" onChange={(v) => set(d, 'rationale', v)} /></Td>
+            <Td sticky><EditBtn onClick={() => openDecision(d)} /><RemoveBtn name={d.code} onClick={() => decisionsC.remove(d.id)} /></Td>
+          </Row>
+        ))}
+      </Grid>
+    </Card>
+  )
+}
+
+/* ---- Change requests ---- */
+function CrTab({ p }: { p: GovInputProps }) {
+  const { crC, newCr, openCr } = p
+  const money = useMoney()
+  const [fStatus, setFStatus] = useState('All')
+  const rows = crC.items.filter((c) => fStatus === 'All' || c.status === fStatus).sort((a, b) => b.submitted.localeCompare(a.submitted))
+  const set = <K extends keyof ChangeRequest>(c: ChangeRequest, k: K, v: ChangeRequest[K]) => crC.update({ ...c, [k]: v })
+  const setStatus = (c: ChangeRequest, status: ChangeRequest['status']) => crC.update({ ...c, status, decidedOn: status === 'Approved' || status === 'Rejected' ? (c.decidedOn ?? TODAY) : undefined })
+  return (
+    <Card title="Change request register" subtitle={`${crC.items.length} change requests · ${crC.items.filter((c) => c.status === 'Draft' || c.status === 'In Review').length} pending. Cost impact is entered in ${money.unitLabel} (negative = saving); open the form for the impact assessment.`}
+      action={<div className="flex items-center gap-2"><select className="input !w-auto !py-1.5" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>{['All', ...CR_STATUSES].map((s) => <option key={s}>{s}</option>)}</select><AddBtn label="Raise change request" onClick={() => crC.add(newCr())} /></div>}>
+      <Grid count={rows.length} minWidth={1300} headers={['ID', 'Title', 'Type', 'Workstream', 'Raised by', { label: `Cost (${money.unitLabel})`, right: true }, { label: 'Schedule (days)', right: true }, 'Submitted', 'Status', 'Decided on', '']}>
+        {rows.map((c) => (
+          <Row key={c.id} muted={c.status === 'Rejected'}>
+            <Td><TextCell value={c.code} className="w-[72px] text-ink-500" onChange={(v) => set(c, 'code', v)} /></Td>
+            <Td min={280}><TextCell value={c.title} placeholder="Change request title" className="font-medium" onChange={(v) => set(c, 'title', v)} /></Td>
+            <Td><SelectCell value={c.type} options={['Scope', 'Budget', 'Timeline']} onChange={(v) => set(c, 'type', v)} /></Td>
+            <Td><SelectCell value={c.workstream} options={WS_OPTIONS} onChange={(v) => set(c, 'workstream', v as ChangeRequest['workstream'])} /></Td>
+            <Td><SelectCell value={c.raisedBy} options={PEOPLE} onChange={(v) => set(c, 'raisedBy', v)} /></Td>
+            <Td><NumCell value={money.inputValue(c.costImpactCr)} decimals className="w-[84px]" onChange={(v) => set(c, 'costImpactCr', money.toBase(v))} /></Td>
+            <Td><NumCell value={c.scheduleImpactDays} className="w-[64px]" onChange={(v) => set(c, 'scheduleImpactDays', v)} /></Td>
+            <Td><DateCell value={c.submitted} onChange={(v) => set(c, 'submitted', v)} /></Td>
+            <Td><SelectCell value={c.status} options={CR_STATUSES} onChange={(v) => setStatus(c, v)} /></Td>
+            <Td><DateCell value={c.decidedOn ?? ''} onChange={(v) => set(c, 'decidedOn', v || undefined)} /></Td>
+            <Td sticky><EditBtn onClick={() => openCr(c)} /><RemoveBtn name={c.code} onClick={() => crC.remove(c.id)} /></Td>
+          </Row>
+        ))}
+      </Grid>
+    </Card>
+  )
+}
+
+/* ---- Actions ---- */
+function ActionsTab({ p }: { p: GovInputProps }) {
+  const { actionsC, meetingsC, newAction, openAction } = p
+  const [q, setQ] = useState('')
+  const [hideDone, setHideDone] = useState(false)
+  const rows = actionsC.items.filter((a) => (!hideDone || a.status !== 'Completed') && (!q || `${a.code} ${a.action} ${a.owner} ${a.source}`.toLowerCase().includes(q.toLowerCase()))).sort((a, b) => (a.status === 'Completed' ? 1 : 0) - (b.status === 'Completed' ? 1 : 0) || a.due.localeCompare(b.due))
+  const set = <K extends keyof ActionItem>(a: ActionItem, k: K, v: ActionItem[K]) => actionsC.update({ ...a, [k]: v })
+  const sources = Array.from(new Set([...meetingsC.items.map((m) => m.code), 'Weekly review', ...actionsC.items.map((a) => a.source)]))
+  return (
+    <Card title="Actions register" subtitle={`${actionsC.items.filter((a) => a.status !== 'Completed').length} open · ${actionsC.items.filter((a) => a.status === 'Completed').length} completed. Actions past their due date show as Overdue on the dashboards.`} action={<AddBtn label="Add action" onClick={() => actionsC.add(newAction())} />}>
+      <GridToolbar q={q} onQ={setQ} placeholder="Search actions…" count={rows.length}>
+        <label className="inline-flex items-center gap-1.5 cursor-pointer text-ink-700"><input type="checkbox" className="accent-brand-600" checked={hideDone} onChange={(e) => setHideDone(e.target.checked)} /> Hide completed</label>
+      </GridToolbar>
+      <Grid count={rows.length} minWidth={1100} headers={['ID', 'Action', 'Workstream', 'Owner', 'Due', 'Source meeting', 'Status', '']}>
+        {rows.map((a) => (
+          <Row key={a.id} muted={a.status === 'Completed'}>
+            <Td><TextCell value={a.code} className="w-[64px] text-ink-500" onChange={(v) => set(a, 'code', v)} /></Td>
+            <Td min={320}><TextCell value={a.action} placeholder="What has to be done" className="font-medium" onChange={(v) => set(a, 'action', v)} /></Td>
+            <Td><SelectCell value={a.workstream} options={WS_OPTIONS} onChange={(v) => set(a, 'workstream', v as ActionItem['workstream'])} /></Td>
+            <Td><SelectCell value={a.owner} options={PEOPLE} onChange={(v) => set(a, 'owner', v)} /></Td>
+            <Td><DateCell value={a.due} onChange={(v) => set(a, 'due', v)} /></Td>
+            <Td><SelectCell value={a.source} options={sources} onChange={(v) => set(a, 'source', v)} /></Td>
+            <Td><SelectCell value={a.status} options={ACTION_STATUSES} onChange={(v) => set(a, 'status', v)} /></Td>
+            <Td sticky>
+              {a.status !== 'Completed' && <button title="Mark done" className="text-slate-400 hover:text-green-600 p-1 cursor-pointer" onClick={() => set(a, 'status', 'Completed')}><Check size={14} /></button>}
+              <EditBtn onClick={() => openAction(a)} /><RemoveBtn name={a.code} onClick={() => actionsC.remove(a.id)} />
+            </Td>
+          </Row>
+        ))}
+      </Grid>
+    </Card>
+  )
+}
+
+/* ---- Stakeholders & RACI ---- */
+function StakeholdersTab({ p }: { p: GovInputProps }) {
+  const { stakeholdersC, raciC, newStakeholder, openStakeholder } = p
+  const set = <K extends keyof Stakeholder>(s: Stakeholder, k: K, v: Stakeholder[K]) => stakeholdersC.update({ ...s, [k]: v })
+  return (
+    <div className="space-y-4">
+      <Card title="Stakeholder register" subtitle={`${stakeholdersC.items.length} stakeholders · ${stakeholdersC.items.filter((s) => s.sentiment === 'Concerned').length} concerned. Influence and interest place each stakeholder on the engagement map.`} action={<AddBtn label="Add stakeholder" onClick={() => stakeholdersC.add(newStakeholder())} />}>
+        <Grid count={stakeholdersC.items.length} minWidth={1300} headers={['Stakeholder', 'Role', 'Organization', 'Group', 'Influence', 'Interest', 'Engagement', 'Sentiment', 'Relationship owner', '']}>
+          {stakeholdersC.items.map((s) => (
+            <Row key={s.id}>
+              <Td min={170}><TextCell value={s.name} placeholder="Name" className="font-medium" onChange={(v) => set(s, 'name', v)} /></Td>
+              <Td min={220}><TextCell value={s.role} placeholder="Role" onChange={(v) => set(s, 'role', v)} /></Td>
+              <Td min={130}><TextCell value={s.organization} placeholder="Organization" onChange={(v) => set(s, 'organization', v)} /></Td>
+              <Td><SelectCell value={s.group} options={ST_GROUPS} onChange={(v) => set(s, 'group', v)} /></Td>
+              <Td><SelectCell value={s.influence} options={LEVELS3} onChange={(v) => set(s, 'influence', v)} /></Td>
+              <Td><SelectCell value={s.interest} options={LEVELS3} onChange={(v) => set(s, 'interest', v)} /></Td>
+              <Td><SelectCell value={s.engagement} options={ENGAGEMENTS} onChange={(v) => set(s, 'engagement', v)} /></Td>
+              <Td><SelectCell value={s.sentiment} options={SENTIMENTS} onChange={(v) => set(s, 'sentiment', v)} /></Td>
+              <Td><SelectCell value={s.owner} options={PEOPLE} onChange={(v) => set(s, 'owner', v)} /></Td>
+              <Td sticky><EditBtn onClick={() => openStakeholder(s)} /><RemoveBtn name={s.name || 'this stakeholder'} onClick={() => stakeholdersC.remove(s.id)} /></Td>
+            </Row>
+          ))}
+        </Grid>
+      </Card>
+      <RaciMatrix raciC={raciC} editable />
+    </div>
+  )
+}
+
+/* ---- Calendar events ---- */
+function EventsTab({ p }: { p: GovInputProps }) {
+  const { eventsC, newEvent, openEvent } = p
+  const [q, setQ] = useState('')
+  const [fType, setFType] = useState('All types')
+  const [past, setPast] = useState(false)
+  const rows = eventsC.items.filter((e) => (past || e.date >= TODAY) && (fType === 'All types' || e.type === fType) && (!q || `${e.title} ${e.owner} ${e.attendees}`.toLowerCase().includes(q.toLowerCase()))).sort((a, b) => a.date.localeCompare(b.date))
+  const set = <K extends keyof GovEvent>(e: GovEvent, k: K, v: GovEvent[K]) => eventsC.update({ ...e, [k]: v })
+  return (
+    <Card title="Governance calendar events" subtitle={`${eventsC.items.filter((e) => e.date >= TODAY).length} upcoming events. Steering committees, reviews, go/no-go gates and audits shown on the calendar and the Upcoming Governance Events card.`} action={<AddBtn label="Add event" onClick={() => eventsC.add(newEvent())} />}>
+      <GridToolbar q={q} onQ={setQ} placeholder="Search events…" count={rows.length}>
+        <select className="input py-1.5 w-auto text-[12.5px]" value={fType} onChange={(e) => setFType(e.target.value)}>{['All types', ...Object.keys(TYPE_COLOR)].map((s) => <option key={s}>{s}</option>)}</select>
+        <label className="inline-flex items-center gap-1.5 cursor-pointer text-ink-700"><input type="checkbox" className="accent-brand-600" checked={past} onChange={(e) => setPast(e.target.checked)} /> Include past events</label>
+      </GridToolbar>
+      <Grid count={rows.length} minWidth={1000} headers={['Date', 'Event', 'Type', 'Cadence', 'Owner', 'Attendees', '']}>
+        {rows.map((e) => (
+          <Row key={e.id} muted={e.date < TODAY}>
+            <Td><span className="flex items-center gap-1.5"><span className="w-1 h-6 rounded-full ml-1" style={{ background: TYPE_COLOR[e.type] }} /><DateCell value={e.date} onChange={(v) => set(e, 'date', v)} /></span></Td>
+            <Td min={260}><TextCell value={e.title} placeholder="Event title" className="font-medium" onChange={(v) => set(e, 'title', v)} /></Td>
+            <Td><SelectCell value={e.type} options={Object.keys(TYPE_COLOR)} onChange={(v) => set(e, 'type', v as GovEvent['type'])} /></Td>
+            <Td><SelectCell value={e.cadence} options={CADENCE_OPTS} onChange={(v) => set(e, 'cadence', v)} /></Td>
+            <Td><SelectCell value={e.owner} options={PEOPLE} onChange={(v) => set(e, 'owner', v)} /></Td>
+            <Td min={200}><TextCell value={e.attendees} placeholder="Attendees" onChange={(v) => set(e, 'attendees', v)} /></Td>
+            <Td sticky><EditBtn onClick={() => openEvent(e)} /><RemoveBtn name={e.title || 'this event'} onClick={() => eventsC.remove(e.id)} /></Td>
+          </Row>
+        ))}
+      </Grid>
+    </Card>
+  )
+}
+
+/* ---- Controls & RAG criteria ---- */
+function ControlsTab({ p }: { p: GovInputProps }) {
+  const { controlsC, ragC, newControl, openControl, openRag } = p
+  const set = <K extends keyof Control>(c: Control, k: K, v: Control[K]) => controlsC.update({ ...c, [k]: v })
+  const setR = <K extends keyof RagCriterion>(r: RagCriterion, k: K, v: RagCriterion[K]) => ragC.update({ ...r, [k]: v })
+  return (
+    <div className="space-y-4">
+      <Card title="Program controls" subtitle="WBS 1.3 Governance and controls · 13 Stakeholder Management. Status and last review date feed the Control Status chart." action={<AddBtn label="Add control" onClick={() => controlsC.add(newControl())} />}>
+        <Grid count={controlsC.items.length} minWidth={1250} headers={['WBS', 'Control', 'Description', 'Owner', 'Status', 'Last reviewed', 'Evidence / artefact', '']}>
+          {controlsC.items.map((c) => (
+            <Row key={c.id}>
+              <Td><TextCell value={c.wbs} className="w-[64px] text-ink-500" onChange={(v) => set(c, 'wbs', v)} /></Td>
+              <Td min={260}><TextCell value={c.control} placeholder="Control" className="font-medium" onChange={(v) => set(c, 'control', v)} /></Td>
+              <Td min={280}><TextCell value={c.description} placeholder="What the control covers" onChange={(v) => set(c, 'description', v)} /></Td>
+              <Td><SelectCell value={c.owner} options={PEOPLE} onChange={(v) => set(c, 'owner', v)} /></Td>
+              <Td><SelectCell value={c.status} options={CONTROL_STATUSES} onChange={(v) => set(c, 'status', v)} /></Td>
+              <Td><DateCell value={c.lastReviewed} onChange={(v) => set(c, 'lastReviewed', v)} /></Td>
+              <Td min={160}><TextCell value={c.evidence} placeholder="Evidence" onChange={(v) => set(c, 'evidence', v)} /></Td>
+              <Td sticky><EditBtn onClick={() => openControl(c)} /><RemoveBtn name={c.control || 'this control'} onClick={() => controlsC.remove(c.id)} /></Td>
+            </Row>
+          ))}
+        </Grid>
+      </Card>
+      <Card title="RAG criteria definition" subtitle="Program health indicators (WBS 1.3.8): the thresholds for Green, Amber and Red per dimension." action={<AddBtn label="Add dimension" onClick={() => ragC.add({ id: uid('rag'), dimension: '', green: '', amber: '', red: '' })} />}>
+        <Grid count={ragC.items.length} minWidth={1000} headers={['Dimension', 'Green', 'Amber', 'Red', '']}>
+          {ragC.items.map((r) => (
+            <Row key={r.id}>
+              <Td min={140}><TextCell value={r.dimension} placeholder="Dimension" className="font-medium" onChange={(v) => setR(r, 'dimension', v)} /></Td>
+              <Td min={260}><span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-green-600 shrink-0 ml-1" /><TextCell value={r.green} placeholder="Green threshold" onChange={(v) => setR(r, 'green', v)} /></span></Td>
+              <Td min={260}><span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0 ml-1" /><TextCell value={r.amber} placeholder="Amber threshold" onChange={(v) => setR(r, 'amber', v)} /></span></Td>
+              <Td min={260}><span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-600 shrink-0 ml-1" /><TextCell value={r.red} placeholder="Red threshold" onChange={(v) => setR(r, 'red', v)} /></span></Td>
+              <Td sticky><EditBtn onClick={() => openRag(r)} /><RemoveBtn name={r.dimension || 'this dimension'} onClick={() => ragC.remove(r.id)} /></Td>
+            </Row>
+          ))}
+        </Grid>
+      </Card>
+    </div>
   )
 }

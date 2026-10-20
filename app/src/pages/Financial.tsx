@@ -11,6 +11,7 @@ import { WsIcon, VariancePill, SpentBar, Tbl, mnum, TOTAL_ROW, FinKpi } from '..
 import { RecordModal, useEditor, type FieldSpec } from '../components/financial/RecordModal'
 import { BUDGET_LINE_FIELDS, MILESTONE_FIELDS } from '../components/financial/fields'
 import { BudgetBreakdownTab, ActualsForecastTab, CostByWorkstreamTab, CostByCategoryTab, BenefitsTab, ScenarioTab, ApprovalsTab } from '../components/financial/tabs'
+import { FinancialInput } from '../components/financial/inputs'
 
 const SETTINGS_FIELDS: FieldSpec<FinanceSettings>[] = [
   { key: 'runRateYear', label: 'Run-rate / benefits year', type: 'select', options: ['Year 1', 'Year 2', 'Year 3', 'Year 4', 'Year 5'] },
@@ -21,6 +22,13 @@ const SETTINGS_FIELDS: FieldSpec<FinanceSettings>[] = [
 ]
 
 export default function Financial() {
+  const mode = useStore((s) => s.mode)
+  if (mode === 'input') return <FinancialInput />
+  return <FinancialOutput />
+}
+
+/* ================= Output view (dashboards) ================= */
+function FinancialOutput() {
   const [view, setView] = useState<ViewBy>('Total Program')
   const [tab, setTab] = useState<FinTab>('Financial Overview')
   const fin = useFinance(view)

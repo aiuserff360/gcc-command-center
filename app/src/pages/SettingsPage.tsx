@@ -1,6 +1,8 @@
 import { useMemo, useRef, useState } from 'react'
-import { Save, Plus, Pencil, X, Download, Upload, RotateCcw, Users, Shield, Database, Bell, ListChecks, Building2, UserX, UserCheck } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Save, Plus, Pencil, X, Download, Upload, RotateCcw, Users, Shield, Database, Bell, ListChecks, Building2, UserX, UserCheck, PencilLine, MapPin } from 'lucide-react'
 import { PageHeader } from '../components/layout/AppShell'
+import { seedProfile, type GccProfile } from '../components/setup/GccSetup'
 import { Card, Badge, Table, Tabs, Modal, Field, Input, Select, TextArea, FormGrid, ConfirmDelete, SectionTitle, Progress } from '../components/ui'
 import { useCollection, useStore, uid } from '../store/useStore'
 import { seedProgramKpis, seedWorkstreamSummaries, type ProgramKpis, type WorkstreamSummary } from '../data/shared'
@@ -77,6 +79,7 @@ function ProgramTab() {
           <div className="mt-4"><SaveBar dirty={dirty} saved={saved} onSave={save} onDiscard={() => setF(k)} /></div>
         </Card>
         <div className="space-y-4">
+          <GccSetupSummary />
           <CurrencyCard />
           <Card title="Selected program" subtitle="Shown in the top bar; switches the data context">
             <Select options={PROGRAMS} value={program} onChange={(e) => setProgram(e.target.value)} />
@@ -297,7 +300,7 @@ function NotificationsTab() {
           <Toggle k="riskEscalationAlerts" label="Risk escalation alerts" hint="Alert the Steering Committee when a risk is escalated"><span>For risks rated</span><select className="input w-auto py-1" value={f.riskEscalationLevel} onChange={(e) => setF({ ...f, riskEscalationLevel: e.target.value as NotificationSettings['riskEscalationLevel'] })}>{['Critical', 'High', 'Medium'].map((o) => <option key={o}>{o}</option>)}</select><span>and above</span></Toggle>
           <Toggle k="budgetVarianceAlerts" label="Budget variance alerts" hint="Alert when forecast at completion exceeds the approved budget"><span>Threshold</span><input className={small} type="number" min={1} value={f.budgetVarianceThresholdPct} onChange={(e) => setF({ ...f, budgetVarianceThresholdPct: +e.target.value || 1 })} /><span>% variance</span></Toggle>
           <Toggle k="hiringGapAlerts" label="Hiring gap alerts" hint="Alert when onboarded headcount falls behind plan"><span>Threshold</span><input className={small} type="number" min={1} value={f.hiringGapThresholdPct} onChange={(e) => setF({ ...f, hiringGapThresholdPct: +e.target.value || 1 })} /><span>% behind plan</span></Toggle>
-          <Toggle k="syncFailureAlerts" label="Integration sync failures" hint="Alert integration owners after retries are exhausted" />
+          <Toggle k="signOffRequests" label="Document sign-off requests" hint="Notify the approver when a document is submitted for review" />
         </Card>
         <div className="space-y-4">
           <Card title="Weekly digest">
@@ -305,7 +308,7 @@ function NotificationsTab() {
           </Card>
           <Card title="Delivery channel">
             <div className="flex gap-2">{(['Email', 'Teams', 'Both'] as const).map((c) => <button key={c} onClick={() => setF({ ...f, channel: c })} className={`flex-1 rounded-lg border px-3 py-2 text-[13px] font-medium cursor-pointer ${f.channel === c ? 'border-brand-600 bg-brand-50 text-brand-600' : 'border-line text-ink-700 hover:bg-surface'}`}>{c}</button>)}</div>
-            <p className="text-[11.5px] text-ink-500 mt-2">Teams notifications are posted via the Microsoft Teams connector (see Integrations).</p>
+            <p className="text-[11.5px] text-ink-500 mt-2">Teams notifications are posted via the Microsoft Teams connector.</p>
           </Card>
           <Card title="Preview">
             <div className="rounded-lg border border-line p-3 text-[12.5px] space-y-1">
@@ -315,7 +318,7 @@ function NotificationsTab() {
                 {f.riskEscalationAlerts && <li>Escalation alerts for {f.riskEscalationLevel}+ risks</li>}
                 {f.budgetVarianceAlerts && <li>Budget variance &gt; {f.budgetVarianceThresholdPct}%</li>}
                 {f.hiringGapAlerts && <li>Hiring gap &gt; {f.hiringGapThresholdPct}% behind plan</li>}
-                {f.syncFailureAlerts && <li>Integration sync failures</li>}
+                {f.signOffRequests && <li>Document sign-off requests to approvers</li>}
                 {f.weeklyDigest && <li>Weekly digest every {f.weeklyDigestDay} at {f.weeklyDigestTime}</li>}
               </ul>
               <div className="text-ink-500 pt-1">Channel: {f.channel}</div>
@@ -401,6 +404,28 @@ function DataTab() {
   )
 }
 
+
+/** Read-only summary of the GCC Setup record (maintained in the Input view of the Dashboard). */
+function GccSetupSummary() {
+  const profC = useCollection<GccProfile>('gccProfile', seedProfile)
+  const p = profC.items[0] ?? seedProfile[0]
+  const setMode = useStore((s) => s.setMode)
+  const nav = useNavigate()
+  const openSetup = () => { setMode('input'); nav('/') }
+  return (
+    <Card title="GCC Setup" subtitle="Read-only · maintained on the Dashboard in Input view" action={<button className="btn-secondary whitespace-nowrap" onClick={openSetup}><PencilLine size={14} /> Edit in GCC Setup</button>}>
+      <div className="space-y-2 text-[12.5px]">
+        <div><div className="text-[11px] uppercase tracking-wide text-ink-500">Purpose</div><p className="text-ink-900 leading-snug">{p.purpose || '—'}</p></div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2 pt-1 border-t border-line/70">
+          <div><div className="text-[11px] uppercase tracking-wide text-ink-500">Operating model</div><div className="font-medium text-ink-900">{p.operatingModel}</div></div>
+          <div><div className="text-[11px] uppercase tracking-wide text-ink-500">City</div><div className="font-medium text-ink-900 inline-flex items-center gap-1"><MapPin size={12} className="text-brand-600" />{p.city || '—'}</div></div>
+          <div><div className="text-[11px] uppercase tracking-wide text-ink-500">Entity type</div><div className="text-ink-900">{p.entityType || '—'}</div></div>
+          <div><div className="text-[11px] uppercase tracking-wide text-ink-500">Executive sponsor</div><div className="text-ink-900">{p.sponsor || '—'}</div></div>
+        </div>
+      </div>
+    </Card>
+  )
+}
 
 function CurrencyCard() {
   const currency = useStore((s) => s.currency)

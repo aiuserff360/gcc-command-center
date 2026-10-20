@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
-import { FileText, FolderOpen, Clock, LayoutTemplate, HardDrive, Plus, Search, Upload, CheckCircle2, XCircle, History, Download, ExternalLink, Folder, ChevronRight, Pencil } from 'lucide-react'
+import { FileText, FolderOpen, Clock, LayoutTemplate, HardDrive, Plus, Search, Upload, CheckCircle2, XCircle, History, Download, ExternalLink, Folder, ChevronRight, Pencil, Trash2 } from 'lucide-react'
 import { PageHeader } from '../components/layout/AppShell'
+import { InputLayout } from '../components/layout/InputLayout'
 import { Card, KpiTile, Badge, Table, Tabs, Modal, Field, Input, Select, TextArea, FormGrid, SectionTitle, ConfirmDelete, EmptyNote, Progress } from '../components/ui'
 import { Donut } from '../components/charts'
-import { useCollection, uid } from '../store/useStore'
+import { useCollection, useStore, uid } from '../store/useStore'
 import { fmtDate, TODAY, OWNERS, CHART_COLORS, SERIES, WORKSTREAM_META, type Workstream } from '../data/common'
 import {
   seedDocuments, seedDocumentVersions, seedDocumentSignOffs, DOC_TYPES, DOC_STATUSES, DOC_WORKSTREAMS, fmtSize,
@@ -19,6 +20,8 @@ type VersC = ReturnType<typeof useCollection<DocVersion>>
 type SignC = ReturnType<typeof useCollection<DocSignOff>>
 
 export default function Documents() {
+  const mode = useStore((s) => s.mode)
+  const setMode = useStore((s) => s.setMode)
   const [tab, setTab] = useState(TABS[0])
   const docsC = useCollection<Doc>('documents', seedDocuments)
   const versC = useCollection<DocVersion>('documentVersions', seedDocumentVersions)
@@ -39,6 +42,7 @@ export default function Documents() {
     setEdit({ id: '', title: '', type: 'Plan', workstream: 'Program Office', owner: 'A. Sharma', version: '0.1', updatedOn: TODAY, status: 'Draft', signOffBy: 'A. Sharma', size: 0, tags: [], link: '', ...preset })
   }
   const openEdit = (d: Doc) => { setIsNew(false); setEdit(d) }
+  const useTemplate = (t: Doc) => openNew({ title: t.title.replace(/ Template$/i, '') + ' – ' + fmtDate(TODAY), type: t.type === 'Template' ? inferType(t.title) : t.type, workstream: t.workstream, owner: t.owner, tags: [...t.tags.filter((x) => x !== 'template'), 'from-template'], size: t.size })
   const saveDoc = (d: Doc, note: string) => {
     if (isNew) {
       const id = uid('doc')
@@ -59,7 +63,27 @@ export default function Documents() {
     versC.add({ id: uid('dv'), docId: doc.id, version: doc.version, date: TODAY, author: by, note: `${action}${comment ? ': ' + comment : ''}`, size: doc.size })
     setSignOff(null)
   }
-  const showVersions = (id: string) => { setVersionsFor(id); setTab('Versions') }
+  const showVersions = (id: string) => { setVersionsFor(id); setTab('Versions'); if (mode === 'input') setMode('output') }
+
+  const modals = (
+    <>
+      {edit && <DocModal doc={edit} isNew={isNew} onClose={() => setEdit(null)} onSave={saveDoc} onDelete={(id) => { docsC.remove(id); setEdit(null) }} onVersions={showVersions} />}
+      {signOff && <SignOffModal doc={signOff.doc} action={signOff.action} onClose={() => setSignOff(null)} onConfirm={(c, by) => doSignOff(signOff.doc, signOff.action, c, by)} />}
+    </>
+  )
+
+  if (mode === 'input') {
+    return (
+      <>
+        <InputLayout title="Documents" subtitle="Maintain the controlled document register, the template library and the sign-off queue. The Output view shows the repository, folders and version history." right={<button className="btn-primary" onClick={() => openNew()}><Upload size={14} /> Upload document</button>} tabs={[
+          { name: 'Document register', content: <Register docs={docs} onOpen={openEdit} onNew={() => openNew()} onRemove={(id) => docsC.remove(id)} input />, hint: 'Every controlled program document. Click a row to edit its metadata or replace the file; use the bin icon to remove it.' },
+          { name: 'Templates', content: <Templates docs={docs} onOpen={openEdit} onUse={useTemplate} onNew={() => openNew({ type: 'Template', status: 'Approved', tags: ['template'] })} />, hint: 'Standard templates (WBS 1.3.4 / 1.3.7). Add or edit templates, or create a new document from one.' },
+          { name: 'Sign-offs', content: <Approvals docs={docs} signC={signC} onSignOff={(doc, action) => setSignOff({ doc, action })} onOpen={openEdit} />, hint: 'Documents in review awaiting a decision. Approve locks the version; reject returns it to Draft with your comment.' },
+        ]} />
+        {modals}
+      </>
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -75,13 +99,11 @@ export default function Documents() {
 
       {tab === 'All Documents' && <AllDocuments docs={docs} onOpen={openEdit} onNew={() => openNew()} onSignOff={(doc, action) => setSignOff({ doc, action })} />}
       {tab === 'By Workstream' && <ByWorkstream docs={docs} onOpen={openEdit} onNew={(ws) => openNew({ workstream: ws })} />}
-      {tab === 'Templates' && <Templates docs={docs} onOpen={openEdit} onUse={(t) => openNew({ title: t.title.replace(/ Template$/i, '') + ' – ' + fmtDate(TODAY), type: t.type === 'Template' ? inferType(t.title) : t.type, workstream: t.workstream, owner: t.owner, tags: [...t.tags.filter((x) => x !== 'template'), 'from-template'], size: t.size })} onNew={() => openNew({ type: 'Template', status: 'Approved', tags: ['template'] })} />}
+      {tab === 'Templates' && <Templates docs={docs} onOpen={openEdit} onUse={useTemplate} onNew={() => openNew({ type: 'Template', status: 'Approved', tags: ['template'] })} />}
       {tab === 'Approvals & Sign-off' && <Approvals docs={docs} signC={signC} onSignOff={(doc, action) => setSignOff({ doc, action })} onOpen={openEdit} />}
       {tab === 'Versions' && <Versions docs={docs} versC={versC} selected={versionsFor} onSelect={setVersionsFor} />}
       {tab === 'Document Register' && <Register docs={docs} onOpen={openEdit} />}
-
-      {edit && <DocModal doc={edit} isNew={isNew} onClose={() => setEdit(null)} onSave={saveDoc} onDelete={(id) => { docsC.remove(id); setEdit(null) }} onVersions={showVersions} />}
-      {signOff && <SignOffModal doc={signOff.doc} action={signOff.action} onClose={() => setSignOff(null)} onConfirm={(c, by) => doSignOff(signOff.doc, signOff.action, c, by)} />}
+      {modals}
     </div>
   )
 }
@@ -337,8 +359,10 @@ function Versions({ docs, versC, selected, onSelect }: { docs: Doc[]; versC: Ver
 }
 
 /* ====================================================================== */
-function Register({ docs, onOpen }: { docs: Doc[]; onOpen: (d: Doc) => void }) {
-  const rows = [...docs].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
+function Register({ docs, onOpen, onNew, onRemove, input }: { docs: Doc[]; onOpen: (d: Doc) => void; onNew?: () => void; onRemove?: (id: string) => void; input?: boolean }) {
+  const [q, setQ] = useState('')
+  const [status, setStatus] = useState('All')
+  const rows = [...docs].filter((d) => (status === 'All' || d.status === status) && (!q || [d.title, d.owner, d.type, d.workstream, d.signOffBy, d.tags.join(' ')].join(' ').toLowerCase().includes(q.toLowerCase()))).sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
   const exportCsv = () => {
     const head = ['ID', 'Title', 'Type', 'Workstream', 'Owner', 'Version', 'Status', 'Sign-off by', 'Updated', 'Size (KB)', 'Tags', 'Location']
     const lines = rows.map((d) => [d.id, d.title, d.type, d.workstream, d.owner, d.version, d.status, d.signOffBy, d.updatedOn, d.size, d.tags.join(';'), d.link].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
@@ -351,11 +375,16 @@ function Register({ docs, onOpen }: { docs: Doc[]; onOpen: (d: Doc) => void }) {
   ]
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-6 gap-4">
+      {!input && <div className="grid grid-cols-6 gap-4">
         {stats.map(([l, v]) => <div key={l as string} className="card px-4 py-3"><div className="text-[20px] font-bold text-navy-900 leading-tight">{v as number}</div><div className="text-[12px] text-ink-500">{l as string}</div></div>)}
-      </div>
-      <Card title="Document Register" subtitle="WBS 1.3.9 – Establish document repository and version control · controlled list of all program documents" action={<button className="btn-secondary" onClick={exportCsv}><Download size={14} /> Export CSV</button>}>
-        <Table<Doc> compact rows={rows} onRowClick={onOpen} columns={[
+      </div>}
+      <Card title="Document Register" subtitle={input ? `${rows.length} of ${docs.length} controlled documents · WBS 1.3.9` : 'WBS 1.3.9 – Establish document repository and version control · controlled list of all program documents'}
+        headerRight={input ? <div className="flex items-center gap-2">
+          <label className="input flex items-center gap-2 py-1 w-[220px]"><Search size={14} className="text-ink-400" /><input className="outline-none flex-1 bg-transparent" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} /></label>
+          <select className="input py-1 w-auto" value={status} onChange={(e) => setStatus(e.target.value)}>{['All', ...DOC_STATUSES].map((o) => <option key={o} value={o}>{o === 'All' ? 'All statuses' : o}</option>)}</select>
+        </div> : undefined}
+        action={<div className="flex gap-2"><button className="btn-secondary" onClick={exportCsv}><Download size={14} /> Export CSV</button>{onNew && <button className="btn-primary" onClick={onNew}><Plus size={14} /> Add document</button>}</div>}>
+        <Table<Doc> compact rows={rows} onRowClick={onOpen} empty="No documents match the current filters." columns={[
           { key: 'id', header: 'Doc ID', render: (d) => <span className="font-mono text-[12px] text-ink-500">{d.id.toUpperCase()}</span> },
           { key: 'title', header: 'Title', render: (d) => <span className="font-medium">{d.title}</span> },
           { key: 'type', header: 'Type' },
@@ -366,6 +395,7 @@ function Register({ docs, onOpen }: { docs: Doc[]; onOpen: (d: Doc) => void }) {
           { key: 'signOffBy', header: 'Sign-off authority' },
           { key: 'updatedOn', header: 'Last updated', render: (d) => fmtDate(d.updatedOn) },
           { key: 'link', header: 'Location', render: (d) => <span className="inline-flex items-center gap-1 font-mono text-[11px] text-brand-600 truncate max-w-[200px]"><ExternalLink size={11} />{d.link.replace('sharepoint://gcc-program/', '')}</span> },
+          ...(input ? [{ key: 'act', header: '', render: (d: Doc) => <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}><button className="text-ink-400 hover:text-ink-900 rounded p-1 cursor-pointer" title="Edit" onClick={() => onOpen(d)}><Pencil size={13} /></button><button className="text-ink-400 hover:text-red-600 rounded p-1 cursor-pointer" title="Remove" onClick={() => { if (window.confirm(`Remove "${d.title}" from the register?`)) onRemove?.(d.id) }}><Trash2 size={13} /></button></span> }] : []),
         ]} />
       </Card>
     </div>

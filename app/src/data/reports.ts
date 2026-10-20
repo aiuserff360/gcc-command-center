@@ -34,16 +34,25 @@ export const seedReports: Report[] = [
   { id: 'rp-013', name: 'Steering Committee Dashboard – Aug 2026', type: 'Monthly', period: 'Aug 2026', owner: 'A. Sharma', generatedOn: '2026-08-28', status: 'Sent', recipients: 9 },
 ]
 
+export type CommentaryId = 'weekly' | 'monthly' | 'financial' | 'hiring'
 export interface ReportCommentary {
-  id: 'weekly' | 'financial' | 'hiring'
+  id: CommentaryId
   text: string
   updatedOn: string
   sentOn?: string
 }
+/** The four narrative blocks maintained in the Input view (Reports → Commentary). */
+export const COMMENTARY_META: { id: CommentaryId; title: string; report: string; hint: string }[] = [
+  { id: 'weekly', title: 'Weekly commentary', report: 'Weekly Program Update · section 6 "Program Manager commentary"', hint: 'Two to four sentences: overall status, the key watch item, what moved this week and any decision the Steering Committee must take.' },
+  { id: 'monthly', title: 'Monthly commentary', report: 'Monthly Steering Committee Dashboard · "PMO commentary"', hint: 'Executive summary for the one-page steering pack: headline progress, material variances and the asks of the committee.' },
+  { id: 'financial', title: 'Financial commentary', report: 'Financial Report · "Variance commentary"', hint: 'Explain budget vs actual vs forecast variances by workstream and the offsets or recovery actions agreed.' },
+  { id: 'hiring', title: 'Hiring commentary', report: 'Hiring & Workforce Report · "Commentary"', hint: 'Headcount plan vs actual, hard-to-fill roles by business unit, upcoming cohorts and attrition watch items.' },
+]
 export const seedReportCommentary: ReportCommentary[] = [
   { id: 'weekly', updatedOn: '2026-10-19', sentOn: '2026-10-12', text: 'Program remains on track at 72% completion. Network provisioning slippage is the key watch item for the 23 Oct IT readiness milestone; a recovery plan with the ISP is in place and reviewed daily. Wave 2 hiring is ahead of plan (+12%) and the facility handover remains on schedule for 10 Nov. Steering Committee decision needed on vendor contract approval (Finance & Procurement) to avoid a two-week delay.' },
+  { id: 'monthly', updatedOn: '2026-10-16', text: 'October closes with the program at 72% completion and milestone adherence improving to 85%. The Pune Tower B lease is executed and fit-out is on schedule for the 10 Nov handover. Budget consumption is in line with plan; forecast at completion remains inside the approved envelope. Two asks for the committee: approval of the ISP master services agreement and confirmation of the Wave 2 hiring envelope for the SAP and Data & AI practices.' },
   { id: 'financial', updatedOn: '2026-10-08', text: 'Actual spend is 65% of the approved budget, with forecast at completion at 95% of budget (5% headroom). Finance & Procurement is trending over budget due to accelerated vendor onboarding; offset identified in Technology (software licensing deferred to FY27).' },
-  { id: 'hiring', updatedOn: '2026-10-15', text: '320 of 450 target positions onboarded (71%). Campus cohort of 45 joins on 02 Nov. Specialist engineering roles (network/security) remain the gap – 8 open requisitions >45 days. Lateral hiring sprint with two new agencies approved.' },
+  { id: 'hiring', updatedOn: '2026-10-15', text: '320 of 450 target positions onboarded (71%). Campus cohort of 45 joins on 02 Nov. Specialist roles in the SAP Practice and R&D – Platform & Cloud business units remain the gap – 8 open requisitions >45 days. Lateral hiring sprint with two new agencies approved.' },
 ]
 
 export type Cadence = 'Weekly' | 'Fortnightly' | 'Monthly' | 'Quarterly'

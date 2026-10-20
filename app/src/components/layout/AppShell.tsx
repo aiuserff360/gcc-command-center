@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
   LayoutDashboard, Target, CalendarRange, Layers, Users, Wallet, ArrowLeftRight, AlertTriangle, Landmark, CheckCircle2,
-  TrendingUp, FileBarChart2, FileText, Plug, Settings, Lightbulb, Bell, ChevronDown, Calendar, MoreVertical, Sparkles, RotateCcw, Pencil, LogOut, UserCircle2,
+  FileBarChart2, FileText, Settings, Lightbulb, Bell, ChevronDown, Calendar, MoreVertical, Sparkles, RotateCcw, Pencil, LogOut, UserCircle2, PencilLine,
 } from 'lucide-react'
 import { useStore } from '../../store/useStore'
 import { PROGRAM_NAMES, programDef } from '../../data/common'
@@ -21,10 +21,8 @@ export const NAV = [
   { to: '/risks', label: 'Risks & Issues', icon: AlertTriangle },
   { to: '/governance', label: 'Governance', icon: Landmark },
   { to: '/value', label: 'Value Realization', icon: CheckCircle2 },
-  { to: '/portfolio', label: 'Transformation Portfolio', icon: TrendingUp },
   { to: '/reports', label: 'Reports', icon: FileBarChart2 },
   { to: '/documents', label: 'Documents', icon: FileText },
-  { to: '/integrations', label: 'Integrations', icon: Plug },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
 
@@ -74,7 +72,7 @@ export function Sidebar({ onAssistant }: { onAssistant: () => void }) {
   )
 }
 
-export function Topbar({ variant }: { variant: 'dashboard' | 'page' }) {
+export function Topbar({ variant: _variant }: { variant: 'dashboard' | 'page' }) {
   const program = useStore((s) => s.program)
   const setProgram = useStore((s) => s.setProgram)
   const [notif, setNotif] = useState(false)
@@ -102,14 +100,8 @@ export function Topbar({ variant }: { variant: 'dashboard' | 'page' }) {
         {programSelect}
       </div>
 
-      {/* Middle: lifecycle phase filter (pages) or the operating-model words (dashboard) */}
-      {variant === 'dashboard' ? (
-        <nav className="hidden 2xl:flex items-center text-[13px] text-ink-500 whitespace-nowrap mx-auto">
-          {['Plan', 'Execute', 'Govern', 'Monitor', 'Intervene', 'Deliver Value'].map((w, i) => (
-            <span key={w} className="flex items-center"><span className="px-2">{w}</span>{i < 5 && <span className="text-line">|</span>}</span>
-          ))}
-        </nav>
-      ) : null}
+      {/* Middle: Input / Output view toggle */}
+      <ModeToggle />
 
       {/* Right: date, notifications, user */}
       <div className="flex items-center gap-4 shrink-0 ml-auto">
@@ -147,6 +139,20 @@ export function Topbar({ variant }: { variant: 'dashboard' | 'page' }) {
         </div>
       </div>
     </header>
+  )
+}
+
+export function ModeToggle() {
+  const mode = useStore((s) => s.mode)
+  const setMode = useStore((s) => s.setMode)
+  return (
+    <div className="mx-auto flex items-center bg-surface rounded-lg p-0.5 shrink-0" title="Input view: enter and maintain the program data. Output view: the dashboards built from it.">
+      {([['input', 'Input view', PencilLine], ['output', 'Output view', LayoutDashboard]] as const).map(([m, label, Icon]) => (
+        <button key={m} onClick={() => setMode(m)} className={clsx('px-3.5 py-1.5 rounded-md text-[12.5px] font-semibold cursor-pointer inline-flex items-center gap-1.5', mode === m ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-700 hover:bg-white')}>
+          <Icon size={14} /> {label}
+        </button>
+      ))}
+    </div>
   )
 }
 

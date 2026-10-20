@@ -4,7 +4,7 @@ import { AlertTriangle, Info, CheckCircle2, Clock, Flag, TrendingDown, Plus } fr
 import { PageHeader } from '../components/layout/AppShell'
 import { Card, KpiTile, Badge, Tabs, Legend, ViewAll, Modal, Field, Input, FormGrid, Table } from '../components/ui'
 import { Donut, tooltipStyle } from '../components/charts'
-import { useCollection } from '../store/useStore'
+import { useCollection, useStore } from '../store/useStore'
 import { seedRaid, seedDependencies, isOpen, daysOpen, LIKELIHOOD, IMPACT_SCALE, RISK_CATEGORIES, type RaidItem, type Dependency } from '../data/shared'
 import { CHART_COLORS, fmtDate } from '../data/common'
 import { useMoney } from '../data/money'
@@ -20,6 +20,7 @@ import { TrendChart, TREND_LEGEND, InsightList, InsightModal, TrendsTab } from '
 import { MitigationTab } from '../components/risks/MitigationTab'
 import { EscalationsTab } from '../components/risks/EscalationsTab'
 import { DependenciesTab } from '../components/risks/DependenciesTab'
+import { RisksInput } from '../components/risks/InputView'
 
 const TABS = ['Risk Overview', 'Risk Register', 'Issue Register', 'Risk Heat Map', 'Trends & Insights', 'Mitigation Plans', 'Escalations', 'Dependencies']
 const RAID_SEED: RaidItem[] = [...seedRaid, ...supplementRaid]
@@ -46,6 +47,7 @@ export default function Risks() {
     settingsC.update({ ...settings, supplementApplied: true })
   }, [settings.supplementApplied]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const mode = useStore((s) => s.mode)
   const [tab, setTab] = useState(TABS[0])
   const [view, setView] = useState<string>(VIEW_OPTIONS[0])
   const [editRaid, setEditRaid] = useState<RaidDraft | null | 'closed'>('closed')
@@ -83,6 +85,7 @@ export default function Risks() {
 
   return (
     <div className="space-y-4">
+      {mode === 'input' ? <RisksInput raidC={raidC} settingsC={settingsC} trendC={trendC} insightsC={insightsC} mitC={mitC} escC={escC} settings={settings} openRaid={openRaid} /> : <>
       <PageHeader title="Risks and Issues" subtitle="Identify, track and resolve risks and issues across the GCC program." viewValue={view} viewOptions={VIEW_OPTIONS} onView={setView}
         onEdit={() => setEditKpi(true)} editLabel="Edit KPIs" />
 
@@ -259,8 +262,9 @@ export default function Risks() {
       {tab === 'Escalations' && <EscalationsTab raid={raid} decisions={escC.items} onSaveRaid={raidC.update} onSaveDecision={escC.update} onOpenRaid={openRaid} />}
 
       {tab === 'Dependencies' && <DependenciesTab deps={depC.items} raid={raidC.items} onSave={depC.update} onDelete={depC.remove} onOpenRaid={openRaid} view={view} />}
+      </>}
 
-      {/* Modals */}
+      {/* Modals (both views) */}
       <RaidModal open={editRaid !== 'closed'} value={editRaid === 'closed' ? null : editRaid} raid={raidC.items} onClose={() => setEditRaid('closed')} onSave={saveRaid} onDelete={(id) => { raidC.remove(id); setEditRaid('closed') }} />
       <InsightModal open={editInsight !== 'closed'} value={editInsight === 'closed' || editInsight === null ? null : (editInsight.id ? editInsight : editInsight)} onClose={() => setEditInsight('closed')}
         onSave={(v) => { insightsC.update(v); setEditInsight('closed') }} onDelete={(id) => { insightsC.remove(id); setEditInsight('closed') }} />

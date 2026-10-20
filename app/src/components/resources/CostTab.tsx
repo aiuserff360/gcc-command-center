@@ -4,21 +4,21 @@ import { Card, Table } from '../ui'
 import { tooltipStyle } from '../charts'
 import { CHART_COLORS } from '../../data/common'
 import { useMoney } from '../../data/money'
-import { GRADES, fnShort, type PeopleCostRow } from '../../data/resources'
+import { GRADES, buAxis, type PeopleCostRow } from '../../data/resources'
 import type { ResourceData } from './useResourceData'
 import { WrapTick, CardLegend, MiniStat, lakhNum } from './widgets'
 import { PeopleCostForm } from './forms'
 
 export default function CostTab({ d }: { d: ResourceData }) {
-  const { peopleCost, headcountPlan, workstreamHeadcount, employees, kpi, settings } = d
+  const { peopleCost, peopleCostRows, headcountPlan, buHeadcountRows, employees, kpi, settings } = d
   const [row, setRow] = useState<PeopleCostRow | null>(null)
   const m = useMoney()
   /** Display-unit number for series already converted with m.toDisplay (tooltips / labels). */
   const fmtDisp = (v: number, d = m.digits) => `${m.symbol} ${v.toFixed(d)} ${m.unit}`
 
-  const rows = peopleCost.items.map((r) => {
-    const fte = workstreamHeadcount.items.find((w) => w.workstream === r.workstream)?.onboarded ?? 0
-    return { ...r, name: fnShort(r.workstream), fte, budgetD: +m.num(r.budgetCr, 2), actualD: +m.num(r.actualCr, 2), variance: +(r.budgetCr - r.actualCr).toFixed(2), utilPct: r.budgetCr ? Math.round((r.actualCr / r.budgetCr) * 100) : 0, perFteL: fte ? +((r.actualCr * 100) / fte).toFixed(1) : 0 }
+  const rows = peopleCostRows.map((r) => {
+    const fte = buHeadcountRows.find((w) => w.businessUnit === r.businessUnit)?.onboarded ?? 0
+    return { ...r, name: buAxis(r.businessUnit), fte, budgetD: +m.num(r.budgetCr, 2), actualD: +m.num(r.actualCr, 2), variance: +(r.budgetCr - r.actualCr).toFixed(2), utilPct: r.budgetCr ? Math.round((r.actualCr / r.budgetCr) * 100) : 0, perFteL: fte ? +((r.actualCr * 100) / fte).toFixed(1) : 0 }
   })
   const perFteL = +(kpi.costPerFteCr * 100).toFixed(1)
   const runRate = useMemo(() => headcountPlan.items.map((h) => ({ month: h.month, 'Planned run-rate': +m.toDisplay((h.planned * kpi.costPerFteCr) / 12).toFixed(3), 'Actual run-rate': +m.toDisplay((h.actual * kpi.costPerFteCr) / 12).toFixed(3), 'Budget line': +m.toDisplay(kpi.costBudget / 12).toFixed(3) })), [headcountPlan.items, kpi.costPerFteCr, kpi.costBudget, m.currency, m.rate]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -40,9 +40,9 @@ export default function CostTab({ d }: { d: ResourceData }) {
       </div>
 
       <div className="grid grid-cols-[1.4fr_1fr] gap-4">
-        <Card title={`People Cost by Workstream (${m.unitLabel})`} subtitle="Click a row to edit budget / actual" >
+        <Card title={`People Cost by Business Unit (${m.unitLabel})`} subtitle="Click a row to edit budget / actual" >
           <Table compact rows={rows} onRowClick={(r) => setRow(r)} columns={[
-            { key: 'workstream', header: 'Workstream', render: (r) => <span className="font-medium">{r.workstream}</span> },
+            { key: 'businessUnit', header: 'Business unit', render: (r) => <span className="font-medium">{r.businessUnit}</span> },
             { key: 'fte', header: 'FTEs', className: 'text-right' },
             { key: 'budgetCr', header: `Budget (${m.unitLabel})`, className: 'text-right', render: (r) => m.num(r.budgetCr, 2) },
             { key: 'actualCr', header: `Actual (${m.unitLabel})`, className: 'text-right', render: (r) => m.num(r.actualCr, 2) },
@@ -95,7 +95,7 @@ export default function CostTab({ d }: { d: ResourceData }) {
         </Card>
       </div>
 
-      <PeopleCostForm open={!!row} onClose={() => setRow(null)} value={row} onSave={(r) => { peopleCost.update({ id: r.id, workstream: r.workstream, budgetCr: r.budgetCr, actualCr: r.actualCr }); setRow(null) }} />
+      <PeopleCostForm open={!!row} onClose={() => setRow(null)} value={row} onSave={(r) => { peopleCost.update({ id: r.id, businessUnit: r.businessUnit, budgetCr: r.budgetCr, actualCr: r.actualCr }); setRow(null) }} />
     </>
   )
 }

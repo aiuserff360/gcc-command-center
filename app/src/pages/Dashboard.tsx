@@ -7,6 +7,7 @@ import { ProgramKpiEditor } from '../components/ProgramKpiEditor'
 import { Donut, tooltipStyle } from '../components/charts'
 import { useCollection, useStore } from '../store/useStore'
 import { useMoney } from '../data/money'
+import { GccSetup } from '../components/setup/GccSetup'
 import { seedMilestones, seedRaid, seedProgramKpis, seedWorkstreamSummaries, isOpen, type Milestone, type RaidItem, type ProgramKpis, type WorkstreamSummary } from '../data/shared'
 import { fmtDate, CHART_COLORS, MONTHS, programDef } from '../data/common'
 
@@ -23,6 +24,12 @@ const OWNER_ROLE: Record<string, string> = { 'R. Mehta': 'IT Lead', 'S. Iyer': '
 const rampFor = (scale: number) => MONTHS.map((m, i) => ({ month: m, Plan: Math.round([80, 110, 150, 180, 210, 250, 290, 320, 350, 390, 420, 450][i] * scale), Actual: Math.round([60, 95, 135, 170, 200, 240, 280, 330, 370, 400, 430, 450][i] * scale) }))
 
 export default function Dashboard() {
+  const mode = useStore((s) => s.mode)
+  if (mode === 'input') return <GccSetup />
+  return <DashboardOutput />
+}
+
+function DashboardOutput() {
   const nav = useNavigate()
   const program = useStore((s) => s.program)
   const m = useMoney()

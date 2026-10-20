@@ -83,7 +83,7 @@ export interface ProgramDef {
   sponsor: string
 }
 export const PROGRAMS: ProgramDef[] = [
-  { name: 'GCC Program - India', country: 'India', city: 'Bengaluru', phase: 'Build', scale: 1, pctScale: 1, locations: ['Bengaluru', 'Hyderabad', 'Pune', 'Chennai'], sponsor: 'Global COO' },
+  { name: 'GCC Program - India', country: 'India', city: 'Pune', phase: 'Build', scale: 1, pctScale: 1, locations: ['Pune', 'Bengaluru', 'Hyderabad', 'Chennai'], sponsor: 'Global COO' },
   { name: 'GCC Program - Poland', country: 'Poland', city: 'Kraków', phase: 'Design', scale: 0.55, pctScale: 0.42, locations: ['Kraków', 'Warsaw', 'Wrocław', 'Gdańsk'], sponsor: 'Global CFO' },
   { name: 'GCC Program - Philippines', country: 'Philippines', city: 'Manila', phase: 'Transition', scale: 0.8, pctScale: 0.88, locations: ['Manila', 'Cebu', 'Clark', 'Davao'], sponsor: 'Global CIO' },
 ]

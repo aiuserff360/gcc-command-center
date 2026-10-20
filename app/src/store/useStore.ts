@@ -19,10 +19,11 @@ export type WithId = { id: string }
 export type Phase = 'Design' | 'Build' | 'Transition' | 'Operate' | 'Transform' | 'Transfer'
 type Collections = Record<string, WithId[]>
 
-export const GLOBAL_COLLECTIONS = new Set(['programs', 'portfolioInitiatives', 'programBenefits', 'investmentYears', 'users', 'lookups', 'notificationSettings', 'connectors', 'syncLog', 'dataFlows', 'fieldMappings', 'webhooks', 'integrationSettings', 'recipients', 'reportSchedules'])
+export const GLOBAL_COLLECTIONS = new Set(['users', 'lookups', 'notificationSettings', 'recipients', 'reportSchedules'])
 
 export interface User { name: string; role: string; initials: string }
 export type Currency = 'INR' | 'EUR'
+export type ViewMode = 'input' | 'output'
 
 interface StoreState {
   collections: Collections
@@ -32,6 +33,9 @@ interface StoreState {
   user: User | null
   currency: Currency
   eurRate: number
+  /** Input view = data entry forms for every module; Output view = the dashboards */
+  mode: ViewMode
+  setMode: (m: ViewMode) => void
   setCurrency: (c: Currency) => void
   setEurRate: (r: number) => void
   login: (name: string, role: string) => void
@@ -57,9 +61,11 @@ export const useStore = create<StoreState>()(
       user: null,
       currency: 'INR',
       eurRate: 92,
+      mode: 'output',
+      setMode: (mode) => set({ mode }),
       setCurrency: (currency) => set({ currency }),
       setEurRate: (eurRate) => set({ eurRate: eurRate > 0 ? eurRate : 92 }),
-      login: (name, role) => set({ user: { name: name.trim(), role: role.trim() || 'Program Manager', initials: initials(name) } }),
+      login: (name, role) => set({ user: { name: name.trim(), role: role.trim() || 'Program Manager', initials: initials(name) }, mode: 'input' }),
       logout: () => set({ user: null }),
       setPhase: (phase) => set({ phase }),
       setProgram: (program) => {

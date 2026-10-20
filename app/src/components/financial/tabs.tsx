@@ -128,7 +128,7 @@ export function BudgetBreakdownTab({ fin, view }: { fin: Fin; view: ViewBy }) {
 }
 
 /* ================= Actuals & Forecast ================= */
-const MONTH_FIELDS: FieldSpec<MonthlyFinancial>[] = [
+export const MONTH_FIELDS: FieldSpec<MonthlyFinancial>[] = [
   { key: 'month', label: 'Month' },
   { key: 'budgetCr', label: 'Budget', type: 'number', money: true },
   { key: 'actualCr', label: 'Actual', type: 'number', money: true },
@@ -194,7 +194,7 @@ export function ActualsForecastTab({ fin, onSettings }: { fin: Fin; onSettings: 
 }
 
 /* ================= Cost by Workstream ================= */
-const COMMITMENT_FIELDS: FieldSpec<Commitment>[] = [
+export const COMMITMENT_FIELDS: FieldSpec<Commitment>[] = [
   { key: 'poNumber', label: 'PO number' },
   { key: 'vendor', label: 'Vendor' },
   { key: 'description', label: 'Description', span: true },
@@ -206,7 +206,7 @@ const COMMITMENT_FIELDS: FieldSpec<Commitment>[] = [
   { key: 'status', label: 'Status', type: 'select', options: ['Open', 'Approved', 'In Progress', 'Closed'] },
   { key: 'date', label: 'PO date', type: 'date' },
 ]
-const newCommitment = (): Commitment => ({ id: uid('cm'), poNumber: `PO-26-00${Math.floor(50 + Math.random() * 49)}`, vendor: '', description: '', workstream: FIN_WORKSTREAMS[0], category: COST_CATEGORIES[0], committedCr: 0, invoicedCr: 0, paidCr: 0, status: 'Open', date: '2026-10-20' })
+export const newCommitment = (): Commitment => ({ id: uid('cm'), poNumber: `PO-26-00${Math.floor(50 + Math.random() * 49)}`, vendor: '', description: '', workstream: FIN_WORKSTREAMS[0], category: COST_CATEGORIES[0], committedCr: 0, invoicedCr: 0, paidCr: 0, status: 'Open', date: '2026-10-20' })
 
 export function CommitmentsTable({ rows, m, onRow, compact }: { rows: Commitment[]; m: Money; onRow: (c: Commitment) => void; compact?: boolean }) {
   const tc = sum(rows.map((c) => c.committedCr)), ti = sum(rows.map((c) => c.invoicedCr)), tp = sum(rows.map((c) => c.paidCr))
@@ -285,7 +285,7 @@ export function CostByWorkstreamTab({ fin }: { fin: Fin }) {
 }
 
 /* ================= Cost by Category ================= */
-const CATEGORY_FIELDS: FieldSpec<CostCategoryRow>[] = [
+export const CATEGORY_FIELDS: FieldSpec<CostCategoryRow>[] = [
   { key: 'name', label: 'Cost category', span: true },
   { key: 'actualCr', label: 'Actual', type: 'number', money: true },
   { key: 'forecastCr', label: 'Forecast', type: 'number', money: true },
@@ -408,7 +408,7 @@ export function BenefitsTab({ fin }: { fin: Fin }) {
 }
 
 /* ================= Scenario Analysis ================= */
-const SCENARIO_FIELDS: FieldSpec<FinanceScenario>[] = [
+export const SCENARIO_FIELDS: FieldSpec<FinanceScenario>[] = [
   { key: 'name', label: 'Scenario' },
   { key: 'status', label: 'Status', type: 'select', options: ['Recommended', 'Option', 'Not Preferred'] },
   { key: 'investmentCr', label: 'Investment', type: 'number', money: true },
@@ -488,7 +488,7 @@ export function ScenarioTab({ fin, onSettings }: { fin: Fin; onSettings: () => v
 }
 
 /* ================= Approvals & Commitments ================= */
-const APPROVAL_FIELDS: FieldSpec<FinancialApproval>[] = [
+export const APPROVAL_FIELDS: FieldSpec<FinancialApproval>[] = [
   { key: 'item', label: 'Item', span: true },
   { key: 'amountCr', label: 'Amount', type: 'number', money: true },
   { key: 'workstream', label: 'Workstream', type: 'select', options: FIN_WORKSTREAMS },

@@ -12,10 +12,8 @@ const Transition = lazy(() => import('./pages/Transition'))
 const Risks = lazy(() => import('./pages/Risks'))
 const Governance = lazy(() => import('./pages/Governance'))
 const ValueRealization = lazy(() => import('./pages/ValueRealization'))
-const Portfolio = lazy(() => import('./pages/Portfolio'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Documents = lazy(() => import('./pages/Documents'))
-const Integrations = lazy(() => import('./pages/Integrations'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 
 export default function App() {
@@ -34,10 +32,8 @@ export default function App() {
         <Route path="/risks" element={<Risks />} />
         <Route path="/governance" element={<Governance />} />
         <Route path="/value" element={<ValueRealization />} />
-        <Route path="/portfolio" element={<Portfolio />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/documents" element={<Documents />} />
-        <Route path="/integrations" element={<Integrations />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Routes>
       </Suspense>

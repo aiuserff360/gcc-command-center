@@ -5,29 +5,29 @@ import { Card, Badge, Table, FilterSelect, Progress } from '../ui'
 import { tooltipStyle } from '../charts'
 import { CHART_COLORS, fmtDate } from '../../data/common'
 import { useMoney } from '../../data/money'
-import { FUNCTIONS, RES_LOCATIONS, fnShort, type Employee } from '../../data/resources'
+import { buShort, type Employee } from '../../data/resources'
 import type { ResourceData } from './useResourceData'
 import { CardLegend, MiniStat, CompactTable, lakhNum } from './widgets'
 import { EmployeeForm } from './forms'
 
 export default function AllocationTab({ d }: { d: ResourceData }) {
-  const { employees, headcountPlan, workstreamHeadcount, kpi } = d
+  const { employees, headcountPlan, buHeadcountRows, buNames, locations, kpi } = d
   const [emp, setEmp] = useState<Employee | null>(null)
   const [adding, setAdding] = useState(false)
-  const [fWs, setFWs] = useState('All')
+  const [fBu, setFBu] = useState('All')
   const [fLoc, setFLoc] = useState('All')
   const m = useMoney()
 
-  const byWs = useMemo(() => FUNCTIONS.map((ws) => {
-    const list = employees.items.filter((e) => e.workstream === ws)
+  const byBu = useMemo(() => buNames.map((bu) => {
+    const list = employees.items.filter((e) => e.businessUnit === bu)
     const avg = list.length ? Math.round(list.reduce((s, e) => s + e.allocationPct, 0) / list.length) : 0
-    return { workstream: ws, name: fnShort(ws), people: list.length, onboarded: workstreamHeadcount.items.find((w) => w.workstream === ws)?.onboarded ?? 0, avg, full: list.filter((e) => e.allocationPct >= 100).length, bench: list.filter((e) => e.allocationPct < 50).length, fte: +(list.reduce((s, e) => s + e.allocationPct, 0) / 100).toFixed(1) }
-  }), [employees.items, workstreamHeadcount.items])
+    return { businessUnit: bu, name: buShort(bu), people: list.length, onboarded: buHeadcountRows.find((w) => w.businessUnit === bu)?.onboarded ?? 0, avg, full: list.filter((e) => e.allocationPct >= 100).length, bench: list.filter((e) => e.allocationPct < 50).length, fte: +(list.reduce((s, e) => s + e.allocationPct, 0) / 100).toFixed(1) }
+  }), [employees.items, buHeadcountRows, buNames])
   const overallUtil = employees.items.length ? Math.round(employees.items.reduce((s, e) => s + e.allocationPct, 0) / employees.items.length) : 0
   const bench = employees.items.filter((e) => e.allocationPct < 50).length
   const partial = employees.items.filter((e) => e.allocationPct >= 50 && e.allocationPct < 100).length
   const utilData = headcountPlan.items.map((m) => ({ month: m.month, Planned: m.plannedUtil, Actual: m.actualUtil }))
-  const rows = employees.items.filter((e) => fWs === 'All' || e.workstream === fWs).filter((e) => fLoc === 'All' || e.location === fLoc)
+  const rows = employees.items.filter((e) => fBu === 'All' || e.businessUnit === fBu).filter((e) => fLoc === 'All' || e.location === fLoc)
 
   return (
     <>
@@ -40,9 +40,9 @@ export default function AllocationTab({ d }: { d: ResourceData }) {
       </div>
 
       <div className="grid grid-cols-[1.45fr_1.1fr_1fr] gap-4">
-        <Card title="Allocation by Workstream" subtitle="People in sample, allocated FTE and average allocation %">
-          <CompactTable rows={byWs.map((r) => ({ ...r, id: r.workstream }))} columns={[
-            { key: 'workstream', header: 'Workstream', className: 'whitespace-nowrap', render: (r) => r.name },
+        <Card title="Allocation by Business Unit" subtitle="People in sample, allocated FTE and average allocation %">
+          <CompactTable rows={byBu.map((r) => ({ ...r, id: r.businessUnit }))} columns={[
+            { key: 'businessUnit', header: 'Business unit', className: 'whitespace-nowrap', render: (r) => <span title={r.businessUnit}>{r.name}</span> },
             { key: 'onboarded', header: 'Onboarded', className: 'text-right' },
             { key: 'people', header: 'People', className: 'text-right' },
             { key: 'fte', header: 'Allocated FTE', className: 'text-right' },
@@ -50,10 +50,10 @@ export default function AllocationTab({ d }: { d: ResourceData }) {
             { key: 'bench', header: 'Bench', className: 'text-right', render: (r) => <span className={r.bench ? 'text-red-600 font-medium' : ''}>{r.bench}</span> },
           ]} />
         </Card>
-        <Card title="Utilization by Workstream (%)" subtitle="Dashed line = 85% target">
+        <Card title="Utilization by Business Unit (%)" subtitle="Dashed line = 85% target">
           <div className="h-[230px]">
             <ResponsiveContainer>
-              <BarChart data={byWs} layout="vertical" margin={{ top: 4, right: 30, left: 0, bottom: 0 }} barCategoryGap="30%">
+              <BarChart data={byBu} layout="vertical" margin={{ top: 4, right: 30, left: 0, bottom: 0 }} barCategoryGap="30%">
                 <CartesianGrid horizontal={false} />
                 <XAxis type="number" tickLine={false} axisLine={false} domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} />
                 <YAxis type="category" dataKey="name" tickLine={false} axisLine={false} width={92} tick={{ fontSize: 11 }} />
@@ -82,14 +82,14 @@ export default function AllocationTab({ d }: { d: ResourceData }) {
 
       <Card title="Team Allocation" subtitle={`${rows.length} employees · click a row to edit`}
         action={<div className="flex items-center gap-2">
-          <FilterSelect label="Workstream" value={fWs} options={['All', ...FUNCTIONS]} onChange={setFWs} />
-          <FilterSelect label="Location" value={fLoc} options={['All', ...RES_LOCATIONS]} onChange={setFLoc} />
+          <FilterSelect label="Business unit" value={fBu} options={['All', ...buNames]} onChange={setFBu} />
+          <FilterSelect label="Location" value={fLoc} options={['All', ...locations]} onChange={setFLoc} />
           <button className="btn-primary" onClick={() => setAdding(true)}><Plus size={14} /> Add Employee</button>
         </div>}>
         <Table<Employee> compact rows={rows} onRowClick={(r) => setEmp(r)} columns={[
           { key: 'name', header: 'Name', render: (r) => <span className="font-medium">{r.name}</span> },
           { key: 'role', header: 'Role' },
-          { key: 'workstream', header: 'Workstream', render: (r) => fnShort(r.workstream) },
+          { key: 'businessUnit', header: 'Business unit', render: (r) => <span title={r.businessUnit}>{buShort(r.businessUnit)}</span> },
           { key: 'location', header: 'Location' },
           { key: 'grade', header: 'Grade' },
           { key: 'costBand', header: 'Cost Band' },
@@ -100,7 +100,7 @@ export default function AllocationTab({ d }: { d: ResourceData }) {
         ]} />
       </Card>
 
-      <EmployeeForm open={adding || !!emp} onClose={() => { setAdding(false); setEmp(null) }} value={emp} onSave={(e) => { if (emp) employees.update(e); else employees.add(e); setAdding(false); setEmp(null) }} onDelete={(id) => employees.remove(id)} />
+      <EmployeeForm open={adding || !!emp} onClose={() => { setAdding(false); setEmp(null) }} value={emp} businessUnits={buNames} locations={locations} onSave={(e) => { if (emp) employees.update(e); else employees.add(e); setAdding(false); setEmp(null) }} onDelete={(id) => employees.remove(id)} />
     </>
   )
 }

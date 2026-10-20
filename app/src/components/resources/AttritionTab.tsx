@@ -4,13 +4,13 @@ import { Plus, Pencil } from 'lucide-react'
 import { Card, Badge } from '../ui'
 import { Donut, tooltipStyle } from '../charts'
 import { CHART_COLORS, SERIES, fmtDate } from '../../data/common'
-import { EXIT_REASONS, fnShort, type ExitRecord, type RetentionAction, type AttritionMonth } from '../../data/resources'
+import { EXIT_REASONS, buShort, type ExitRecord, type RetentionAction, type AttritionMonth } from '../../data/resources'
 import type { ResourceData } from './useResourceData'
 import { CardLegend, MiniStat, CompactTable } from './widgets'
 import { ExitForm, RetentionActionForm, NumberGridForm } from './forms'
 
 export default function AttritionTab({ d }: { d: ResourceData }) {
-  const { attrition, exits, retentionActions, kpi } = d
+  const { attrition, exits, retentionActions, kpi, buNames, locations } = d
   const [exit, setExit] = useState<ExitRecord | null>(null)
   const [addExit, setAddExit] = useState(false)
   const [act, setAct] = useState<RetentionAction | null>(null)
@@ -71,7 +71,7 @@ export default function AttritionTab({ d }: { d: ResourceData }) {
           <CompactTable<ExitRecord> rows={sortedExits} onRowClick={(r) => setExit(r)} columns={[
             { key: 'name', header: 'Name', className: 'whitespace-nowrap', render: (r) => <span className="font-medium">{r.name}</span> },
             { key: 'role', header: 'Role' },
-            { key: 'workstream', header: 'Workstream', className: 'whitespace-nowrap', render: (r) => fnShort(r.workstream) },
+            { key: 'businessUnit', header: 'Business unit', className: 'whitespace-nowrap', render: (r) => <span title={r.businessUnit}>{buShort(r.businessUnit)}</span> },
             { key: 'location', header: 'Location' },
             { key: 'exitDate', header: 'Exit Date', className: 'whitespace-nowrap', render: (r) => fmtDate(r.exitDate) },
             { key: 'tenureMonths', header: 'Tenure', className: 'text-right', render: (r) => `${r.tenureMonths} mo` },
@@ -94,7 +94,7 @@ export default function AttritionTab({ d }: { d: ResourceData }) {
         </Card>
       </div>
 
-      <ExitForm open={addExit || !!exit} onClose={() => { setAddExit(false); setExit(null) }} value={exit} onSave={(e) => { if (exit) exits.update(e); else exits.add(e); setAddExit(false); setExit(null) }} onDelete={(id) => exits.remove(id)} />
+      <ExitForm open={addExit || !!exit} onClose={() => { setAddExit(false); setExit(null) }} value={exit} businessUnits={buNames} locations={locations} onSave={(e) => { if (exit) exits.update(e); else exits.add(e); setAddExit(false); setExit(null) }} onDelete={(id) => exits.remove(id)} />
       <RetentionActionForm open={addAct || !!act} onClose={() => { setAddAct(false); setAct(null) }} value={act} onSave={(a) => { if (act) retentionActions.update(a); else retentionActions.add(a); setAddAct(false); setAct(null) }} onDelete={(id) => retentionActions.remove(id)} />
       <NumberGridForm<AttritionMonth> open={editTrend} onClose={() => setEditTrend(false)} title="Attrition trend by month" rows={attrition.items} labelKey="month" fields={[{ key: 'ratePct', label: 'Rate %', step: 0.1 }, { key: 'benchmarkPct', label: 'Benchmark %', step: 0.1 }, { key: 'exits', label: 'Exits' }, { key: 'regretted', label: 'Regretted' }]} onSave={(rows) => attrition.setAll(rows)} />
     </>

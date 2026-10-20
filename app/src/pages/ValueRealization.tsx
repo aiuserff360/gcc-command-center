@@ -1,14 +1,17 @@
-import { useMemo, useState, type ChangeEvent } from 'react'
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList, ComposedChart, Line, Area, Cell, ReferenceLine } from 'recharts'
 import { Target, TrendingUp, Coins, PiggyBank, CheckCircle2, Plus, Pencil, PenLine, CheckCheck } from 'lucide-react'
 import { PageHeader } from '../components/layout/AppShell'
 import { Card, KpiTile, Badge, Tabs, Table, Modal, Field, Input, TextArea, Select, FormGrid, Legend, ConfirmDelete, ViewAll, Stat, Progress, Ring, SectionTitle } from '../components/ui'
 import { Donut, BarList, tooltipStyle } from '../components/charts'
-import { useCollection, uid } from '../store/useStore'
+import { useCollection, useStore, uid } from '../store/useStore'
+import { InputLayout } from '../components/layout/InputLayout'
+import { Grid, GridHead, GridEmpty, GridText, GridSelect, GridDate, GridMoney, GridRemove, GridTotal, AddButton, SaveBar, gtd, gtotal } from '../components/financial/grid'
+import clsx from 'clsx'
 import { seedProgramKpis, type ProgramKpis } from '../data/shared'
 import { WORKSTREAMS, WORKSTREAM_META, CHART_COLORS, fmtDate, TODAY } from '../data/common'
 import { useMoney, type Money } from '../data/money'
-import { seedBenefitItems, seedValueMonthly, seedSavingsInitiatives, seedValueSettings, BENEFIT_AREAS, BENEFIT_COLORS, WATERFALL, PAYBACK, RUNRATE, type BenefitItem, type ValueMonth, type SavingsInitiative, type ValueSettings, type BenefitArea } from '../data/value'
+import { seedBenefitItems, seedValueMonthly, seedSavingsInitiatives, seedValueSettings, BENEFIT_AREAS, BENEFIT_COLORS, WATERFALL, PAYBACK, RUNRATE, type BenefitItem, type BenefitStatus, type ValueMonth, type SavingsInitiative, type ValueSettings, type BenefitArea } from '../data/value'
 
 const TABS = ['Value Overview', 'Benefits Register', 'Cost Savings', 'Productivity & Quality', 'Value Forecast', 'Benefit Owners & Sign-off']
 const VIEW_OPTIONS = ['All Benefit Areas', ...BENEFIT_AREAS] as const
@@ -28,6 +31,13 @@ function useForm<T>(initial: T, money?: Money) {
 }
 
 export default function ValueRealization() {
+  const mode = useStore((s) => s.mode)
+  if (mode === 'input') return <ValueInput />
+  return <ValueOutput />
+}
+
+/* ================= Output view (dashboards) ================= */
+function ValueOutput() {
   const [tab, setTab] = useState(TABS[0])
   const [view, setView] = useState<string>('All Benefit Areas')
   const money = useMoney()
@@ -390,6 +400,155 @@ export default function ValueRealization() {
       {settingsEdit && <SettingsModal value={vs} onClose={() => setSettingsEdit(false)} onSave={(v) => { settingsC.update(v); setSettingsEdit(false) }} />}
       {signOff && <SignOffModal key={signOff.id} value={signOff} onClose={() => setSignOff(null)} onSave={(v) => { benefitsC.update(v); setSignOff(null) }} />}
     </div>
+  )
+}
+
+/* ================= Input view ================= */
+const BENEFIT_STATUSES: BenefitStatus[] = ['On Track', 'At Risk', 'Delayed', 'Realized', 'Not Started']
+const FREQUENCIES = ['Monthly', 'Quarterly', 'Annually'] as const
+const SAVING_CATEGORIES = ['Labour Arbitrage', 'Vendor', 'Real Estate', 'Automation', 'Process'] as const
+const SAVING_STATUSES = ['Planned', 'In Progress', 'Realized', 'At Risk'] as const
+
+function ValueInput() {
+  const money = useMoney()
+  const u = money.unitLabel
+  return (
+    <InputLayout
+      title="Value Realization"
+      subtitle={`Maintain the benefits register, monthly value tracking, savings initiatives and business-case assumptions. Amounts are entered in ${u}.`}
+      tabs={[
+        { name: 'Benefits register', hint: `One row per benefit lever: annual target, current forecast and realized value to date (${u}), with owner, workstream, status and how it is measured. Sign-off is done on the Output view.`, content: <BenefitRegisterGrid /> },
+        { name: 'Monthly value tracking', hint: `Cumulative target, forecast and realized benefits per month (${u}). Leave Realized empty for months not yet reported.`, content: <ValueMonthGrid /> },
+        { name: 'Savings initiatives', hint: `Cost-savings initiatives with annualised saving and one-time cost (${u}); payback is derived.`, content: <SavingsGrid /> },
+        { name: 'Settings & assumptions', hint: 'Business-case assumptions behind the value dashboards. Target and projected benefits (program KPIs) are maintained on the Dashboard in GCC Setup.', content: <ValueSettingsForm /> },
+      ]}
+    />
+  )
+}
+
+function BenefitRegisterGrid() {
+  const money = useMoney()
+  const { items, add, update, remove } = useCollection<BenefitItem>('benefitItems', seedBenefitItems)
+  const set = <K extends keyof BenefitItem>(b: BenefitItem, k: K, v: BenefitItem[K]) => update({ ...b, [k]: v })
+  const tot = (k: 'targetCr' | 'forecastCr' | 'realizedCr') => +items.reduce((s, b) => s + b[k], 0).toFixed(2)
+  const blank = (): BenefitItem => ({ id: uid('bn'), code: `B-${String(items.length + 1).padStart(3, '0')}`, benefitArea: 'Cost Savings (Ops)', lever: 'New benefit lever', targetCr: 0, forecastCr: 0, realizedCr: 0, owner: '', workstream: 'Finance & Procurement', status: 'Not Started', measurementMethod: '', baseline: '', frequency: 'Monthly', signedOff: false })
+  return (
+    <Card title={`Benefits register (${money.unitLabel})`} subtitle={`${items.length} benefits · target ${money.fmt(tot('targetCr'))} · forecast ${money.fmt(tot('forecastCr'))} · realized ${money.fmt(tot('realizedCr'))}`} action={<AddButton onClick={() => add(blank())}>Add benefit</AddButton>}>
+      <Grid minWidth={1720}>
+        <GridHead cols={['ID', 'Benefit area', 'Lever', 'Target', 'Forecast', 'Realized', 'Forecast %', 'Owner', 'Workstream', 'Status', 'Measurement method', 'Baseline', 'Frequency', 'Sign-off', '']} right={[3, 4, 5, 6]} />
+        <tbody>
+          {items.length === 0 && <GridEmpty colSpan={15} />}
+          {items.map((b) => (
+            <tr key={b.id} className="hover:bg-brand-50/40">
+              <td className={clsx(gtd, 'min-w-[80px]')}><GridText value={b.code} onChange={(x) => set(b, 'code', x)} className="text-ink-500" /></td>
+              <td className={clsx(gtd, 'min-w-[170px]')}><GridSelect value={b.benefitArea} options={BENEFIT_AREAS} onChange={(x) => set(b, 'benefitArea', x)} /></td>
+              <td className={clsx(gtd, 'min-w-[230px]')}><GridText bold value={b.lever} placeholder="e.g. Labour arbitrage – Finance operations" onChange={(x) => set(b, 'lever', x)} /></td>
+              <td className={gtd}><GridMoney cr={b.targetCr} onChange={(x) => set(b, 'targetCr', x ?? 0)} className="ml-auto" /></td>
+              <td className={gtd}><GridMoney cr={b.forecastCr} onChange={(x) => set(b, 'forecastCr', x ?? 0)} className="ml-auto" /></td>
+              <td className={gtd}><GridMoney cr={b.realizedCr} onChange={(x) => set(b, 'realizedCr', x ?? 0)} className="ml-auto text-green-700" /></td>
+              <td className={clsx(gtd, 'text-right text-[12px] px-2 text-ink-500 tabular-nums')}>{pct(b.forecastCr, b.targetCr)}%</td>
+              <td className={clsx(gtd, 'min-w-[120px]')}><GridText value={b.owner} placeholder="Owner" onChange={(x) => set(b, 'owner', x)} /></td>
+              <td className={clsx(gtd, 'min-w-[200px]')}><GridSelect value={b.workstream} options={WORKSTREAMS} onChange={(x) => set(b, 'workstream', x)} /></td>
+              <td className={clsx(gtd, 'min-w-[120px]')}><GridSelect value={b.status} options={BENEFIT_STATUSES} onChange={(x) => set(b, 'status', x)} /></td>
+              <td className={clsx(gtd, 'min-w-[220px]')}><GridText value={b.measurementMethod} placeholder="How the benefit is measured" onChange={(x) => set(b, 'measurementMethod', x)} /></td>
+              <td className={clsx(gtd, 'min-w-[170px]')}><GridText value={b.baseline} placeholder="Baseline" onChange={(x) => set(b, 'baseline', x)} /></td>
+              <td className={clsx(gtd, 'min-w-[105px]')}><GridSelect value={b.frequency} options={FREQUENCIES} onChange={(x) => set(b, 'frequency', x)} /></td>
+              <td className={clsx(gtd, 'px-2 whitespace-nowrap text-[11.5px]')}>{b.signedOff ? <span className="inline-flex items-center gap-1 text-green-700"><CheckCircle2 size={13} /> {b.signedOffBy}</span> : <span className="text-ink-400">—</span>}</td>
+              <td className={gtd}><GridRemove label={b.lever} onClick={() => remove(b.id)} /></td>
+            </tr>
+          ))}
+          {items.length > 0 && <tr><td colSpan={3} className="text-right text-[12px] text-ink-500 px-2 py-2">Total</td><GridTotal cr={tot('targetCr')} /><GridTotal cr={tot('forecastCr')} /><GridTotal cr={tot('realizedCr')} className="text-green-700" /><td className={clsx(gtotal, 'text-ink-500 font-normal text-[12px]')}>{pct(tot('forecastCr'), tot('targetCr'))}%</td><td colSpan={8} /></tr>}
+        </tbody>
+      </Grid>
+    </Card>
+  )
+}
+
+function ValueMonthGrid() {
+  const money = useMoney()
+  const { items, add, update, remove } = useCollection<ValueMonth>('valueMonthly', seedValueMonthly)
+  const set = <K extends keyof ValueMonth>(r: ValueMonth, k: K, v: ValueMonth[K]) => update({ ...r, [k]: v })
+  return (
+    <Card title={`Monthly value tracking (cumulative ${money.unitLabel})`} subtitle="Values are cumulative from January 2026. Realized stays empty for future months and drives the 'Realized to Date' tile once recorded." action={<AddButton onClick={() => add({ id: uid('vm'), month: '', targetCr: 0, forecastCr: 0 })}>Add month</AddButton>}>
+      <Grid minWidth={640}>
+        <GridHead cols={['Month', 'Target', 'Forecast', 'Realized', 'Variance vs target', 'Attainment', '']} right={[1, 2, 3, 4, 5]} />
+        <tbody>
+          {items.length === 0 && <GridEmpty colSpan={7} />}
+          {items.map((r) => {
+            const rec = r.realizedCr !== undefined
+            const att = pct(r.realizedCr ?? r.forecastCr, r.targetCr)
+            return (
+              <tr key={r.id} className="hover:bg-brand-50/40">
+                <td className={clsx(gtd, 'min-w-[110px]')}><GridText bold value={r.month} placeholder="e.g. Sep 27" onChange={(x) => set(r, 'month', x)} /></td>
+                <td className={gtd}><GridMoney cr={r.targetCr} onChange={(x) => set(r, 'targetCr', x ?? 0)} className="ml-auto" /></td>
+                <td className={gtd}><GridMoney cr={r.forecastCr} onChange={(x) => set(r, 'forecastCr', x ?? 0)} className="ml-auto" /></td>
+                <td className={gtd}><GridMoney nullable cr={r.realizedCr ?? null} onChange={(x) => set(r, 'realizedCr', x == null ? undefined : x)} className={clsx('ml-auto', rec && 'text-green-700 font-medium')} /></td>
+                <td className={clsx(gtd, 'text-right text-[12px] px-2 tabular-nums', !rec ? 'text-ink-400' : r.realizedCr! >= r.targetCr ? 'text-green-700' : 'text-red-600')}>{rec ? money.signed(+(r.realizedCr! - r.targetCr).toFixed(3)) : '—'}</td>
+                <td className={clsx(gtd, 'text-right text-[12px] px-2 tabular-nums', rec ? 'text-ink-900' : 'text-ink-400')}>{att}%{!rec && ' (fcst)'}</td>
+                <td className={gtd}><GridRemove label={r.month || 'this month'} onClick={() => remove(r.id)} /></td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </Grid>
+    </Card>
+  )
+}
+
+function SavingsGrid() {
+  const money = useMoney()
+  const { items, add, update, remove } = useCollection<SavingsInitiative>('savingsInitiatives', seedSavingsInitiatives)
+  const set = <K extends keyof SavingsInitiative>(r: SavingsInitiative, k: K, v: SavingsInitiative[K]) => update({ ...r, [k]: v })
+  const tS = +items.reduce((s, i) => s + i.annualisedSavingCr, 0).toFixed(2), tC = +items.reduce((s, i) => s + i.oneTimeCostCr, 0).toFixed(2)
+  return (
+    <Card title={`Cost savings initiatives (${money.unitLabel})`} subtitle={`${items.length} initiatives · ${money.fmt(tS)} annualised savings · ${money.fmt(tC)} one-time cost`} action={<AddButton onClick={() => add({ id: uid('si'), initiative: 'New initiative', category: 'Labour Arbitrage', annualisedSavingCr: 0, oneTimeCostCr: 0, start: TODAY, status: 'Planned', owner: '' })}>Add initiative</AddButton>}>
+      <Grid minWidth={1000}>
+        <GridHead cols={['Initiative', 'Category', 'Annualised saving', 'One-time cost', 'Payback', 'Start', 'Status', 'Owner', '']} right={[2, 3, 4]} />
+        <tbody>
+          {items.length === 0 && <GridEmpty colSpan={9} />}
+          {items.map((r) => (
+            <tr key={r.id} className="hover:bg-brand-50/40">
+              <td className={clsx(gtd, 'min-w-[300px]')}><GridText bold value={r.initiative} onChange={(x) => set(r, 'initiative', x)} /></td>
+              <td className={clsx(gtd, 'min-w-[150px]')}><GridSelect value={r.category} options={SAVING_CATEGORIES} onChange={(x) => set(r, 'category', x)} /></td>
+              <td className={gtd}><GridMoney cr={r.annualisedSavingCr} onChange={(x) => set(r, 'annualisedSavingCr', x ?? 0)} className="ml-auto text-green-700" /></td>
+              <td className={gtd}><GridMoney cr={r.oneTimeCostCr} onChange={(x) => set(r, 'oneTimeCostCr', x ?? 0)} className="ml-auto" /></td>
+              <td className={clsx(gtd, 'text-right text-[12px] px-2 text-ink-500 whitespace-nowrap')}>{r.annualisedSavingCr > 0 ? `${Math.max(1, Math.round((r.oneTimeCostCr / r.annualisedSavingCr) * 12))} months` : '—'}</td>
+              <td className={gtd}><GridDate value={r.start} onChange={(x) => set(r, 'start', x)} /></td>
+              <td className={clsx(gtd, 'min-w-[120px]')}><GridSelect value={r.status} options={SAVING_STATUSES} onChange={(x) => set(r, 'status', x)} /></td>
+              <td className={clsx(gtd, 'min-w-[120px]')}><GridText value={r.owner} placeholder="Owner" onChange={(x) => set(r, 'owner', x)} /></td>
+              <td className={gtd}><GridRemove label={r.initiative} onClick={() => remove(r.id)} /></td>
+            </tr>
+          ))}
+          {items.length > 0 && <tr><td colSpan={2} className="text-right text-[12px] text-ink-500 px-2 py-2">Total</td><GridTotal cr={tS} className="text-green-700" /><GridTotal cr={tC} /><td colSpan={5} /></tr>}
+        </tbody>
+      </Grid>
+    </Card>
+  )
+}
+
+function ValueSettingsForm() {
+  const money = useMoney()
+  const settingsC = useCollection<ValueSettings>('valueSettings', seedValueSettings)
+  const vs = settingsC.items[0] ?? seedValueSettings[0]
+  const [f, setF] = useState<ValueSettings>(vs)
+  const [saved, setSaved] = useState(false)
+  useEffect(() => { setF(vs) }, [vs])
+  const dirty = JSON.stringify(f) !== JSON.stringify(vs)
+  const num = (k: 'runRateSavingsPct' | 'targetRunRateSavingsPct') => ({ type: 'number' as const, step: 'any', value: f[k], onChange: (e: ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: parseFloat(e.target.value) || 0 }) })
+  const c = (k: 'annualRunRateBenefitsCr' | 'baselineCostCr' | 'gccRunCostCr' | 'totalInvestmentCr') => ({ type: 'number' as const, step: 'any', value: money.inputValue(f[k]), onChange: (e: ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: money.toBase(parseFloat(e.target.value) || 0) }) })
+  return (
+    <Card title="Business-case assumptions" subtitle="Run-rate savings, payback and the steady-state cost build behind the Cost Savings and Value Forecast views.">
+      <FormGrid cols={4}>
+        <Field label="Cost savings run-rate (%)"><Input {...num('runRateSavingsPct')} /></Field>
+        <Field label="Target run-rate savings by Year 5 (%)"><Input {...num('targetRunRateSavingsPct')} /></Field>
+        <Field label="Payback period"><Input value={f.paybackYears} onChange={(e) => setF({ ...f, paybackYears: e.target.value })} /></Field>
+        <Field label={`Annual run-rate benefits from Year 4 (${money.unitLabel})`}><Input {...c('annualRunRateBenefitsCr')} /></Field>
+        <Field label={`Onshore baseline cost (${money.unitLabel})`}><Input {...c('baselineCostCr')} /></Field>
+        <Field label={`GCC run cost at steady state (${money.unitLabel})`}><Input {...c('gccRunCostCr')} /></Field>
+        <Field label={`Total investment (${money.unitLabel})`}><Input {...c('totalInvestmentCr')} /></Field>
+      </FormGrid>
+      <SaveBar dirty={dirty} saved={saved} onSave={() => { settingsC.update(f); setSaved(true) }} onDiscard={() => setF(vs)} />
+    </Card>
   )
 }
 

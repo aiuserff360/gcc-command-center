@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Users, UserRound, Clock3, Coins, Plus } from 'lucide-react'
 import { PageHeader } from '../components/layout/AppShell'
 import { KpiTile, Tabs } from '../components/ui'
-import { VIEW_BY, type ViewBy, type Position } from '../data/resources'
+import { useStore } from '../store/useStore'
+import { type Position } from '../data/resources'
 import { useResourceData } from '../components/resources/useResourceData'
 import OverviewTab from '../components/resources/OverviewTab'
 import HiringTab from '../components/resources/HiringTab'
@@ -12,23 +13,28 @@ import CostTab from '../components/resources/CostTab'
 import LocationTab from '../components/resources/LocationTab'
 import AttritionTab from '../components/resources/AttritionTab'
 import { PositionForm, SettingsForm } from '../components/resources/forms'
+import { RequisitionDrillDown } from '../components/resources/RequisitionDrillDown'
+import { ResourcesInputView } from '../components/resources/InputView'
 import { useMoney } from '../data/money'
 
 const TABS = ['Workforce Overview', 'Hiring Plan & Pipeline', 'Resource Allocation', 'Skills & Capability', 'Cost Analysis', 'Location Mix', 'Attrition & Retention']
 
 export default function Resources() {
+  const mode = useStore((s) => s.mode)
   const d = useResourceData()
   const m = useMoney()
-  const { kpi, settings, settingsC, positions } = d
+  const { kpi, settings, settingsC, positions, buNames, locations } = d
   const [tab, setTab] = useState(TABS[0])
-  const [viewBy, setViewBy] = useState<ViewBy>('FTE Headcount')
   const [editSettings, setEditSettings] = useState(false)
   const [addPos, setAddPos] = useState(false)
+  const [openReq, setOpenReq] = useState<string | null>(null)
+
+  if (mode === 'input') return <ResourcesInputView d={d} />
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Resource Management" subtitle="Plan, track and optimize talent, roles, capacity and costs across the GCC." viewValue={viewBy} viewOptions={VIEW_BY} onView={(v) => setViewBy(v as ViewBy)}
-        right={<button className="btn-secondary" onClick={() => setAddPos(true)}><Plus size={14} /> Add Position</button>} onEdit={() => setEditSettings(true)} editLabel="Edit KPIs" />
+      <PageHeader title="Resource Management" subtitle="Plan, track and optimize talent, roles, capacity and costs across the GCC (FTE headcount)."
+        right={<button className="btn-secondary" onClick={() => setAddPos(true)}><Plus size={14} /> Add Requisition</button>} onEdit={() => setEditSettings(true)} editLabel="Edit KPIs" />
 
       {/* KPI tiles */}
       <div className="grid grid-cols-5 gap-4">
@@ -43,8 +49,8 @@ export default function Resources() {
 
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
 
-      {tab === 'Workforce Overview' && <OverviewTab d={d} viewBy={viewBy} goTab={setTab} />}
-      {tab === 'Hiring Plan & Pipeline' && <HiringTab d={d} />}
+      {tab === 'Workforce Overview' && <OverviewTab d={d} goTab={setTab} onOpen={setOpenReq} />}
+      {tab === 'Hiring Plan & Pipeline' && <HiringTab d={d} onOpen={setOpenReq} />}
       {tab === 'Resource Allocation' && <AllocationTab d={d} />}
       {tab === 'Skills & Capability' && <SkillsTab d={d} />}
       {tab === 'Cost Analysis' && <CostTab d={d} />}
@@ -52,7 +58,8 @@ export default function Resources() {
       {tab === 'Attrition & Retention' && <AttritionTab d={d} />}
 
       <SettingsForm open={editSettings} onClose={() => setEditSettings(false)} value={settings} onSave={(s) => settingsC.update(s)} />
-      <PositionForm open={addPos} onClose={() => setAddPos(false)} value={null} onSave={(p: Position) => { positions.add(p); setAddPos(false) }} />
+      <PositionForm open={addPos} onClose={() => setAddPos(false)} value={null} businessUnits={buNames} locations={locations} onSave={(p: Position) => { positions.add(p); setAddPos(false) }} />
+      <RequisitionDrillDown d={d} positionId={openReq} onClose={() => setOpenReq(null)} />
     </div>
   )
 }

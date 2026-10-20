@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import { Legend, type Column } from '../ui'
 import { CHART_COLORS } from '../../data/common'
-import { FUNNEL_COLORS, type FunnelStage, type WorkstreamHeadcount } from '../../data/resources'
+import { FUNNEL_COLORS, type FunnelStage, type BuHeadcount } from '../../data/resources'
 import type { Money } from '../../data/money'
 
 /* ---------- ₹ Lakh helpers (money.ts only exposes a string formatter for Lakh fields) ---------- */
@@ -16,11 +16,27 @@ export const lakhNum = (lakh: number, m: Money) => lakhToDisplay(lakh, m).toFixe
 /** Rounded display number for <Input value=...>. */
 export const lakhInput = (lakh: number, m: Money) => +lakhToDisplay(lakh, m).toFixed(m.currency === 'INR' ? 2 : 3)
 
+/* ---------- Inline-grid cell classes (same look as GCC Setup / Target Footprint grids) ---------- */
+export const GRID_CELL = 'w-full bg-transparent border border-transparent rounded px-1.5 py-1 text-[12px] outline-none hover:border-slate-300 focus:border-brand-400 focus:bg-white'
+export const GRID_TH = 'text-left text-[11.5px] font-semibold text-slate-600 px-1.5 py-1.5 bg-slate-100 border-b border-slate-300 whitespace-nowrap'
+export const GRID_TD = 'border-b border-slate-200 px-0.5 py-0.5 align-middle'
+
+/** Blue clickable role name that opens the requisition drill-down (stops the row's own click). */
+export function RoleLink({ label, onClick, className }: { label: string; onClick: () => void; className?: string }) {
+  return <button type="button" className={clsx('text-brand-600 font-medium hover:underline cursor-pointer text-left', className)} onClick={(e) => { e.stopPropagation(); onClick() }}>{label}</button>
+}
+
+/** Badge colours for candidate statuses that the shared Badge map does not know. */
+export const candidateBadge: Record<string, string> = {
+  'In process': 'bg-blue-50 text-brand-600', Offer: 'bg-violet-50 text-violet-700', Rejected: 'bg-red-50 text-red-700', Withdrawn: 'bg-slate-100 text-slate-600', Joined: 'bg-green-50 text-green-700',
+  'In Interview': 'bg-blue-50 text-brand-600', 'On Hold': 'bg-slate-100 text-slate-600',
+}
+
 /** Two-line X-axis tick for long category names. */
 export function WrapTick({ x, y, payload, size = 11 }: { x?: number; y?: number; payload?: { value: string }; size?: number }) {
   const raw = String(payload?.value ?? '')
   const words = raw.split(' ')
-  const lines = words.length > 2 ? [words.slice(0, 2).join(' '), words.slice(2).join(' ')] : words.length === 2 && raw.length > 11 ? [words[0], words[1]] : [raw]
+  const lines = raw.includes('\n') ? raw.split('\n') : words.length > 2 ? [words.slice(0, 2).join(' '), words.slice(2).join(' ')] : words.length === 2 && raw.length > 11 ? [words[0], words[1]] : [raw]
   return (
     <text x={x} y={y} textAnchor="middle" fill="#6B7280" fontSize={size}>
       {lines.map((l, i) => <tspan key={i} x={x} dy={i === 0 ? 12 : 13}>{l}</tspan>)}
@@ -51,7 +67,7 @@ export function Funnel({ stages, width = 130, height = 160 }: { stages: FunnelSt
 export const HC_LEGEND = [{ label: 'Onboarded', color: CHART_COLORS.blue }, { label: 'In Hiring', color: CHART_COLORS.blueLight }, { label: 'Open', color: CHART_COLORS.blueFaint }]
 
 /** Horizontal stacked bars: Onboarded | In Hiring | Open with total at right. */
-export function StackedHeadcountBars({ rows, labelWidth = 150, onRowClick, format = (n: number) => String(n) }: { rows: WorkstreamHeadcount[]; labelWidth?: number; onRowClick?: (r: WorkstreamHeadcount) => void; format?: (n: number) => string }) {
+export function StackedHeadcountBars({ rows, labelWidth = 150, onRowClick, format = (n: number) => String(n) }: { rows: BuHeadcount[]; labelWidth?: number; onRowClick?: (r: BuHeadcount) => void; format?: (n: number) => string }) {
   const max = Math.max(...rows.map((r) => r.onboarded + r.inHiring + r.open), 1)
   const seg = (v: number, color: string, text: string, key: string) => {
     const pct = (v / max) * 100
@@ -61,7 +77,7 @@ export function StackedHeadcountBars({ rows, labelWidth = 150, onRowClick, forma
     <div className="space-y-[9px]">
       {rows.map((r) => (
         <div key={r.id} className={`flex items-center gap-2 text-[12px] ${onRowClick ? 'cursor-pointer hover:bg-surface rounded-md' : ''}`} onClick={() => onRowClick?.(r)}>
-          <span className="text-ink-700 truncate shrink-0 text-[11.5px]" style={{ width: labelWidth }}>{r.workstream}</span>
+          <span className="text-ink-700 truncate shrink-0 text-[11.5px]" style={{ width: labelWidth }} title={r.businessUnit}>{r.businessUnit}</span>
           <div className="flex-1 h-[17px] flex rounded-sm overflow-hidden">
             {seg(r.onboarded, CHART_COLORS.blue, '#fff', 'a')}
             {seg(r.inHiring, CHART_COLORS.blueLight, '#fff', 'b')}

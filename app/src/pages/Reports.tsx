@@ -1,16 +1,18 @@
 import { useMemo, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList, LineChart, Line, AreaChart, Area } from 'recharts'
-import { FileBarChart2, CalendarClock, Users, Send, Clock, Printer, Copy, CheckCircle2, Plus, Pencil, Power, FileText, AlertTriangle, Gavel } from 'lucide-react'
+import { FileBarChart2, CalendarClock, Users, Send, Clock, Printer, Copy, CheckCircle2, Plus, Pencil, Power, FileText, AlertTriangle, Gavel, Trash2 } from 'lucide-react'
 import { PageHeader } from '../components/layout/AppShell'
+import { InputLayout } from '../components/layout/InputLayout'
 import { Card, KpiTile, Badge, Progress, Table, Tabs, Modal, Field, Input, Select, TextArea, FormGrid, Legend, SectionTitle, ConfirmDelete, EmptyNote } from '../components/ui'
 import { tooltipStyle } from '../components/charts'
+import { useBusinessUnits } from '../components/footprint/BusinessUnits'
 import { useCollection, useStore, uid } from '../store/useStore'
 import { seedMilestones, seedRaid, seedProgramKpis, seedWorkstreamSummaries, isOpen, type Milestone, type RaidItem, type ProgramKpis, type WorkstreamSummary } from '../data/shared'
 import { fmtDate, CHART_COLORS, MONTHS, TODAY, WORKSTREAM_META, OWNERS, type Workstream } from '../data/common'
 import { useMoney } from '../data/money'
 import {
-  seedReports, seedReportCommentary, seedReportSchedules, seedRecipients, REPORT_TYPES, REPORT_STATUSES, CADENCES, CHANNELS, RECIPIENT_GROUPS,
-  type Report, type ReportCommentary, type ReportSchedule, type Recipient,
+  seedReports, seedReportCommentary, seedReportSchedules, seedRecipients, REPORT_TYPES, REPORT_STATUSES, CADENCES, CHANNELS, RECIPIENT_GROUPS, COMMENTARY_META,
+  type Report, type ReportCommentary, type ReportSchedule, type Recipient, type CommentaryId,
 } from '../data/reports'
 
 const TABS = ['Report Library', 'Weekly Program Update', 'Monthly Steering Committee Dashboard', 'Financial Report', 'Hiring & Workforce Report', 'Schedules & Distribution']
@@ -35,6 +37,7 @@ const monthKey = (iso: string) => iso.slice(0, 7)
 const weekLabel = (iso: string) => { const d = new Date(iso); const start = new Date(d.getFullYear(), 0, 1); const wk = Math.ceil((((d.getTime() - start.getTime()) / 86400000) + start.getDay() + 1) / 7); return `W${wk}` }
 
 export default function Reports() {
+  const mode = useStore((s) => s.mode)
   const [tab, setTab] = useState(TABS[0])
   const reportsC = useCollection<Report>('reports', seedReports)
   const commentaryC = useCollection<ReportCommentary>('reportCommentary', seedReportCommentary)
@@ -52,6 +55,16 @@ export default function Reports() {
   const weekStart = addDays(TODAY, -((new Date(TODAY).getDay() + 6) % 7))
   const weeklySent = !!weekly.sentOn && weekly.sentOn >= weekStart
 
+  if (mode === 'input') {
+    return (
+      <InputLayout title="Reports" subtitle="Maintain the commentary, schedules, distribution lists and report library that feed the rendered reports in the Output view." tabs={[
+        { name: 'Commentary', content: <CommentaryInput commentaryC={commentaryC} />, hint: 'Narrative blocks written by the PMO. Each one is printed in the matching report; figures and tables are pulled live from the other modules.' },
+        { name: 'Schedules & distribution', content: <Schedules schedulesC={schedulesC} recipientsC={recipientsC} />, hint: 'Automated generation schedules and the people in each distribution group. Click a row to edit.' },
+        { name: 'Report library', content: <Library reportsC={reportsC} input />, hint: 'Generated report instances. Generate a new one, open a row to publish, send or delete it.' },
+      ]} />
+    )
+  }
+
   return (
     <div className="space-y-4">
       <PageHeader title="Reports" subtitle="Automated weekly program updates, steering committee dashboards, financial and hiring reports." />
@@ -66,7 +79,7 @@ export default function Reports() {
 
       {tab === 'Report Library' && <Library reportsC={reportsC} />}
       {tab === 'Weekly Program Update' && <WeeklyUpdate k={k} milestones={milestones} raid={raid} wss={wss} commentary={weekly} commentaryC={commentaryC} reportsC={reportsC} recipients={recipientsC.items.length} />}
-      {tab === 'Monthly Steering Committee Dashboard' && <SteerCo k={k} milestones={milestones} raid={raid} wss={wss} />}
+      {tab === 'Monthly Steering Committee Dashboard' && <SteerCo k={k} milestones={milestones} raid={raid} wss={wss} commentary={commentaryC.items.find((c) => c.id === 'monthly')} />}
       {tab === 'Financial Report' && <FinancialReport k={k} wss={wss} commentaryC={commentaryC} />}
       {tab === 'Hiring & Workforce Report' && <HiringReport k={k} commentaryC={commentaryC} />}
       {tab === 'Schedules & Distribution' && <Schedules schedulesC={schedulesC} recipientsC={recipientsC} />}
@@ -75,9 +88,40 @@ export default function Reports() {
 }
 
 /* ====================================================================== */
+/* Commentary (Input view)                                                 */
+/* ====================================================================== */
+type CommentaryC = ReturnType<typeof useCollection<ReportCommentary>>
+function CommentaryInput({ commentaryC }: { commentaryC: CommentaryC }) {
+  return (
+    <div className="grid grid-cols-2 gap-4">
+      {COMMENTARY_META.map((meta) => <CommentaryCard key={meta.id} id={meta.id} commentaryC={commentaryC} />)}
+    </div>
+  )
+}
+
+function CommentaryCard({ id, commentaryC }: { id: CommentaryId; commentaryC: CommentaryC }) {
+  const meta = COMMENTARY_META.find((m) => m.id === id)!
+  const rec: ReportCommentary = commentaryC.items.find((c) => c.id === id) ?? seedReportCommentary.find((c) => c.id === id) ?? { id, text: '', updatedOn: TODAY }
+  const [text, setText] = useState(rec.text)
+  const dirty = text !== rec.text
+  const save = () => commentaryC.update({ ...rec, text, updatedOn: TODAY })
+  return (
+    <Card title={meta.title} subtitle={meta.report} headerRight={<span className="text-[11.5px] text-ink-500 whitespace-nowrap">Updated {fmtDate(rec.updatedOn)}{rec.sentOn ? ` · sent ${fmtDate(rec.sentOn)}` : ''}</span>}>
+      <TextArea className="min-h-[150px]" value={text} onChange={(e) => setText(e.target.value)} placeholder={meta.hint} />
+      <p className="text-[12px] text-ink-500 mt-2">{meta.hint}</p>
+      <div className="flex items-center justify-end gap-2 mt-3">
+        {dirty && <span className="text-[11.5px] text-amber-600 mr-auto">Unsaved changes</span>}
+        <button className="btn-secondary" disabled={!dirty} onClick={() => setText(rec.text)}>Discard</button>
+        <button className="btn-primary" disabled={!dirty} onClick={save}>Save</button>
+      </div>
+    </Card>
+  )
+}
+
+/* ====================================================================== */
 /* Report Library                                                          */
 /* ====================================================================== */
-function Library({ reportsC }: { reportsC: ReturnType<typeof useCollection<Report>> }) {
+function Library({ reportsC, input }: { reportsC: ReturnType<typeof useCollection<Report>>; input?: boolean }) {
   const [typeF, setTypeF] = useState('All')
   const [statusF, setStatusF] = useState('All')
   const [gen, setGen] = useState(false)
@@ -86,8 +130,8 @@ function Library({ reportsC }: { reportsC: ReturnType<typeof useCollection<Repor
   const byType = REPORT_TYPES.map((t) => ({ type: t, n: reportsC.items.filter((r) => r.type === t).length }))
 
   return (
-    <div className="grid grid-cols-[1fr_300px] gap-4">
-      <Card title="Report Library" subtitle="Templates and generated instances" action={<button className="btn-primary" onClick={() => setGen(true)}><Plus size={14} /> Generate report</button>}
+    <div className={input ? 'space-y-4' : 'grid grid-cols-[1fr_300px] gap-4'}>
+      <Card title="Report Library" subtitle={input ? `${reportsC.items.length} generated reports · click a row to publish, send or delete` : 'Templates and generated instances'} action={<button className="btn-primary" onClick={() => setGen(true)}><Plus size={14} /> Generate report</button>}
         headerRight={<div className="flex gap-2">
           <select className="input py-1 w-auto" value={typeF} onChange={(e) => setTypeF(e.target.value)}>{['All', ...REPORT_TYPES].map((o) => <option key={o}>{o}</option>)}</select>
           <select className="input py-1 w-auto" value={statusF} onChange={(e) => setStatusF(e.target.value)}>{['All', ...REPORT_STATUSES].map((o) => <option key={o}>{o}</option>)}</select>
@@ -100,9 +144,10 @@ function Library({ reportsC }: { reportsC: ReturnType<typeof useCollection<Repor
           { key: 'generatedOn', header: 'Generated on', className: 'whitespace-nowrap', render: (r) => fmtDate(r.generatedOn) },
           { key: 'status', header: 'Status', render: (r) => <Badge value={r.status} /> },
           { key: 'recipients', header: 'Recipients', className: 'text-right' },
+          ...(input ? [{ key: 'del', header: '', render: (r: Report) => <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}><button className="text-ink-400 hover:text-ink-900 rounded p-1 cursor-pointer" title="Open" onClick={() => setPreview(r)}><Pencil size={13} /></button><button className="text-ink-400 hover:text-red-600 rounded p-1 cursor-pointer" title="Delete" onClick={() => { if (window.confirm(`Delete "${r.name}" from the library?`)) reportsC.remove(r.id) }}><Trash2 size={13} /></button></span> }] : []),
         ]} />
       </Card>
-      <div className="space-y-4">
+      {!input && <div className="space-y-4">
         <Card title="Reports by type">
           <div className="h-[170px]">
             <ResponsiveContainer>
@@ -122,7 +167,7 @@ function Library({ reportsC }: { reportsC: ReturnType<typeof useCollection<Repor
             ))}
           </ul>
         </Card>
-      </div>
+      </div>}
       <GenerateModal open={gen} onClose={() => setGen(false)} onSave={(r) => { reportsC.add(r); setGen(false); setPreview(r) }} />
       <PreviewModal report={preview} onClose={() => setPreview(null)} onChange={(r) => { reportsC.update(r); setPreview(r) }} onDelete={(id) => { reportsC.remove(id); setPreview(null) }} />
     </div>
@@ -329,7 +374,7 @@ const STEERCO_MONTHS = ['2026-08', '2026-09', '2026-10', '2026-11']
 const monthName = (ym: string) => `${MONTHS[+ym.slice(5, 7) - 1]} ${ym.slice(0, 4)}`
 const nextMonth = (ym: string) => { const [y, m] = ym.split('-').map(Number); return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}` }
 
-function SteerCo({ k, milestones, raid, wss }: { k: ProgramKpis; milestones: Milestone[]; raid: RaidItem[]; wss: WorkstreamSummary[] }) {
+function SteerCo({ k, milestones, raid, wss, commentary }: { k: ProgramKpis; milestones: Milestone[]; raid: RaidItem[]; wss: WorkstreamSummary[]; commentary?: ReportCommentary }) {
   const m = useMoney()
   const [month, setMonth] = useState('2026-10')
   const nm = nextMonth(month)
@@ -458,6 +503,12 @@ function SteerCo({ k, milestones, raid, wss }: { k: ProgramKpis; milestones: Mil
             ]} />
           </div>
         </div>
+        {commentary?.text && (
+          <div className="rounded-lg border border-line p-3">
+            <div className="flex items-center justify-between mb-1"><div className="text-[13px] font-semibold">PMO commentary</div><span className="text-[11px] text-ink-500">Updated {fmtDate(commentary.updatedOn)} · maintained in the Input view</span></div>
+            <p className="text-[12.5px] text-ink-700 whitespace-pre-wrap">{commentary.text}</p>
+          </div>
+        )}
         <div className="text-[11px] text-ink-500 border-t border-line pt-3">Prepared by PMO for the {monthName(month)} Steering Committee · Generated {fmtDate(TODAY)} · Confidential</div>
       </div>
     </div>
@@ -472,7 +523,7 @@ interface FinRow { id: string; workstream: string; budget: number; actual: numbe
 function FinancialReport({ k, wss, commentaryC }: { k: ProgramKpis; wss: WorkstreamSummary[]; commentaryC: ReturnType<typeof useCollection<ReportCommentary>> }) {
   const budgetLines = useStore((s) => s.collections['budgetLines']) as AnyRec[] | undefined
   const monthly = useStore((s) => s.collections['monthlyFinancials']) as AnyRec[] | undefined
-  const commentary = commentaryC.items.find((c) => c.id === 'financial') ?? seedReportCommentary[1]
+  const commentary = commentaryC.items.find((c) => c.id === 'financial') ?? seedReportCommentary.find((c) => c.id === 'financial')!
   const [text, setText] = useState(commentary.text)
   const m = useMoney()
   const d2 = m.digits + 1 // 2 decimals in ₹ Cr, 3 in € M
@@ -583,17 +634,25 @@ const seedFunnel: FunnelStage[] = [
   { id: 'fs-4', stage: 'HR Interview', candidates: 150 }, { id: 'fs-5', stage: 'Offer Extended', candidates: 90 }, { id: 'fs-6', stage: 'Joined', candidates: 68 },
 ]
 
+/** Business unit of a record from the Resource Management page – tolerant of the field being renamed. */
+const BU_KEYS = ['businessUnit', 'unit', 'practice', 'workstream', 'function']
+const buOf = (r: AnyRec) => strOf(r, BU_KEYS) ?? 'Unassigned'
+const OPEN_STATUSES = ['Open', 'In Interview', 'Offer', 'Offered', 'In Progress', 'Sourcing']
+const isOpenPos = (r: AnyRec) => { const s = strOf(r, ['status']); return !s || OPEN_STATUSES.includes(s) }
+const daysSince = (iso?: string) => (iso ? Math.max(0, Math.round((new Date(TODAY).getTime() - new Date(iso).getTime()) / 86400000)) : undefined)
+
 function HiringReport({ k, commentaryC }: { k: ProgramKpis; commentaryC: ReturnType<typeof useCollection<ReportCommentary>> }) {
   const headcountPlan = useStore((s) => s.collections['headcountPlan']) as AnyRec[] | undefined
-  const positions = useStore((s) => s.collections['positions']) as AnyRec[] | undefined
+  const positionsAll = useStore((s) => s.collections['positions']) as AnyRec[] | undefined
+  const { items: businessUnits } = useBusinessUnits()
   const funnelC = useCollection<FunnelStage>('hiringFunnel', seedFunnel)
-  const commentary = commentaryC.items.find((c) => c.id === 'hiring') ?? seedReportCommentary[2]
+  const commentary = commentaryC.items.find((c) => c.id === 'hiring') ?? seedReportCommentary.find((c) => c.id === 'hiring')!
   const [text, setText] = useState(commentary.text)
   const [editStage, setEditStage] = useState<FunnelStage | null>(null)
 
   const hc = useMemo(() => {
     if (headcountPlan && headcountPlan.length) {
-      const list = headcountPlan.map((r, i) => ({ label: strOf(r, ['month', 'period', 'wave', 'name', 'workstream', 'label']) ?? `#${i + 1}`, Plan: numOf(r, ['plan', 'planned', 'planHeadcount', 'approved', 'target']) ?? 0, Actual: numOf(r, ['actual', 'onboarded', 'actualHeadcount', 'filled', 'hired']) as number | undefined }))
+      const list = headcountPlan.map((r, i) => ({ label: strOf(r, ['month', 'period', 'wave', 'name', ...BU_KEYS, 'label']) ?? `#${i + 1}`, Plan: numOf(r, ['plan', 'planned', 'planHeadcount', 'approved', 'target']) ?? 0, Actual: numOf(r, ['actual', 'onboarded', 'actualHeadcount', 'filled', 'hired']) as number | undefined }))
       if (list.some((r) => r.Plan || r.Actual)) return { data: list.slice(0, 12), synthetic: false }
     }
     const planRamp = [80, 110, 150, 180, 210, 250, 290, 320, 350, 390, 420, 450]
@@ -601,11 +660,47 @@ function HiringReport({ k, commentaryC }: { k: ProgramKpis; commentaryC: ReturnT
     return { data: MONTHS.map((m, i) => ({ label: m, Plan: Math.round(planRamp[i] * scale), Actual: i < 9 ? Math.round(planRamp[i] * scale * 0.94) : i === 9 ? k.talentOnboarded : undefined })), synthetic: true }
   }, [headcountPlan, k])
 
-  const posCols = useMemo(() => {
-    if (!positions || !positions.length) return []
-    const keys = Object.keys(positions[0]).filter((key) => key !== 'id' && ['string', 'number'].includes(typeof positions[0][key])).slice(0, 7)
-    return keys.map((key) => ({ key, header: key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()), render: (r: AnyRec) => { const v = r[key]; return typeof v === 'string' && ['Open', 'In Progress', 'Closed', 'On Track', 'At Risk', 'Delayed', 'Filled', 'Offered'].includes(v) ? <Badge value={v} /> : String(v ?? '') } }))
+  // open positions from Resource Management, grouped by business unit (field may be 'businessUnit' or the older 'workstream')
+  const positions = useMemo(() => (positionsAll ?? []).filter(isOpenPos), [positionsAll])
+  const posByBu = useMemo(() => {
+    const map = new Map<string, { id: string; bu: string; open: number; critical: number; oldest: number }>()
+    for (const p of positions) {
+      const bu = buOf(p)
+      const cur = map.get(bu) ?? { id: bu, bu, open: 0, critical: 0, oldest: 0 }
+      cur.open += numOf(p, ['openings', 'count', 'headcount']) ?? 1
+      if (['Critical', 'High'].includes(strOf(p, ['priority']) ?? '')) cur.critical += 1
+      cur.oldest = Math.max(cur.oldest, daysSince(strOf(p, ['openedOn', 'openedDate', 'createdOn'])) ?? 0)
+      map.set(bu, cur)
+    }
+    return [...map.values()].sort((a, b) => b.open - a.open)
   }, [positions])
+  const posCols = useMemo(() => {
+    if (!positions.length) return []
+    const sample = positions[0]
+    const hasRole = typeof sample.role === 'string' || typeof sample.title === 'string'
+    if (hasRole) {
+      const cols = [
+        { key: 'role', header: 'Role', render: (r: AnyRec) => <span className="font-medium">{strOf(r, ['role', 'title', 'name']) ?? '—'}</span> },
+        { key: 'bu', header: 'Business unit', render: (r: AnyRec) => buOf(r) },
+        { key: 'location', header: 'Location', render: (r: AnyRec) => strOf(r, ['location', 'city']) ?? '—' },
+        { key: 'priority', header: 'Priority', render: (r: AnyRec) => { const v = strOf(r, ['priority']); return v ? <Badge value={v} /> : '—' } },
+        { key: 'status', header: 'Status', render: (r: AnyRec) => { const v = strOf(r, ['status']); return v ? <Badge value={v} /> : '—' } },
+        { key: 'days', header: 'Days open', className: 'text-right', render: (r: AnyRec) => { const d = daysSince(strOf(r, ['openedOn', 'openedDate', 'createdOn'])); return d === undefined ? '—' : String(d) } },
+      ]
+      return cols
+    }
+    const keys = Object.keys(sample).filter((key) => key !== 'id' && ['string', 'number'].includes(typeof sample[key])).slice(0, 7)
+    return keys.map((key) => ({ key, header: BU_KEYS.includes(key) ? 'Business unit' : key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()), className: undefined as string | undefined, render: (r: AnyRec) => { const v = r[key]; return typeof v === 'string' && ['Open', 'In Progress', 'Closed', 'On Track', 'At Risk', 'Delayed', 'Filled', 'Offered', 'Offer', 'In Interview', 'Critical', 'High', 'Medium', 'Low'].includes(v) ? <Badge value={v} /> : String(v ?? '') } }))
+  }, [positions])
+  // placeholder rows when the Resource Management page has not captured positions yet – named by business unit
+  const placeholderPositions = useMemo(() => {
+    const bu = (i: number) => businessUnits[i % Math.max(1, businessUnits.length)]?.name ?? 'Business unit'
+    return [
+      { id: 'op-1', stage: `SAP S/4HANA Consultant (${bu(0)}) – 3 open, 52 days`, candidates: 3 }, { id: 'op-2', stage: `Dynamics 365 Engineer (${bu(1)}) – 2 open, 47 days`, candidates: 2 },
+      { id: 'op-3', stage: `Data Engineer (${bu(2)}) – 6 open, 21 days`, candidates: 6 }, { id: 'op-4', stage: `Product Engineer (${bu(3)}) – 12 open, 14 days`, candidates: 12 },
+      { id: 'op-5', stage: `Cloud Platform Engineer (${bu(4)}) – 1 open, 33 days`, candidates: 1 }, { id: 'op-6', stage: `GL Accountant (${bu(5)}) – 2 open, 9 days`, candidates: 2 },
+    ]
+  }, [businessUnits])
 
   const gap = k.talentTarget - k.talentOnboarded
   const funnel = funnelC.items
@@ -624,7 +719,7 @@ function HiringReport({ k, commentaryC }: { k: ProgramKpis; commentaryC: ReturnT
           <KpiTile tone="navy" icon={<Users size={20} />} value={k.talentTarget} label="Approved Headcount" />
           <KpiTile tone="green" icon={<CheckCircle2 size={20} />} value={k.talentOnboarded} label="Onboarded" sub={`${Math.round((k.talentOnboarded / k.talentTarget) * 100)}% of target`} />
           <KpiTile tone="amber" icon={<AlertTriangle size={20} />} value={gap} label="Hiring Gap" sub={`+${k.talentDeltaVsPlan}% vs plan`} />
-          <KpiTile tone="blue" icon={<FileText size={20} />} value={positions?.length ?? funnel.find((f) => f.stage === 'Offer Extended')?.candidates ?? 0} label={positions?.length ? 'Open Positions' : 'Offers Extended'} />
+          <KpiTile tone="blue" icon={<FileText size={20} />} value={positions.length || (funnel.find((f) => f.stage === 'Offer Extended')?.candidates ?? 0)} label={positions.length ? 'Open Positions' : 'Offers Extended'} sub={positions.length ? `across ${posByBu.length} business unit${posByBu.length === 1 ? '' : 's'}` : undefined} />
           <KpiTile tone="teal" icon={<Send size={20} />} value={`${Math.round(((funnel.find((f) => f.stage === 'Joined')?.candidates ?? 0) / Math.max(1, funnel.find((f) => f.stage === 'Offer Extended')?.candidates ?? 1)) * 100)}%`} label="Offer Acceptance Rate" />
         </div>
         <div className="grid grid-cols-[1.3fr_1fr] gap-4">
@@ -656,13 +751,20 @@ function HiringReport({ k, commentaryC }: { k: ProgramKpis; commentaryC: ReturnT
           </Card>
         </div>
         <div className="grid grid-cols-[1.3fr_1fr] gap-4">
-          <Card title="Open positions" subtitle={positions?.length ? 'From Resource Management' : 'No positions captured yet on the Resource Management page'}>
-            {positions?.length ? <Table<AnyRec> compact rows={positions.slice(0, 10)} columns={posCols} /> : (
-              <Table<FunnelStage> compact rows={[
-                { id: 'op-1', stage: 'Network Engineer (Technology) – 3 open, 52 days', candidates: 3 }, { id: 'op-2', stage: 'Security Analyst (Technology) – 2 open, 47 days', candidates: 2 },
-                { id: 'op-3', stage: 'GL Accountant (Finance) – 6 open, 21 days', candidates: 6 }, { id: 'op-4', stage: 'AP Process Associate (Finance) – 12 open, 14 days', candidates: 12 },
-                { id: 'op-5', stage: 'HR Business Partner (Operations) – 1 open, 33 days', candidates: 1 }, { id: 'op-6', stage: 'Facilities Coordinator (Facilities) – 2 open, 9 days', candidates: 2 },
-              ]} columns={[{ key: 'stage', header: 'Role (workstream) – open, days open' }, { key: 'candidates', header: 'Open', className: 'text-right' }]} />
+          <Card title="Open positions by business unit" subtitle={positions.length ? `${positions.length} open positions from Resource Management` : 'Illustrative – no open positions captured yet on the Resource Management page'}>
+            {positions.length ? (
+              <div className="space-y-3">
+                <Table<{ id: string; bu: string; open: number; critical: number; oldest: number }> compact rows={posByBu} columns={[
+                  { key: 'bu', header: 'Business unit', render: (r) => <span className="font-medium">{r.bu}</span> },
+                  { key: 'open', header: 'Open', className: 'text-right' },
+                  { key: 'critical', header: 'Critical / High', className: 'text-right' },
+                  { key: 'oldest', header: 'Longest open (days)', className: 'text-right', render: (r) => (r.oldest ? String(r.oldest) : '—') },
+                ]} />
+                <SectionTitle>Open positions ({Math.min(10, positions.length)} of {positions.length})</SectionTitle>
+                <Table<AnyRec> compact rows={positions.slice(0, 10)} columns={posCols} />
+              </div>
+            ) : (
+              <Table<FunnelStage> compact rows={placeholderPositions} columns={[{ key: 'stage', header: 'Role (business unit) – open, days open' }, { key: 'candidates', header: 'Open', className: 'text-right' }]} />
             )}
           </Card>
           <Card title="Commentary" headerRight={<span className="text-[11.5px] text-ink-500">Updated {fmtDate(commentary.updatedOn)}</span>}>

@@ -2,9 +2,10 @@ import { useMemo, useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CheckCircle2, CalendarCheck, Share2, CalendarDays, Target, ChevronLeft, ChevronRight, Plus, Flag, Layers, Search, ExternalLink, Info } from 'lucide-react'
 import { PageHeader } from '../components/layout/AppShell'
+import { InputLayout } from '../components/layout/InputLayout'
 import { Card, KpiTile, Badge, Table, ViewAll, Modal, Progress, Tabs, Input, Select } from '../components/ui'
 import { Donut } from '../components/charts'
-import { useCollection, uid } from '../store/useStore'
+import { useCollection, useStore, uid } from '../store/useStore'
 import { ProgramKpiEditor } from '../components/ProgramKpiEditor'
 import { seedMilestones, seedProgramKpis, seedDependencies, seedRaid, isOpen, type Milestone, type ProgramKpis, type Dependency, type RaidItem } from '../data/shared'
 import { WORKSTREAMS, WORKSTREAM_META, MONTHS, TODAY, CHART_COLORS, type Workstream, type Impact } from '../data/common'
@@ -14,6 +15,7 @@ import { seedActivities, WBS_TO_DASHBOARD, type Activity } from '../data/wbs'
 import { useMoney } from '../data/money'
 import { Gantt, type GanttGroup, type GanttScale, type GanttChange } from '../components/planning/Gantt'
 import { MilestoneModal, DependencyModal, DependencyForm, MS_STATUSES, MS_PHASES, IMPACTS, DEP_STATUSES } from '../components/planning/Modals'
+import { PlanSettingsForm } from '../components/planning/PlanSettings'
 import { useWsRows, DependenciesView, RisksView, BudgetView } from '../components/workstreams/views'
 import { PeopleView } from '../components/workstreams/People'
 import { DeliverablesView, ActivityForm } from '../components/workstreams/Deliverables'
@@ -67,6 +69,7 @@ export default function Planning() {
   const nav = useNavigate()
   const [view, setView] = useState<View>(VIEWS.includes(params.get('view') as View) ? (params.get('view') as View) : 'Workstream')
   const [editKpis, setEditKpis] = useState(false)
+  const mode = useStore((s) => s.mode)
   const kpisC = useCollection<ProgramKpis>('programKpis', seedProgramKpis)
   const k = kpisC.items[0] ?? seedProgramKpis[0]
   const ms = useCollection<Milestone>('milestones', seedMilestones)
@@ -228,6 +231,24 @@ export default function Planning() {
 
   const cellDeps = cell ? deps.items.filter((d) => d.from === cell.from && d.on === cell.on) : []
   const masterCount = masterGroups.reduce((s, g) => s + g.items.length, 0)
+
+  /* ---------- Input view: Program Planning is an output of Workstreams, so only the shared registers and the plan settings live here ---------- */
+  const INPUT_HINT = 'Initiatives, milestones, activities and people are entered under Workstreams; this timeline reflects them.'
+  if (mode === 'input') {
+    return (
+      <>
+        <InputLayout title="Program Planning" subtitle={INPUT_HINT}
+          right={<button className="btn-secondary" onClick={() => nav('/workstreams')}>Enter plan under Workstreams <ExternalLink size={14} /></button>}
+          tabs={[
+            { name: 'Milestones register', content: <MilestoneRegister rows={ms.items} onEdit={(m) => setMsEdit({ item: m, isNew: false })} onAdd={() => setMsEdit({ item: newMilestone(), isNew: true })} />, hint: 'Shared with the Workstreams page and the Dashboard. Click a row to edit it; the Workstreams Input view has the same rows as an inline grid.' },
+            { name: 'Dependencies register', content: <DependencyRegister rows={deps.items} onEdit={(d) => setDepEdit({ item: d, isNew: false })} onAdd={() => setDepEdit({ item: newDependency(), isNew: true })} />, hint: 'Cross-workstream dependencies behind the heatmap and the dependency matrix.' },
+            { name: 'Plan settings', content: <PlanSettingsForm value={k} onChange={(v) => kpisC.update(v)} milestones={ms.items} />, hint: 'Timeline window, go-live target and milestone adherence shown on the page header and KPI tiles.' },
+          ]} />
+        {msEdit && <MilestoneModal open value={msEdit.item} isNew={msEdit.isNew} onClose={() => setMsEdit(null)} onSave={(v) => { if (msEdit.isNew) ms.add(v); else ms.update(v); setMsEdit(null) }} onDelete={(id) => ms.remove(id)} />}
+        {depEdit && <DependencyModal open value={depEdit.item} isNew={depEdit.isNew} onClose={() => setDepEdit(null)} onSave={(v) => { if (depEdit.isNew) deps.add(v); else deps.update(v); setDepEdit(null) }} onDelete={(id) => deps.remove(id)} />}
+      </>
+    )
+  }
 
   return (
     <div className="space-y-4">

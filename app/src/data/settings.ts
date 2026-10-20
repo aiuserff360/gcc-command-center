@@ -32,11 +32,13 @@ export const seedUsers: User[] = [
   { id: 'us-015', name: 'Priya Menon', role: 'Viewer', workstream: 'Talent & Hiring', handle: 'p.menon', status: 'Invited', lastActive: '' },
 ]
 
-export const MODULES = ['Dashboard', 'Program Planning', 'Workstreams', 'Resource Management', 'Financial Management', 'Transition Management', 'Risks & Issues', 'Governance', 'Reports', 'Documents', 'Integrations', 'Settings'] as const
+/** Modules in the left navigation (mirrors src/components/layout/AppShell.tsx). */
+export const MODULES = ['Dashboard', 'Target Footprint', 'Program Planning', 'Workstreams', 'Resource Management', 'Financial Management', 'Transition Management', 'Risks & Issues', 'Governance', 'Value Realization', 'Reports', 'Documents', 'Settings'] as const
 export type Permission = 'View' | 'Edit' | 'Approve' | '—'
 /** module → role → permission */
 export const PERMISSION_MATRIX: Record<(typeof MODULES)[number], Record<UserRole, Permission>> = {
   Dashboard: { 'Program Manager': 'Edit', 'Workstream Lead': 'View', 'Steering Member': 'View', Viewer: 'View' },
+  'Target Footprint': { 'Program Manager': 'Approve', 'Workstream Lead': 'View', 'Steering Member': 'Approve', Viewer: 'View' },
   'Program Planning': { 'Program Manager': 'Approve', 'Workstream Lead': 'Edit', 'Steering Member': 'View', Viewer: 'View' },
   Workstreams: { 'Program Manager': 'Approve', 'Workstream Lead': 'Edit', 'Steering Member': 'View', Viewer: 'View' },
   'Resource Management': { 'Program Manager': 'Approve', 'Workstream Lead': 'Edit', 'Steering Member': 'View', Viewer: 'View' },
@@ -44,9 +46,9 @@ export const PERMISSION_MATRIX: Record<(typeof MODULES)[number], Record<UserRole
   'Transition Management': { 'Program Manager': 'Approve', 'Workstream Lead': 'Edit', 'Steering Member': 'View', Viewer: 'View' },
   'Risks & Issues': { 'Program Manager': 'Approve', 'Workstream Lead': 'Edit', 'Steering Member': 'Approve', Viewer: 'View' },
   Governance: { 'Program Manager': 'Edit', 'Workstream Lead': 'View', 'Steering Member': 'Approve', Viewer: '—' },
+  'Value Realization': { 'Program Manager': 'Approve', 'Workstream Lead': 'Edit', 'Steering Member': 'View', Viewer: 'View' },
   Reports: { 'Program Manager': 'Approve', 'Workstream Lead': 'Edit', 'Steering Member': 'View', Viewer: 'View' },
   Documents: { 'Program Manager': 'Approve', 'Workstream Lead': 'Edit', 'Steering Member': 'Approve', Viewer: 'View' },
-  Integrations: { 'Program Manager': 'Edit', 'Workstream Lead': 'View', 'Steering Member': '—', Viewer: '—' },
   Settings: { 'Program Manager': 'Edit', 'Workstream Lead': 'View', 'Steering Member': '—', Viewer: '—' },
 }
 
@@ -79,12 +81,12 @@ export interface NotificationSettings {
   weeklyDigest: boolean
   weeklyDigestDay: string
   weeklyDigestTime: string
-  syncFailureAlerts: boolean
+  signOffRequests: boolean
   channel: 'Email' | 'Teams' | 'Both'
 }
 export const seedNotificationSettings: NotificationSettings[] = [{
   id: 'notifications', milestoneReminders: true, milestoneReminderDays: 7, riskEscalationAlerts: true, riskEscalationLevel: 'High',
   budgetVarianceAlerts: true, budgetVarianceThresholdPct: 10, hiringGapAlerts: true, hiringGapThresholdPct: 15,
-  weeklyDigest: true, weeklyDigestDay: 'Monday', weeklyDigestTime: '08:00', syncFailureAlerts: true, channel: 'Both',
+  weeklyDigest: true, weeklyDigestDay: 'Monday', weeklyDigestTime: '08:00', signOffRequests: true, channel: 'Both',
 }]
 export const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const

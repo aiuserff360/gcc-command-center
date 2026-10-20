@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Users, ClipboardList, ShieldCheck, CalendarCheck } from 'lucide-react'
 import { PageHeader } from '../components/layout/AppShell'
 import { KpiTile, Tabs } from '../components/ui'
-import { useCollection } from '../store/useStore'
+import { useCollection, useStore } from '../store/useStore'
 import { seedMilestones, seedRaid, seedDependencies, type Milestone, type RaidItem, type Dependency } from '../data/shared'
 import { seedActivities, type Activity } from '../data/wbs'
 import {
@@ -12,6 +12,7 @@ import {
 } from '../data/transition'
 import type { Tx, ModalSpec } from '../components/transition/types'
 import Overview from '../components/transition/Overview'
+import { TransitionInput } from '../components/transition/InputView'
 import { WavePlan, KnowledgeTransfer, Readiness, RisksIssues, Dependencies, Reports } from '../components/transition/tabs'
 import { WaveForm, MilestoneForm, RaidForm, KtForm, AssessmentForm, GapForm, ChecklistForm, DependencyForm, ActivityForm, SettingsForm } from '../components/transition/forms'
 
@@ -29,6 +30,7 @@ export default function Transition() {
   const activities = useCollection<Activity>('activities', seedActivities)
   const settings = settingsC.items[0] ?? seedTransitionSettings[0]
 
+  const mode = useStore((s) => s.mode)
   const [view, setView] = useState<string>(TRANSITION_VIEWS[0])
   const [tab, setTab] = useState<string>(TRANSITION_TABS[0])
   const [modal, setModal] = useState<ModalSpec | null>(null)
@@ -51,6 +53,7 @@ export default function Transition() {
 
   return (
     <div>
+      {mode === 'input' ? <TransitionInput tx={tx} onSaveSettings={(s) => settingsC.update(s)} /> : <>
       <PageHeader title="Transition Management" subtitle="Track and manage knowledge transfer, wave readiness and stabilization across the GCC."
         viewValue={view} viewOptions={TRANSITION_VIEWS} onView={setView} dateRange={TRANSITION_DATE_RANGE} onEdit={() => setModal({ kind: 'settings' })} editLabel="Edit KPIs" />
 
@@ -71,8 +74,9 @@ export default function Transition() {
       {tab === 'Risks & Issues' && <RisksIssues tx={tx} />}
       {tab === 'Dependencies' && <Dependencies tx={tx} />}
       {tab === 'Reports' && <Reports tx={tx} />}
+      </>}
 
-      {/* ---- Modals ---- */}
+      {/* ---- Modals (both views) ---- */}
       {modal?.kind === 'wave' && <WaveForm initial={modal.item} waves={sortedWaves} onClose={close} onSave={(w) => { waves.update(w); close() }} onDelete={modal.item ? () => { waves.remove(modal.item!.id); close() } : undefined} />}
       {modal?.kind === 'milestone' && <MilestoneForm initial={modal.item} initialWave={modal.wave} waves={sortedWaves} onClose={close}
         onSave={(m, wave) => { milestones.update(m); msWaves.update({ id: m.id, wave }); close() }}

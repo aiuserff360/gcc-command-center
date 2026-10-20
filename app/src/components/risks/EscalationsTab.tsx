@@ -9,8 +9,10 @@ import { uid } from '../../store/useStore'
 const FORUMS = ['Steering Committee', 'Program Director', 'Global CIO', 'Global CHRO', 'Global COO', 'Global CFO', 'GCC Head']
 type Row = RaidItem & { dec?: EscalationDecision }
 
-export function EscalationsTab({ raid, decisions, onSaveRaid, onSaveDecision, onOpenRaid }: {
+export function EscalationsTab({ raid, decisions, onSaveRaid, onSaveDecision, onOpenRaid, hideStats }: {
   raid: RaidItem[]; decisions: EscalationDecision[]; onSaveRaid: (r: RaidItem) => void; onSaveDecision: (d: EscalationDecision) => void; onOpenRaid: (r: RaidItem) => void
+  /** Input view: registers only, no stat tiles */
+  hideStats?: boolean
 }) {
   const [record, setRecord] = useState<Row | null>(null)
   const [escalate, setEscalate] = useState(false)
@@ -28,12 +30,12 @@ export function EscalationsTab({ raid, decisions, onSaveRaid, onSaveDecision, on
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-5 gap-4">
+      {!hideStats && <div className="grid grid-cols-5 gap-4">
         {[['Active Escalations', active.length, 'text-ink-900'], ['Awaiting Decision', awaiting.length, 'text-red-600'], ['In Progress', inProg.length, 'text-brand-600'], ['Resolved', resolved.length, 'text-green-600']].map(([l, v, c]) => (
           <div key={l as string} className="card px-4 py-3"><div className="text-[12px] text-ink-500">{l as string}</div><div className={`text-[22px] font-bold ${c}`}>{v as number}</div></div>
         ))}
         <div className="card px-4 py-3"><div className="text-[12px] text-ink-500">Next steering decision</div><div className="text-[18px] font-bold text-ink-900 mt-1">{nextSteering ? fmtDate(nextSteering) : '–'}</div></div>
-      </div>
+      </div>}
       <Card title="Escalations" subtitle="Risks and issues escalated beyond the workstream – decision needed, forum, steering date and recorded decision"
         headerRight={<div className="flex items-center gap-3">
           <label className="inline-flex items-center gap-1.5 text-[12.5px] text-ink-700 cursor-pointer"><input type="checkbox" checked={showResolved} onChange={(e) => setShowResolved(e.target.checked)} /> Show resolved</label>

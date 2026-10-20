@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { ListChecks, Flag, Users, IndianRupee, Euro, Pencil, Plus } from 'lucide-react'
 import { PageHeader } from '../components/layout/AppShell'
+import { InputLayout } from '../components/layout/InputLayout'
 import { Card, Badge, Table, Tabs, Chevron, Legend } from '../components/ui'
 import { Donut, tooltipStyle } from '../components/charts'
 import { useCollection, useStore, uid } from '../store/useStore'
@@ -14,6 +15,7 @@ import { useWsRows, InitiativesView, MilestonesView, RisksView, BudgetView, Depe
 import { DeliverablesView } from '../components/workstreams/Deliverables'
 import { DrillDown } from '../components/workstreams/DrillDown'
 import { WorkstreamForm, SettingsForm } from '../components/workstreams/forms'
+import { ALL_WS, WorkstreamGrid, InitiativeGrid, MilestoneGrid, ActivityGrid, PeopleGrid, BudgetLineGrid, DependencyGrid, DocumentGrid } from '../components/workstreams/InputGrids'
 import { useMoney } from '../data/money'
 
 const TABS = ['Workstream Overview', 'Initiatives & Milestones', 'Risks & Issues', 'Budget & Costs', 'Dependencies', 'Deliverables', 'Documents']
@@ -33,6 +35,9 @@ export default function Workstreams() {
   const [editWs, setEditWs] = useState<{ item: WsRow; isNew: boolean } | null>(null)
   const [editKpi, setEditKpi] = useState(false)
   const m = useMoney()
+  const mode = useStore((s) => s.mode)
+  // Input view: the workstream every grid is filtered to (deep link ?ws=<name> pre-selects it)
+  const [inWs, setInWs] = useState<string>(params.get('ws') ?? ALL_WS)
 
   // One-time merge of the mock-up's Technology rows into the shared RAID register (guarded by id).
   useEffect(() => {
@@ -61,6 +66,24 @@ export default function Workstreams() {
     { name: 'Delayed', value: counts.delayed, color: STATUS_COLOR.Delayed }, { name: 'Not Started', value: counts.notStarted, color: STATUS_COLOR['Not Started'] },
   ]
   const newWs = (): WsRow => ({ id: uid('ws'), name: '' as Workstream, description: '', progress: 0, status: 'Not Started', owner: 'A. Sharma', lead: '', executiveSponsor: '', teamSize: 0, activeInitiatives: 0, scheduleHealth: 'Not Started', budgetHealth: 'On Track', approvedBudgetCr: 0, actualSpendCr: 0, forecastAtCompletionCr: 0 })
+
+  if (mode === 'input') {
+    const g = { ws: inWs, onWs: setInWs }
+    return (
+      <InputLayout title="Workstreams" subtitle="Enter the delivery plan: workstreams, their initiatives, milestones, WBS activities, people, budget lines, dependencies and documents. Program Planning, the Dashboard and the Output view are built from these."
+        initialTab={params.get('tab') === 'Initiatives & Milestones' ? 'Initiatives' : undefined}
+        tabs={[
+          { name: 'Workstreams', content: <WorkstreamGrid />, hint: 'One row per workstream. Lead, owner, sponsor, status, progress, team size and budget headline figures; edit a cell and the change is saved.' },
+          { name: 'Initiatives', content: <InitiativeGrid {...g} />, hint: 'Pick a workstream (or keep all) and edit initiatives in the grid. Start and finish dates drive the initiative bars on the Program Planning timeline.' },
+          { name: 'Milestones', content: <MilestoneGrid {...g} />, hint: 'Shared milestone register – the same rows appear on the Dashboard, Program Planning and Transition. Star a milestone to make it a key milestone.' },
+          { name: 'WBS activities', content: <ActivityGrid {...g} />, hint: 'Activities per workstream and sub-workstream. Baseline and forecast dates feed the Gantt bars and the baseline markers; status and RAG feed the deliverables register.' },
+          { name: 'People', content: <PeopleGrid {...g} />, hint: 'Team roster per workstream. The People & Roles drill-down and the headcount figures are built from these rows.' },
+          { name: 'Budget lines', content: <BudgetLineGrid {...g} />, hint: 'Planned and actual spend by category. Amounts are entered in the currency selected in the top bar.' },
+          { name: 'Dependencies', content: <DependencyGrid {...g} />, hint: 'Cross-workstream dependencies shared with Program Planning and Risks & Issues.' },
+          { name: 'Documents', content: <DocumentGrid {...g} />, hint: 'Document register per workstream.' },
+        ]} />
+    )
+  }
 
   return (
     <div>
