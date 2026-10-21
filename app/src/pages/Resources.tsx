@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Users, UserRound, Clock3, Coins, Plus } from 'lucide-react'
 import { PageHeader } from '../components/layout/AppShell'
 import { KpiTile, Tabs } from '../components/ui'
@@ -24,7 +25,8 @@ export default function Resources() {
   const d = useResourceData()
   const m = useMoney()
   const { kpi, settings, settingsC, positions, buNames, locations } = d
-  const [tab, setTab] = useState(TABS[0])
+  const [params] = useSearchParams() // deep link: /resources?tab=<tab>&bu=<business unit>
+  const [tab, setTab] = useState(TABS.includes(params.get('tab') ?? '') ? (params.get('tab') as string) : TABS[0])
   const [editSettings, setEditSettings] = useState(false)
   const [addPos, setAddPos] = useState(false)
   const [openReq, setOpenReq] = useState<string | null>(null)
@@ -51,7 +53,7 @@ export default function Resources() {
 
       {tab === 'Workforce Overview' && <OverviewTab d={d} goTab={setTab} onOpen={setOpenReq} />}
       {tab === 'Hiring Plan & Pipeline' && <HiringTab d={d} onOpen={setOpenReq} />}
-      {tab === 'Resource Allocation' && <AllocationTab d={d} onOpen={setOpenReq} />}
+      {tab === 'Resource Allocation' && <AllocationTab d={d} onOpen={setOpenReq} initialUnit={params.get('bu') ?? undefined} />}
       {tab === 'Skills & Capability' && <SkillsTab d={d} />}
       {tab === 'Cost Analysis' && <CostTab d={d} />}
       {tab === 'Location Mix' && <LocationTab d={d} />}

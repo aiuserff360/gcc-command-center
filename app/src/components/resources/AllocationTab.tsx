@@ -15,10 +15,10 @@ import type { ResourceData } from './useResourceData'
 import { CardLegend, MiniStat, CompactTable, lakhNum, RoleLink, Funnel } from './widgets'
 import { EmployeeForm } from './forms'
 
-export default function AllocationTab({ d, onOpen }: { d: ResourceData; onOpen?: (positionId: string) => void }) {
+export default function AllocationTab({ d, onOpen, initialUnit }: { d: ResourceData; onOpen?: (positionId: string) => void; initialUnit?: string }) {
   const { employees, businessUnits, buNames, buHeadcountRows, hiringTargetRows, peopleCostRows, timeToHireRows, positions, candidatesFor, locations } = d
   const m = useMoney()
-  const [selected, setSelected] = useState<string>(buNames[0] ?? '')
+  const [selected, setSelected] = useState<string>(initialUnit && buNames.includes(initialUnit) ? initialUnit : buNames[0] ?? '')
   const [emp, setEmp] = useState<Employee | null>(null)
   const [adding, setAdding] = useState(false)
   const bu = buNames.includes(selected) ? selected : buNames[0]
