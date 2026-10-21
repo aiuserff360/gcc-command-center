@@ -3,11 +3,12 @@
  * inline grids for the numeric tables, the existing record modals for the registers (commitments,
  * approvals) and a form for the settings. Nothing here renders KPI tiles or charts.
  */
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
+import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { Check, X, RotateCcw, Pencil, Trash2 } from 'lucide-react'
 import { InputLayout } from '../layout/InputLayout'
-import { Card, Badge, FilterSelect, Field, Input, Select, TextArea, FormGrid, Table } from '../ui'
+import { Card, Badge, FilterSelect, Field, Input, Select, TextArea, FormGrid, Table, Tabs } from '../ui'
+import { CostModelInput } from './model/CostModelInput'
 import { uid } from '../../store/useStore'
 import { fmtDate, fmtDateShort, TODAY } from '../../data/common'
 import { COST_CATEGORIES, FIN_WORKSTREAMS, BENEFIT_QUARTERS, r2, sum, pct, type BudgetLine, type MonthlyFinancial, type PhaseSpend, type CostCategoryRow, type CostCategory, type FinancialMilestone, type Benefit, type RunRateYear, type Commitment, type FinancialApproval, type FinanceScenario, type FinanceSettings } from '../../data/financial'
@@ -26,24 +27,37 @@ export function FinancialInput() {
   const fin = useFinance('Total Program')
   const m = fin.m
   const u = m.unitLabel
+  const [group, setGroup] = useState<string>(TRACKING_TABS[0])
+  const tracking: { name: string; hint: string; content: ReactNode }[] = [
+    { name: 'Budget by workstream', hint: `Approved, actual and forecast per workstream, and how each approved budget splits across cost categories (${u}).`, content: <><BudgetLinesGrid fin={fin} /><AllocationGrid fin={fin} /></> },
+    { name: 'Monthly actuals & forecast', hint: `Phased budget, actual and forecast spend plus client inflow and outflow per month (${u}). Cumulative lines and the cash-flow chart are derived from this grid.`, content: <MonthlyGrid fin={fin} /> },
+    { name: 'Phases & categories', hint: `Spend by lifecycle phase and by cost category (${u}). Leave a phase's Budget empty when it has none; category budget comes from the workstream × category allocation.`, content: <><PhaseGrid fin={fin} /><CategoryGrid fin={fin} /></> },
+    { name: 'Commitments & POs', hint: 'Register of vendor commitments and purchase orders with invoiced and paid amounts. Click a row to edit it.', content: <CommitmentsInput fin={fin} /> },
+    { name: 'Approvals', hint: 'Budget requests awaiting decision. Approve, reject or reopen a request; click a row to edit the details.', content: <ApprovalsInput fin={fin} /> },
+    { name: 'Milestones', hint: `Key funding and spend milestones with amount (${u}), due date and status.`, content: <MilestoneGrid fin={fin} /> },
+    { name: 'Benefits', hint: `Annual benefit target and forecast per benefit area (${u}) with the quarter realization starts.`, content: <BenefitGrid fin={fin} /> },
+    { name: 'Scenarios', hint: `Investment and benefit assumptions per scenario (${u}). Payback, IRR and NPV are computed on the Output view.`, content: <ScenarioGrid fin={fin} /> },
+    { name: 'Settings', hint: 'Run-rate year, forecast headroom, discount rate, contingency and the variance commentary shown on the dashboards.', content: <><SettingsForm fin={fin} /><RunRateGrid fin={fin} /></> },
+  ]
+  const cur = tracking.find((t) => t.name === group) ?? tracking[0]
   return (
     <InputLayout
       title="Financial Management"
-      subtitle={`Enter budgets, actuals, forecasts, commitments and benefits. Amounts are entered in ${u} and feed every finance dashboard.`}
+      subtitle={`Two sets of inputs: the GCC run-rate cost model (drivers × unit costs by business unit) and the setup program budget tracking (budgets, actuals, commitments, benefits). Amounts are entered in ${u} / ${m.lakhUnitLabel} and feed every finance dashboard.`}
       tabs={[
-        { name: 'Budget by workstream', hint: `Approved, actual and forecast per workstream, and how each approved budget splits across cost categories (${u}).`, content: <><BudgetLinesGrid fin={fin} /><AllocationGrid fin={fin} /></> },
-        { name: 'Monthly actuals & forecast', hint: `Phased budget, actual and forecast spend plus client inflow and outflow per month (${u}). Cumulative lines and the cash-flow chart are derived from this grid.`, content: <MonthlyGrid fin={fin} /> },
-        { name: 'Phases & categories', hint: `Spend by lifecycle phase and by cost category (${u}). Leave a phase's Budget empty when it has none; category budget comes from the workstream × category allocation.`, content: <><PhaseGrid fin={fin} /><CategoryGrid fin={fin} /></> },
-        { name: 'Commitments & POs', hint: 'Register of vendor commitments and purchase orders with invoiced and paid amounts. Click a row to edit it.', content: <CommitmentsInput fin={fin} /> },
-        { name: 'Approvals', hint: 'Budget requests awaiting decision. Approve, reject or reopen a request; click a row to edit the details.', content: <ApprovalsInput fin={fin} /> },
-        { name: 'Milestones', hint: `Key funding and spend milestones with amount (${u}), due date and status.`, content: <MilestoneGrid fin={fin} /> },
-        { name: 'Benefits', hint: `Annual benefit target and forecast per benefit area (${u}) with the quarter realization starts.`, content: <BenefitGrid fin={fin} /> },
-        { name: 'Scenarios', hint: `Investment and benefit assumptions per scenario (${u}). Payback, IRR and NPV are computed on the Output view.`, content: <ScenarioGrid fin={fin} /> },
-        { name: 'Settings', hint: 'Run-rate year, forecast headroom, discount rate, contingency and the variance commentary shown on the dashboards.', content: <><SettingsForm fin={fin} /><RunRateGrid fin={fin} /></> },
+        { name: 'GCC run-rate cost model', hint: 'Driver-based 5-year cost model of the centre by business unit – headcount, people costs, real estate, technology, centre operations. Every input sits next to an industry reference; results are on the Output view → Cost Model.', content: <CostModelInput /> },
+        { name: 'Setup program budget (tracking)', content: (
+          <div className="space-y-4">
+            <Tabs size="sm" tabs={tracking.map((t) => t.name)} active={cur.name} onChange={setGroup} />
+            <p className="text-[12.5px] text-ink-500 -mt-2">{cur.hint}</p>
+            {cur.content}
+          </div>
+        ) },
       ]}
     />
   )
 }
+const TRACKING_TABS = ['Budget by workstream', 'Monthly actuals & forecast', 'Phases & categories', 'Commitments & POs', 'Approvals', 'Milestones', 'Benefits', 'Scenarios', 'Settings']
 
 /* ================= Budget lines ================= */
 const blankLine = (): BudgetLine => ({ id: uid('bl'), workstream: 'New workstream', approvedCr: 0, actualCr: 0, forecastCr: 0, setupShare: 0.5, allocation: {}, owner: '' })

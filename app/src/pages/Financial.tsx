@@ -12,6 +12,7 @@ import { RecordModal, useEditor, type FieldSpec } from '../components/financial/
 import { BUDGET_LINE_FIELDS, MILESTONE_FIELDS } from '../components/financial/fields'
 import { BudgetBreakdownTab, ActualsForecastTab, CostByWorkstreamTab, CostByCategoryTab, BenefitsTab, ScenarioTab, ApprovalsTab } from '../components/financial/tabs'
 import { FinancialInput } from '../components/financial/inputs'
+import { CostModelTab, ModelVsBudgetCard } from '../components/financial/model/CostModelTab'
 
 const SETTINGS_FIELDS: FieldSpec<FinanceSettings>[] = [
   { key: 'runRateYear', label: 'Run-rate / benefits year', type: 'select', options: ['Year 1', 'Year 2', 'Year 3', 'Year 4', 'Year 5'] },
@@ -50,9 +51,11 @@ function FinancialOutput() {
         <FinKpi tone="green" iconTone="teal" icon={<HandCoins size={18} />} value={m.fmt(fin.benefitForecast)} label="Projected Annual Benefits" sub={`(${s.runRateYear}, ${fin.benefitPct}% of target)`} />
       </div>
 
-      <Tabs tabs={[...FIN_TABS]} active={tab} onChange={(t) => setTab(t as FinTab)} />
+      {/* nine tabs – slightly tighter buttons so the strip fits the 1536px design width */}
+      <div className="[&_button]:px-[11px]!"><Tabs tabs={[...FIN_TABS]} active={tab} onChange={(t) => setTab(t as FinTab)} /></div>
 
       {tab === 'Financial Overview' && <Overview fin={fin} goTo={setTab} onSettings={() => setSettingsOpen(true)} />}
+      {tab === 'Cost Model' && <CostModelTab />}
       {tab === 'Budget Breakdown' && <BudgetBreakdownTab fin={fin} view={view} />}
       {tab === 'Actuals & Forecast' && <ActualsForecastTab fin={fin} onSettings={() => setSettingsOpen(true)} />}
       {tab === 'Cost by Workstream' && <CostByWorkstreamTab fin={fin} />}
@@ -178,6 +181,9 @@ function Overview({ fin, goTo, onSettings }: { fin: Fin; goTo: (t: FinTab) => vo
           </Tbl>
         </Card>
       </div>
+
+      {/* Row 4 – GCC run-rate cost model next to the tracked setup budget */}
+      <ModelVsBudgetCard approvedCr={fin.approved} forecastCr={fin.forecast} onOpen={() => goTo('Cost Model')} />
 
       <RecordModal<BudgetLine> title={lineEd.editing?.isNew ? 'Add budget line' : 'Edit budget line'} value={lineEd.editing?.value ?? null} isNew={lineEd.editing?.isNew} fields={BUDGET_LINE_FIELDS} onClose={lineEd.close}
         onSave={(v) => (lineEd.editing?.isNew ? fin.budgetLines.add(v) : fin.budgetLines.update(v))} onDelete={fin.budgetLines.remove} />

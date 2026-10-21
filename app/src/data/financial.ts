@@ -1,7 +1,7 @@
 // Financial Management – types and seed data. Wording mirrors mock-up 06-financial-management exactly.
 import { MONTHS } from './common'
 
-export const FIN_TABS = ['Financial Overview', 'Budget Breakdown', 'Actuals & Forecast', 'Cost by Workstream', 'Cost by Category', 'Benefits Tracking', 'Scenario Analysis', 'Approvals & Commitments'] as const
+export const FIN_TABS = ['Financial Overview', 'Cost Model', 'Budget Breakdown', 'Actuals & Forecast', 'Cost by Workstream', 'Cost by Category', 'Benefits Tracking', 'Scenario Analysis', 'Approvals & Commitments'] as const
 export type FinTab = (typeof FIN_TABS)[number]
 
 export const VIEW_OPTIONS = ['Total Program', 'Setup (Capex)', 'Ramp-up (Opex)'] as const
