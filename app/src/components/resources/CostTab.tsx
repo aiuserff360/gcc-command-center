@@ -3,6 +3,7 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, R
 import { Card, Table } from '../ui'
 import { tooltipStyle } from '../charts'
 import { CHART_COLORS } from '../../data/common'
+import { RAMP_MONTHS } from '../../data/businessUnits'
 import { useMoney } from '../../data/money'
 import { GRADES, buAxis, type PeopleCostRow } from '../../data/resources'
 import type { ResourceData } from './useResourceData'
@@ -10,7 +11,7 @@ import { WrapTick, CardLegend, MiniStat, lakhNum } from './widgets'
 import { PeopleCostForm } from './forms'
 
 export default function CostTab({ d }: { d: ResourceData }) {
-  const { peopleCost, peopleCostRows, headcountPlan, buHeadcountRows, employees, kpi, settings } = d
+  const { peopleCost, peopleCostRows, planMonths, actualMonths, buHeadcountRows, employees, kpi, settings, reportingMonth } = d
   const [row, setRow] = useState<PeopleCostRow | null>(null)
   const m = useMoney()
   /** Display-unit number for series already converted with m.toDisplay (tooltips / labels). */
@@ -21,7 +22,7 @@ export default function CostTab({ d }: { d: ResourceData }) {
     return { ...r, name: buAxis(r.businessUnit), fte, budgetD: +m.num(r.budgetCr, 2), actualD: +m.num(r.actualCr, 2), variance: +(r.budgetCr - r.actualCr).toFixed(2), utilPct: r.budgetCr ? Math.round((r.actualCr / r.budgetCr) * 100) : 0, perFteL: fte ? +((r.actualCr * 100) / fte).toFixed(1) : 0 }
   })
   const perFteL = +(kpi.costPerFteCr * 100).toFixed(1)
-  const runRate = useMemo(() => headcountPlan.items.map((h) => ({ month: h.month, 'Planned run-rate': +m.toDisplay((h.planned * kpi.costPerFteCr) / 12).toFixed(3), 'Actual run-rate': +m.toDisplay((h.actual * kpi.costPerFteCr) / 12).toFixed(3), 'Budget line': +m.toDisplay(kpi.costBudget / 12).toFixed(3) })), [headcountPlan.items, kpi.costPerFteCr, kpi.costBudget, m.currency, m.rate]) // eslint-disable-line react-hooks/exhaustive-deps
+  const runRate = useMemo(() => RAMP_MONTHS.map((month, i) => ({ month, 'Planned run-rate': +m.toDisplay(((planMonths[i] ?? 0) * kpi.costPerFteCr) / 12).toFixed(3), 'Actual run-rate': actualMonths[i] === null ? null : +m.toDisplay(((actualMonths[i] ?? 0) * kpi.costPerFteCr) / 12).toFixed(3), 'Budget line': +m.toDisplay(kpi.costBudget / 12).toFixed(3) })), [planMonths, actualMonths, kpi.costPerFteCr, kpi.costBudget, m.currency, m.rate]) // eslint-disable-line react-hooks/exhaustive-deps
   const fullYearAtTarget = +(settings.fteTarget * kpi.costPerFteCr).toFixed(1)
   const byGrade = GRADES.map((g) => {
     const list = employees.items.filter((e) => e.grade === g)
@@ -34,9 +35,9 @@ export default function CostTab({ d }: { d: ResourceData }) {
       <div className="grid grid-cols-5 gap-4">
         <MiniStat label="Annual People Cost" value={m.fmt(kpi.costActual)} sub={`of ${m.fmt(kpi.costBudget)} budget`} />
         <MiniStat label="Budget utilised" value={`${kpi.costBudget ? Math.round((kpi.costActual / kpi.costBudget) * 100) : 0}%`} sub="Run-rate vs annual budget" tone="text-brand-600" />
-        <MiniStat label="Cost per FTE" value={m.fmtLakh(perFteL)} sub="Annual, blended" />
-        <MiniStat label="Full-year cost at target" value={m.fmt(fullYearAtTarget)} sub={`${settings.fteTarget} FTEs at blended rate`} tone={fullYearAtTarget > kpi.costBudget ? 'text-red-600' : 'text-green-600'} />
-        <MiniStat label="Budget headroom" value={m.fmt(+(kpi.costBudget - kpi.costActual).toFixed(2))} sub="Available for Wave 2 hiring" tone="text-green-600" />
+        <MiniStat label="Cost per FTE" value={m.fmtLakh(perFteL)} sub={`Annual, blended · ${kpi.onboarded} onboarded`} />
+        <MiniStat label="Full-year cost at target" value={m.fmt(fullYearAtTarget)} sub={`${settings.fteTarget} Pune FTEs at blended rate`} tone={fullYearAtTarget > kpi.costBudget ? 'text-red-600' : 'text-green-600'} />
+        <MiniStat label="Budget headroom" value={m.fmt(+(kpi.costBudget - kpi.costActual).toFixed(2))} sub="Available for Wave 3–4 hiring" tone="text-green-600" />
       </div>
 
       <div className="grid grid-cols-[1.4fr_1fr] gap-4">
@@ -69,17 +70,17 @@ export default function CostTab({ d }: { d: ResourceData }) {
       </div>
 
       <div className="grid grid-cols-[1.4fr_1fr] gap-4">
-        <Card title={`Salary Run-rate Forecast (${m.unitLabel} / month)`} subtitle="Monthly run-rate = headcount × blended cost per FTE ÷ 12" headerRight={<CardLegend items={[{ label: 'Planned run-rate', color: '#5B9BF0', dashed: true }, { label: 'Actual run-rate', color: CHART_COLORS.blue, dashed: true }, { label: 'Budget line', color: CHART_COLORS.red, dashed: true }]} />}>
+        <Card title={`Salary Run-rate Forecast (${m.unitLabel} / month)`} subtitle={`Year 1 month-wise: run-rate = headcount × blended cost per FTE ÷ 12 · actual to ${reportingMonth}`} headerRight={<CardLegend items={[{ label: 'Planned run-rate', color: '#5B9BF0', dashed: true }, { label: 'Actual run-rate', color: CHART_COLORS.blue, dashed: true }, { label: 'Budget line', color: CHART_COLORS.red, dashed: true }]} />}>
           <div className="h-[220px]">
             <ResponsiveContainer>
               <LineChart data={runRate} margin={{ top: 8, right: 10, left: -14, bottom: 0 }}>
                 <CartesianGrid vertical={false} />
-                <XAxis dataKey="month" tickLine={false} axisLine={false} />
+                <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 10.5 }} interval={0} />
                 <YAxis tickLine={false} axisLine={false} tickFormatter={(v) => v.toFixed(2)} />
                 <Tooltip {...tooltipStyle} formatter={(v) => [fmtDisp(v as number, 3)]} />
                 <Line dataKey="Budget line" stroke={CHART_COLORS.red} strokeWidth={1.5} strokeDasharray="5 4" dot={false} />
                 <Line dataKey="Planned run-rate" stroke="#5B9BF0" strokeWidth={2} dot={{ r: 3, fill: '#5B9BF0', strokeWidth: 0 }} />
-                <Line dataKey="Actual run-rate" stroke={CHART_COLORS.blue} strokeWidth={2} dot={{ r: 3, fill: CHART_COLORS.blue, strokeWidth: 0 }} />
+                <Line dataKey="Actual run-rate" stroke={CHART_COLORS.blue} strokeWidth={2} dot={{ r: 3, fill: CHART_COLORS.blue, strokeWidth: 0 }} connectNulls={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>

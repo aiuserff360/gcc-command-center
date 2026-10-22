@@ -9,7 +9,9 @@ import { useCollection, useStore } from '../store/useStore'
 import { useMoney } from '../data/money'
 import { GccSetup } from '../components/setup/GccSetup'
 import { seedMilestones, seedRaid, seedProgramKpis, seedWorkstreamSummaries, isOpen, type Milestone, type RaidItem, type ProgramKpis, type WorkstreamSummary } from '../data/shared'
-import { fmtDate, CHART_COLORS, MONTHS, programDef } from '../data/common'
+import { fmtDate, CHART_COLORS, TODAY, programDef } from '../data/common'
+import { seedSubUnits, programRamp, RAMP_MONTHS, type SubUnit } from '../data/businessUnits'
+import { seedHeadcountActuals, type HeadcountActual } from '../data/reports'
 
 const WS_ICON: Record<string, React.ReactNode> = {
   'Talent & Hiring': <Users size={15} />, 'Technology & Infrastructure': <Cpu size={15} />, 'Legal & Compliance': <Scale size={15} />,
@@ -20,8 +22,7 @@ const WS_SHORT: Record<string, string> = {
   'Transition Readiness': 'Transition', 'Operations Setup': 'Operations', 'Finance & Procurement': 'Finance',
 }
 const OWNER_ROLE: Record<string, string> = { 'R. Mehta': 'IT Lead', 'S. Iyer': 'Talent Lead', 'A. Sharma': 'Transition Lead', 'V. Reddy': 'Procurement', 'P. Rao': 'Legal Lead', 'K. Nair': 'Facilities Lead', 'M. Khan': 'Operations Lead', 'D. Singh': 'Operations' }
-
-const rampFor = (scale: number) => MONTHS.map((m, i) => ({ month: m, Plan: Math.round([80, 110, 150, 180, 210, 250, 290, 320, 350, 390, 420, 450][i] * scale), Actual: Math.round([60, 95, 135, 170, 200, 240, 280, 330, 370, 400, 430, 450][i] * scale) }))
+const signedPct = (v: number) => `${v > 0 ? '+' : ''}${v}%`
 
 export default function Dashboard() {
   const mode = useStore((s) => s.mode)
@@ -38,6 +39,8 @@ function DashboardOutput() {
   const { items: milestones } = useCollection<Milestone>('milestones', seedMilestones)
   const { items: raid } = useCollection<RaidItem>('raid', seedRaid)
   const { items: wss } = useCollection<WorkstreamSummary>('workstreamSummaries', seedWorkstreamSummaries)
+  const { items: subUnits } = useCollection<SubUnit>('subUnits', seedSubUnits)
+  const { items: actuals } = useCollection<HeadcountActual>('headcountActuals', seedHeadcountActuals)
   const [edit, setEdit] = useState(false)
 
   const msCounts = useMemo(() => {
@@ -45,13 +48,19 @@ function DashboardOutput() {
     return { onTrack: c(['On Track', 'Completed']), atRisk: c(['At Risk']), delayed: c(['Delayed']), notStarted: c(['Not Started', 'Pending']), total: milestones.length }
   }, [milestones])
   const upcoming = useMemo(() => {
-    const open = milestones.filter((m) => m.status !== 'Completed' && m.dueDate >= '2026-10-20').sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+    const open = milestones.filter((m) => m.status !== 'Completed' && m.dueDate >= TODAY).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
     return [...open.filter((m) => m.critical), ...open.filter((m) => !m.critical)].slice(0, 5)
   }, [milestones])
   // Pinned (keyRisk) items get a ranking boost so the curated list shows by default,
   // but a newly logged high-impact item still surfaces on the Dashboard.
   const keyRisks = useMemo(() => raid.filter(isOpen).map((r) => ({ r, s: r.impactScore + (r.keyRisk ? 1.5 : 0) })).sort((a, b) => b.s - a.s).slice(0, 5).map((x) => x.r), [raid])
   const openCritical = useMemo(() => raid.filter((r) => isOpen(r) && r.level === 'Critical').length, [raid])
+  // Year-1 month-wise ramp: plan = sum of the capability ramps (GCC Setup → Organisation structure), actual = seeded series up to the reporting month.
+  const ramp = useMemo(() => {
+    const plan = programRamp(subUnits)
+    return RAMP_MONTHS.map((month, i) => ({ month, Plan: plan[i], Actual: actuals.find((a) => a.month === month)?.actual }))
+  }, [subUnits, actuals])
+  const rampTarget = ramp[ramp.length - 1]?.Plan ?? 0
   const headroom = +(k.approvedBudgetCr - k.forecastAtCompletionCr).toFixed(1)
   const budgetData = [
     { name: 'Approved Budget', value: +m.num(k.approvedBudgetCr), fill: CHART_COLORS.blue },
@@ -61,6 +70,7 @@ function DashboardOutput() {
   ]
   const benefitPct = Math.round((k.projectedBenefitsCr / k.targetBenefitsCr) * 100)
   const timelinePct = k.programCompletion
+  const talentUp = k.talentDeltaVsPlan >= 0
 
   return (
     <div className="space-y-4">
@@ -83,7 +93,7 @@ function DashboardOutput() {
       <div className="grid grid-cols-5 gap-4">
         <KpiTile tone="green" icon={<CheckCircle2 size={22} />} value={`${k.programCompletion}%`} label="Program Completion" trend="up" sub={<span className="text-green-600">+{k.programCompletionDelta}% vs last month</span>} />
         <KpiTile tone="blue" icon={<BarChart3 size={22} />} value={`${k.milestoneAdherence}%`} label="Milestone Adherence" trend="up" sub={<span className="text-green-600">+{k.milestoneAdherenceDelta}% vs last month</span>} />
-        <KpiTile tone="navy" icon={<Users size={22} />} value={<>{k.talentOnboarded} <span className="text-[16px] text-ink-500 font-semibold">/ {k.talentTarget}</span></>} label="Talent Onboarded" trend="up" sub={<span className="text-green-600">+{k.talentDeltaVsPlan}% vs plan</span>} />
+        <KpiTile tone="navy" icon={<Users size={22} />} value={<>{k.talentOnboarded} <span className="text-[16px] text-ink-500 font-semibold">/ {k.talentTarget}</span></>} label="Talent Onboarded" trend={talentUp ? 'up' : 'down'} sub={<span className={talentUp ? 'text-green-600' : 'text-amber-600'}>{signedPct(k.talentDeltaVsPlan)} vs plan to date</span>} />
         <KpiTile tone="navy" icon={<Database size={22} className="text-red-500" />} value={m.fmt(k.actualSpendCr)} label="Actual Spend" sub={<>of <b>{m.fmt(k.approvedBudgetCr)}</b> budget</>} />
         <KpiTile tone="red" icon={<AlertTriangle size={22} />} value={openCritical} label="Open Critical Issues" trend="down" sub={<span className="text-red-600">{k.openCriticalIssuesDelta} vs last month</span>} />
       </div>
@@ -151,9 +161,9 @@ function DashboardOutput() {
         <Card title={<span className="inline-flex items-center gap-1.5"><span className="text-violet-500">✦</span> AI Insights</span>} action={<ViewAll onClick={() => nav('/risks')} />}>
           <div className="space-y-3">
             {[
-              { icon: <AlertCircle size={18} className="text-amber-500" />, text: 'Delay in IT provisioning may impact transition go-live by 3 weeks.', link: 'View impact analysis', to: '/risks' },
-              { icon: <Info size={18} className="text-brand-500" />, text: 'Hiring in Wave 2 is 20% behind plan. Consider accelerating lateral hiring.', link: 'View recommendation', to: '/resources' },
-              { icon: <TrendingUp size={18} className="text-green-600" />, text: 'Program remains on track to achieve 15% cost savings as per business case.', link: 'View value forecast', to: '/value' },
+              { icon: <AlertCircle size={18} className="text-amber-500" />, text: 'Network provisioning delay in Pune may push the Wave 3 go/no-go (04 Mar) by 3 weeks.', link: 'View impact analysis', to: '/risks' },
+              { icon: <Info size={18} className="text-brand-500" />, text: `Pune onboarding is ${k.talentOnboarded} vs ${ramp[3]?.Plan ?? 285} planned at ramp month 4; Enterprise Applications (SAP) and Data Engineers are the gap.`, link: 'View recommendation', to: '/resources' },
+              { icon: <TrendingUp size={18} className="text-green-600" />, text: 'Program remains on track to achieve 15% IT run-rate savings as per the business case.', link: 'View value forecast', to: '/value' },
             ].map((i) => (
               <div key={i.text} className="flex gap-2.5">
                 <span className="w-8 h-8 rounded-full bg-surface flex items-center justify-center shrink-0">{i.icon}</span>
@@ -166,12 +176,12 @@ function DashboardOutput() {
 
       {/* Row 4 */}
       <div className="grid grid-cols-[1.3fr_1fr] gap-4">
-        <Card title="Resource Ramp-up" action={<ViewAll label="View Details" onClick={() => nav('/resources')} />} headerRight={<Legend items={[{ label: 'Plan', color: CHART_COLORS.blueFaint }, { label: 'Actual', color: CHART_COLORS.blue }]} />}>
+        <Card title="Resource Ramp-up" subtitle={`Year 1 month-wise plan (${RAMP_MONTHS[0]} – ${RAMP_MONTHS[RAMP_MONTHS.length - 1]}, target ${rampTarget}) vs actual Pune headcount`} action={<ViewAll label="View Details" onClick={() => nav('/resources')} />} headerRight={<Legend items={[{ label: 'Plan', color: CHART_COLORS.blueFaint }, { label: 'Actual', color: CHART_COLORS.blue }]} />}>
           <div className="h-[150px]">
             <ResponsiveContainer>
-              <BarChart data={rampFor(programDef(program).scale)} margin={{ top: 4, right: 4, left: -22, bottom: 0 }} barGap={1} barCategoryGap="30%">
+              <BarChart data={ramp} margin={{ top: 4, right: 4, left: -22, bottom: 0 }} barGap={1} barCategoryGap="30%">
                 <CartesianGrid vertical={false} />
-                <XAxis dataKey="month" tickLine={false} axisLine={false} />
+                <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 10.5 }} />
                 <YAxis tickLine={false} axisLine={false} />
                 <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} />
                 <Bar dataKey="Plan" fill={CHART_COLORS.blueFaint} radius={[3, 3, 0, 0]} isAnimationActive={false} />

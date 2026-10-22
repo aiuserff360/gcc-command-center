@@ -1,25 +1,31 @@
-import { MoreVertical } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import { useStore } from '../store/useStore'
+import { PageHeader } from '../components/layout/AppShell'
 import { InputLayout } from '../components/layout/InputLayout'
-import { BusinessUnitsOutput, BusinessUnitGrid } from '../components/footprint/BusinessUnits'
+import { TargetFootprintOutput } from '../components/footprint/FootprintOutput'
+import { OrgStructureEditor } from '../components/footprint/OrgStructure'
+import { HeadcountRampEditor } from '../components/footprint/HeadcountRamp'
 
-/** Target Footprint – the business units the GCC will host and their FTE ramp-up. */
+export const RAMP_HINT = 'Year 1 is tracked month by month (cumulative Pune headcount from Nov 2026); from year 2 the plan carries annual exit targets. Business-unit and program totals are derived from the capabilities.'
+
+/** Target Footprint – the IT domains and capabilities the GCC will host in Pune and their headcount ramp-up. */
 export default function TargetFootprint() {
   const mode = useStore((s) => s.mode)
   const setMode = useStore((s) => s.setMode)
+  const [params] = useSearchParams() // deep link: /strategy?bu=<business unit>
   if (mode === 'input') {
-    return <InputLayout title="Target Footprint" subtitle="Define the business units of the GCC and the planned headcount per year." tabs={[{ name: 'Business units & FTE plan', content: <BusinessUnitGrid /> }]} />
+    return (
+      <InputLayout title="Target Footprint" subtitle="Configure the organisation structure of the ENGIE IT GCC – business units (IT domains), their capabilities and the headcount ramp-up to Pune."
+        tabs={[
+          { name: 'Organisation structure', content: <OrgStructureEditor />, hint: 'Business units are the IT domains; each capability carries the GBU served, geography, country / entity, current delivery location, headcount, role / skill, transition type and wave from the footprint slide.' },
+          { name: 'Headcount ramp-up', content: <HeadcountRampEditor />, hint: RAMP_HINT },
+        ]} />
+    )
   }
   return (
     <div>
-      <div className="flex items-start justify-between gap-4 mb-4">
-        <div>
-          <h2 className="text-[24px] font-bold tracking-tight text-navy-900 leading-tight">Target Footprint</h2>
-          <p className="text-[13px] text-ink-500 mt-0.5">Business units, transition waves and FTE ramp-up the GCC will deliver.</p>
-        </div>
-        <button className="text-ink-500 hover:text-ink-900 cursor-pointer"><MoreVertical size={18} /></button>
-      </div>
-      <BusinessUnitsOutput onEdit={() => setMode('input')} />
+      <PageHeader title="IT GCC Target Footprint & Headcount Ramp-Up" subtitle="Capability-led  |  Business-aligned  |  Global in Scope  |  Phased Transition to Pune" dateRange="01 Nov 2026 – 30 Apr 2027" onEdit={() => setMode('input')} editLabel="Edit in Input view" />
+      <TargetFootprintOutput initialUnit={params.get('bu') ?? undefined} />
     </div>
   )
 }

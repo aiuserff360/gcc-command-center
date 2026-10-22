@@ -213,7 +213,7 @@ export function TeamView({ ws }: { ws?: Workstream }) {
   const scope = team.items.filter((m) => (ws ? m.workstream === ws : true))
   const locs = withAll(scope.map((m) => m.location).filter((v, i, a) => a.indexOf(v) === i))
   const rows = scope.filter((m) => (fWs === ALL || m.workstream === fWs) && (fType === ALL || m.type === fType) && (fLoc === ALL || m.location === fLoc) && matches(q, m.name, m.role))
-  const newItem = (): TeamMember => ({ id: uid('tm'), name: '', role: '', workstream: ws ?? (names[0] as Workstream), location: 'Bengaluru', allocation: 100, startDate: TODAY, type: 'Internal', functionArea: '', responsibilities: '' })
+  const newItem = (): TeamMember => ({ id: uid('tm'), name: '', role: '', workstream: ws ?? (names[0] as Workstream), location: 'Pune', allocation: 100, startDate: TODAY, type: 'Internal', functionArea: '', responsibilities: '' })
   return (
     <Card title={ws ? 'Team' : 'Team Roster'} subtitle={`${scope.length} members`} action={<button className="btn-primary" onClick={() => setEdit({ item: newItem(), isNew: true })}><Plus size={14} /> Add team member</button>}>
       <Toolbar>

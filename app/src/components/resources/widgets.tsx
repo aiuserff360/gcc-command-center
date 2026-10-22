@@ -1,8 +1,12 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import clsx from 'clsx'
+import { ChevronRight } from 'lucide-react'
+import { ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList, ReferenceLine } from 'recharts'
 import { Legend, type Column } from '../ui'
+import { tooltipStyle } from '../charts'
 import { CHART_COLORS } from '../../data/common'
-import { FUNNEL_COLORS, type FunnelStage, type BuHeadcount } from '../../data/resources'
+import { FUNNEL_COLORS, HC_VIEWS, type FunnelStage, type BuHeadcount, type CapHeadcount, type HcView } from '../../data/resources'
+import type { HcPoint } from './useResourceData'
 import type { Money } from '../../data/money'
 
 /* ---------- ₹ Lakh helpers (money.ts only exposes a string formatter for Lakh fields) ---------- */
@@ -30,6 +34,12 @@ export function RoleLink({ label, onClick, className }: { label: string; onClick
 export const candidateBadge: Record<string, string> = {
   'In process': 'bg-blue-50 text-brand-600', Offer: 'bg-violet-50 text-violet-700', Rejected: 'bg-red-50 text-red-700', Withdrawn: 'bg-slate-100 text-slate-600', Joined: 'bg-green-50 text-green-700',
   'In Interview': 'bg-blue-50 text-brand-600', 'On Hold': 'bg-slate-100 text-slate-600',
+}
+
+/** "Nov 26" → month on the first line, year on the second (12 ramp months in a narrow chart). */
+function MonthTick({ x, y, payload }: { x?: number; y?: number; payload?: { value: string } }) {
+  const [mo, yr] = String(payload?.value ?? '').split(' ')
+  return <text x={x} y={y} textAnchor="middle" fill="#6B7280" fontSize={10}><tspan x={x} dy={10}>{mo}</tspan><tspan x={x} dy={11} fill="#9CA3AF">{yr ? `'${yr}` : ''}</tspan></text>
 }
 
 /** Two-line X-axis tick for long category names. */
@@ -66,26 +76,92 @@ export function Funnel({ stages, width = 130, height = 160 }: { stages: FunnelSt
 
 export const HC_LEGEND = [{ label: 'Onboarded', color: CHART_COLORS.blue }, { label: 'In Hiring', color: CHART_COLORS.blueLight }, { label: 'Open', color: CHART_COLORS.blueFaint }]
 
-/** Horizontal stacked bars: Onboarded | In Hiring | Open with total at right. */
-export function StackedHeadcountBars({ rows, labelWidth = 150, onRowClick, format = (n: number) => String(n) }: { rows: BuHeadcount[]; labelWidth?: number; onRowClick?: (r: BuHeadcount) => void; format?: (n: number) => string }) {
+/**
+ * Horizontal stacked bars: Onboarded | In Hiring | Open with the total at right. Business-unit rows expand to their
+ * capabilities (same scale) so the domain → capability level is visible wherever headcount is shown.
+ */
+export function StackedHeadcountBars({ rows, labelWidth = 150, onRowClick, expandable = true, initiallyOpen = [], dense }: {
+  rows: BuHeadcount[]; labelWidth?: number; onRowClick?: (r: BuHeadcount) => void; expandable?: boolean; initiallyOpen?: string[]; dense?: boolean
+}) {
+  const [open, setOpen] = useState<Set<string>>(() => new Set(initiallyOpen))
   const max = Math.max(...rows.map((r) => r.onboarded + r.inHiring + r.open), 1)
+  const toggle = (id: string) => setOpen((o) => { const n = new Set(o); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const seg = (v: number, color: string, text: string, key: string) => {
     const pct = (v / max) * 100
     return <div key={key} className="h-full flex items-center justify-center text-[11px] font-medium overflow-hidden" style={{ width: `${pct}%`, background: color, color: text }}>{pct >= 7 ? v : ''}</div>
   }
+  const bar = (r: { onboarded: number; inHiring: number; open: number }, h: string) => (
+    <div className={clsx('flex-1 flex rounded-sm overflow-hidden', h)}>
+      {seg(r.onboarded, CHART_COLORS.blue, '#fff', 'a')}
+      {seg(r.inHiring, CHART_COLORS.blueLight, '#fff', 'b')}
+      {seg(r.open, '#D6E4F7', '#1F2937', 'c')}
+    </div>
+  )
   return (
-    <div className="space-y-[9px]">
-      {rows.map((r) => (
-        <div key={r.id} className={`flex items-center gap-2 text-[12px] ${onRowClick ? 'cursor-pointer hover:bg-surface rounded-md' : ''}`} onClick={() => onRowClick?.(r)}>
-          <span className="text-ink-700 truncate shrink-0 text-[11.5px]" style={{ width: labelWidth }} title={r.businessUnit}>{r.businessUnit}</span>
-          <div className="flex-1 h-[17px] flex rounded-sm overflow-hidden">
-            {seg(r.onboarded, CHART_COLORS.blue, '#fff', 'a')}
-            {seg(r.inHiring, CHART_COLORS.blueLight, '#fff', 'b')}
-            {seg(r.open, '#D6E4F7', '#1F2937', 'c')}
+    <div className={dense ? 'space-y-[6px]' : 'space-y-[8px]'}>
+      {rows.map((r) => {
+        const isOpen = open.has(r.id)
+        const canExpand = expandable && r.capabilities.length > 0
+        return (
+          <div key={r.id}>
+            <div className={clsx('flex items-center gap-2 text-[12px] rounded-md', (canExpand || onRowClick) && 'cursor-pointer hover:bg-surface')} onClick={() => { if (canExpand) toggle(r.id); onRowClick?.(r) }} title={canExpand ? `${isOpen ? 'Hide' : 'Show'} capabilities` : r.businessUnit}>
+              <span className="flex items-center gap-1 text-ink-700 shrink-0 text-[11.5px]" style={{ width: labelWidth }}>
+                {canExpand ? <ChevronRight size={12} className={clsx('text-ink-400 shrink-0 transition-transform', isOpen && 'rotate-90')} /> : <span className="w-3 shrink-0" />}
+                <span className="truncate" title={r.businessUnit}>{r.businessUnit}</span>
+              </span>
+              {bar(r, 'h-[17px]')}
+              <span className="w-9 text-right font-semibold text-ink-900 text-[12.5px]">{r.onboarded + r.inHiring + r.open}</span>
+            </div>
+            {isOpen && r.capabilities.map((c: CapHeadcount) => (
+              <div key={c.id} className="flex items-center gap-2 text-[11.5px] mt-[4px]" title={`${c.capability}: ${c.onboarded} onboarded · ${c.inHiring} in hiring · ${c.open} open · plan ${c.plan} · year-1 target ${c.target}`}>
+                <span className="text-ink-500 truncate shrink-0 pl-5" style={{ width: labelWidth }}>{c.capability}</span>
+                {bar(c, 'h-[12px]')}
+                <span className="w-9 text-right text-ink-700">{c.onboarded + c.inHiring + c.open}</span>
+              </div>
+            ))}
           </div>
-          <span className="w-9 text-right font-semibold text-ink-900 text-[12.5px]">{format(r.onboarded + r.inHiring + r.open)}</span>
-        </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Segmented "Year 1 month-wise | Years 2–5 annual" selector used by every headcount view. */
+export function HcViewToggle({ value, onChange, size = 'sm' }: { value: HcView; onChange: (v: HcView) => void; size?: 'sm' | 'md' }) {
+  return (
+    <div className="inline-flex rounded-md border border-line bg-white p-0.5 shrink-0" role="tablist" aria-label="Year">
+      {HC_VIEWS.map((v) => (
+        <button key={v} role="tab" aria-selected={v === value} onClick={() => onChange(v)}
+          className={clsx('rounded px-2 font-medium whitespace-nowrap cursor-pointer transition-colors', size === 'sm' ? 'py-0.5 text-[11px]' : 'py-1 text-[12px]', v === value ? 'bg-brand-600 text-white' : 'text-ink-700 hover:bg-surface')}>{v}</button>
       ))}
+    </div>
+  )
+}
+
+/**
+ * Headcount plan vs actual: year 1 month-wise (plan from the ramp, actual up to the reporting month, plan only after it)
+ * or years 2–5 as annual bars (plan only). The target line is the year-1 Pune target.
+ */
+export function HeadcountChart({ data, view, target, height = 190, reportingMonth }: { data: HcPoint[]; view: HcView; target?: number; height?: number; reportingMonth?: string }) {
+  const top = Math.max(target ?? 0, ...data.flatMap((d) => [d.Planned, d.Actual ?? 0]))
+  const step = top > 600 ? 200 : 100
+  const max = Math.max(step, Math.ceil((top * 1.05) / step) * step)
+  const ticks = Array.from({ length: max / step + 1 }, (_, i) => i * step)
+  const annual = view !== 'Year 1 month-wise'
+  return (
+    <div style={{ height }}>
+      <ResponsiveContainer>
+        <ComposedChart data={data} margin={{ top: 14, right: 8, left: -18, bottom: 0 }} barGap={2} barCategoryGap={annual ? '42%' : '26%'}>
+          <CartesianGrid vertical={false} />
+          <XAxis dataKey="label" tickLine={false} axisLine={false} interval={0} height={annual ? 22 : 30} tick={annual ? { fontSize: 11.5 } : <MonthTick />} />
+          <YAxis tickLine={false} axisLine={false} domain={[0, max]} ticks={ticks} />
+          <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v, n) => [v === null || v === undefined ? '—' : v, String(n)]} labelFormatter={(l) => (annual ? `${l} (annual exit headcount)` : `${l}${l === reportingMonth ? ' · reporting month' : ''}`)} />
+          {reportingMonth && !annual && <ReferenceLine x={reportingMonth} stroke="#CBD5E1" strokeDasharray="4 3" />}
+          {target !== undefined && <ReferenceLine y={target} stroke={CHART_COLORS.green} strokeDasharray="5 4" />}
+          <Bar dataKey="Planned" fill="#9CC3F7" radius={[3, 3, 0, 0]} isAnimationActive={false}>{annual && <LabelList dataKey="Planned" position="top" style={{ fontSize: 11, fill: '#111827', fontWeight: 600 }} />}</Bar>
+          <Bar dataKey="Actual" fill={CHART_COLORS.blue} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+        </ComposedChart>
+      </ResponsiveContainer>
     </div>
   )
 }

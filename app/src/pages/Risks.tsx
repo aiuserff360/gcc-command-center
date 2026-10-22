@@ -181,7 +181,7 @@ export default function Risks() {
       {tab === 'Issue Register' && (
         <>
           <div className="grid grid-cols-4 gap-4">
-            {[['Open Issues', issues.length, 'text-ink-900'], ['High severity', byLevel(issues, 'High'), 'text-red-600'], ['Open > 30 days', issues.filter((r) => daysOpen(r) > 30).length, 'text-red-600'], ['Past due date', issues.filter((r) => r.dueDate < '2026-10-20').length, 'text-amber-600']].map(([l, v, c]) => (
+            {[['Open Issues', issues.length, 'text-ink-900'], ['High severity', byLevel(issues, 'High'), 'text-red-600'], ['Open > 30 days', issues.filter((r) => daysOpen(r) > 30).length, 'text-red-600'], ['Past due date', issues.filter((r) => r.dueDate < '2027-02-22').length, 'text-amber-600']].map(([l, v, c]) => (
               <div key={l as string} className="card px-4 py-3"><div className="text-[12px] text-ink-500">{l as string}</div><div className={`text-[22px] font-bold ${c}`}>{v as number}</div></div>
             ))}
           </div>

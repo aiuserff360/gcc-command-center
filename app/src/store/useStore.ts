@@ -57,7 +57,7 @@ export const useStore = create<StoreState>()(
       collections: {},
       archive: {},
       phase: 'Build',
-      program: 'GCC Program - India',
+      program: 'ENGIE IT GCC - Pune',
       user: null,
       currency: 'INR',
       eurRate: 92,
@@ -93,7 +93,7 @@ export const useStore = create<StoreState>()(
         set((s) => ({ collections: { ...s.collections, [name]: (s.collections[name] ?? []).filter((x) => x.id !== id) } })),
       resetAll: () => set({ collections: {}, archive: {} }),
     }),
-    { name: 'gcc-command-center-v2' },
+    { name: 'gcc-command-center-v3' },
   ),
 )
 

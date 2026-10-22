@@ -11,10 +11,11 @@ import { InputLayout } from '../layout/InputLayout'
 import { uid } from '../../store/useStore'
 import { OWNERS, WORKSTREAMS, TODAY } from '../../data/common'
 import type { Milestone } from '../../data/shared'
+import { GBUS, GEOGRAPHIES, DELIVERY_LOCATIONS, TRANSITION_TYPES, subUnitsOf, type SubUnit } from '../../data/businessUnits'
 import {
-  WAVE_STATUSES, WAVE_COLORS, KT_STATUSES, KT_SIGNOFF, DIMENSIONS, DIM_KEY, DIM_SHORT, READINESS_STATUSES, GAP_STATUSES, PROJECT_STATUSES,
-  assessmentScore, readinessColor, milestoneWave, ktStats, ktStatusFor, waveLabel, waveScope, waveProgress, projectKt, projectReadiness, blankAssessment, avgScore, dimAverage, unitKt,
-  type Wave, type KtItem, type ReadinessAssessment, type ReadinessGap, type ChecklistItem, type TransitionSettings, type TransitionProject,
+  WAVE_STATUSES, WAVE_COLORS, KT_STATUSES, KT_SIGNOFF, DIMENSIONS, DIM_KEY, DIM_SHORT, READINESS_STATUSES, GAP_STATUSES, PROJECT_STATUSES, ACCOUNT_TYPES, ACCOUNT_STATUSES,
+  assessmentScore, readinessColor, milestoneWave, ktStats, ktStatusFor, ktIsCompleted, waveLabel, waveScope, waveCapabilities, waveProgress, projectKt, projectReadiness, projectAccounts, unitAccounts, accountStats, isOnboarded, blankAssessment, avgScore, dimAverage, unitKt,
+  type Wave, type KtItem, type ReadinessAssessment, type ReadinessGap, type ChecklistItem, type TransitionSettings, type TransitionProject, type TransitionAccount, type AccountStatus,
 } from '../../data/transition'
 import { WaveDot, StatusBadge } from './Overview'
 import type { Tx } from './types'
@@ -46,25 +47,34 @@ function UnitPicker({ tx, counts }: { tx: Tx; counts: (unit: string) => string }
 /* Projects by business unit                                           */
 /* ================================================================== */
 function ProjectsTab({ tx }: { tx: Tx }) {
-  const { projects, waves, kt, assessments, unit, unitNames, open, openProject } = tx
+  const { projects, subs, units, accounts, waves, kt, assessments, unit, unitNames, open, openProject } = tx
   const sorted = sortWaves(waves.items)
+  const u = units.find((b) => b.name === unit)
+  const caps = u ? subUnitsOf(subs.items, u.id) : []
   const rows = useMemo(() => projects.items.filter((p) => p.businessUnit === unit).sort((a, b) => a.wave - b.wave || a.startDate.localeCompare(b.startDate)), [projects.items, unit])
   const set = <K extends keyof TransitionProject>(p: TransitionProject, k: K, v: TransitionProject[K]) => projects.update({ ...p, [k]: v })
+  const setCap = (p: TransitionProject, id: string) => { const c = subs.items.find((s) => s.id === id); if (c) projects.update({ ...p, subUnitId: c.id, capability: c.name, gbu: c.gbuServed, deliveryLocation: c.deliveryLocation, transitionType: c.transitionType, region: c.geography }) }
   const setWave = (p: TransitionProject, wave: number) => {
     projects.update({ ...p, wave })
     kt.items.filter((k) => k.projectId === p.id).forEach((k) => kt.update({ ...k, wave }))
     assessments.items.filter((a) => a.projectId === p.id).forEach((a) => assessments.update({ ...a, wave }))
     tx.gaps.items.filter((g) => g.projectId === p.id).forEach((g) => tx.gaps.update({ ...g, wave }))
   }
-  const add = () => projects.add({ id: uid('proj'), name: '', businessUnit: unit, wave: sorted[0]?.number ?? 1, status: 'Not Started', progress: 0, startDate: TODAY, endDate: TODAY, goLiveDate: TODAY, globalOwner: '', indiaLead: OWNERS[0], region: '', scopeSummary: '', ftes: 0, description: '', notes: '' })
-  const remove = (p: TransitionProject) => { kt.items.filter((k) => k.projectId === p.id).forEach((k) => kt.remove(k.id)); assessments.items.filter((a) => a.projectId === p.id).forEach((a) => assessments.remove(a.id)); tx.gaps.items.filter((g) => g.projectId === p.id).forEach((g) => tx.gaps.remove(g.id)); projects.remove(p.id) }
+  const add = () => { const c = caps[0]; projects.add({ id: uid('proj'), name: '', businessUnit: unit, subUnitId: c?.id ?? '', capability: c?.name ?? '', gbu: c?.gbuServed ?? GBUS[0], deliveryLocation: c?.deliveryLocation ?? DELIVERY_LOCATIONS[0], transitionType: c?.transitionType ?? TRANSITION_TYPES[0], wave: c ? Number(c.wave.replace('Wave ', '')) || 1 : sorted[0]?.number ?? 1, status: 'Not Started', progress: 0, startDate: TODAY, endDate: TODAY, goLiveDate: TODAY, globalOwner: '', indiaLead: OWNERS[0], region: c?.geography ?? GEOGRAPHIES[0], scopeSummary: '', ftes: c?.targetHc ?? 0, description: '', notes: '' }) }
+  const remove = (p: TransitionProject) => { kt.items.filter((k) => k.projectId === p.id).forEach((k) => kt.remove(k.id)); assessments.items.filter((a) => a.projectId === p.id).forEach((a) => assessments.remove(a.id)); tx.gaps.items.filter((g) => g.projectId === p.id).forEach((g) => tx.gaps.remove(g.id)); accounts.items.filter((a) => a.projectId === p.id).forEach((a) => accounts.remove(a.id)); projects.remove(p.id) }
+  const capOptions = (p: TransitionProject): SubUnit[] => (caps.some((c) => c.id === p.subUnitId) ? caps : [...subs.items.filter((c) => c.id === p.subUnitId), ...caps])
   return (
-    <Card title="Transition projects by business unit" subtitle={`${projects.items.length} projects across ${unitNames.length} business units. Wave, status, progress, dates, owners and FTEs drive the unit cards, wave scope and timeline; KT % and readiness are derived from the KT items and assessments.`} action={<AddBtn label={`Add project to ${unit}`} onClick={add} />}>
+    <Card title="Transition projects by business unit" subtitle={`${projects.items.length} projects across ${unitNames.length} business units. Each project transitions one capability from its current delivery location for the GBU it serves, in the capability's wave (pick the capability and GBU, geography, delivery location, type and wave follow). Status, progress, dates, owners and FTEs drive the unit cards, wave scope and timeline; accounts, KT % and readiness are derived from the registers.`} action={<AddBtn label={`Add project to ${unit}`} onClick={add} />}>
       <UnitPicker tx={tx} counts={(n) => String(projects.items.filter((p) => p.businessUnit === n).length)} />
-      <Grid count={rows.length} minWidth={1700} headers={['Project', 'Wave', 'Status', { label: 'Progress %', right: true }, 'Start', 'End', 'Go-live', 'Global owner', 'India lead', { label: 'FTEs', right: true }, 'Region / client', 'Scope summary', { label: 'KT %', right: true }, { label: 'Readiness', right: true }, '']}>
+      <Grid count={rows.length} minWidth={2200} headers={['Project', 'Capability / service', 'GBU served', 'Geography', 'From (delivery location)', 'Type', 'Wave', 'Status', { label: 'Progress %', right: true }, 'Start', 'End', 'Go-live', 'Global owner', 'India lead', { label: 'FTEs', right: true }, 'Scope summary', { label: 'Accounts', right: true }, { label: 'KT %', right: true }, { label: 'Readiness', right: true }, '']} empty={caps.length ? 'No projects yet. Use "Add project" to create one.' : 'This business unit has no capabilities yet – add them in GCC Setup → Organisation structure first.'}>
         {rows.map((p) => (
           <Row key={p.id}>
-            <Td min={240}><TextCell value={p.name} placeholder="Project name" className="font-medium" onChange={(v) => set(p, 'name', v)} /></Td>
+            <Td min={230}><TextCell value={p.name} placeholder="Project name" className="font-medium" onChange={(v) => set(p, 'name', v)} /></Td>
+            <Td min={190}><select className={clsx(selectCls, 'cursor-pointer max-w-[230px]')} value={p.subUnitId} onChange={(e) => setCap(p, e.target.value)}>{!p.subUnitId && <option value="">– pick a capability –</option>}{capOptions(p).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Td>
+            <Td><SelectCell value={p.gbu} options={GBUS.includes(p.gbu as never) ? GBUS : [p.gbu, ...GBUS]} onChange={(v) => set(p, 'gbu', v)} /></Td>
+            <Td><SelectCell value={p.region} options={GEOGRAPHIES.includes(p.region as never) ? GEOGRAPHIES : [p.region, ...GEOGRAPHIES]} onChange={(v) => set(p, 'region', v)} /></Td>
+            <Td><SelectCell value={p.deliveryLocation} options={DELIVERY_LOCATIONS.includes(p.deliveryLocation as never) ? DELIVERY_LOCATIONS : [p.deliveryLocation, ...DELIVERY_LOCATIONS]} onChange={(v) => set(p, 'deliveryLocation', v)} /></Td>
+            <Td><SelectCell value={p.transitionType} options={TRANSITION_TYPES.includes(p.transitionType as never) ? TRANSITION_TYPES : [p.transitionType, ...TRANSITION_TYPES]} onChange={(v) => set(p, 'transitionType', v)} /></Td>
             <Td><span className="flex items-center gap-1"><WaveDot wave={sorted.find((w) => w.number === p.wave)} size={20} /><SelectCell value={String(p.wave)} options={waveNos(sorted)} onChange={(v) => setWave(p, Number(v))} className="w-[52px]" /></span></Td>
             <Td><SelectCell value={p.status} options={PROJECT_STATUSES} onChange={(v) => set(p, 'status', v)} /></Td>
             <Td><NumCell value={p.progress} min={0} max={100} className="w-[60px]" onChange={(v) => set(p, 'progress', v)} /></Td>
@@ -74,11 +84,54 @@ function ProjectsTab({ tx }: { tx: Tx }) {
             <Td min={110}><TextCell value={p.globalOwner} placeholder="Global owner" onChange={(v) => set(p, 'globalOwner', v)} /></Td>
             <Td><SelectCell value={p.indiaLead} options={OWNERS} onChange={(v) => set(p, 'indiaLead', v)} /></Td>
             <Td><NumCell value={p.ftes} min={0} className="w-[56px]" onChange={(v) => set(p, 'ftes', v)} /></Td>
-            <Td min={170}><TextCell value={p.region} placeholder="Region / client" onChange={(v) => set(p, 'region', v)} /></Td>
-            <Td min={260}><TextCell value={p.scopeSummary} placeholder="What moves to the GCC" onChange={(v) => set(p, 'scopeSummary', v)} /></Td>
+            <Td min={240}><TextCell value={p.scopeSummary} placeholder="What moves to the GCC" onChange={(v) => set(p, 'scopeSummary', v)} /></Td>
+            <Td className="text-right text-[12px] pr-2 whitespace-nowrap">{(() => { const a = projectAccounts(p, accounts.items); return <span><b className="text-teal-700">{a.onboarded}</b> / {a.total}</span> })()}</Td>
             <Td className="text-right text-[12px] pr-2">{projectKt(p, kt.items).pct}%</Td>
             <Td className="text-right pr-2">{(() => { const s = projectReadiness(p, assessments.items); return <span className="inline-flex items-center justify-center w-11 h-5 rounded-md text-[11px] font-semibold text-white" style={{ background: readinessColor(s) }}>{s}%</span> })()}</Td>
             <Td sticky><button className="link text-[11.5px] mr-1" onClick={() => openProject(p.id)}>Deep dive</button><EditBtn onClick={() => open({ kind: 'project', item: p })} /><RemoveBtn name={p.name || 'this project'} onClick={() => remove(p)} /></Td>
+          </Row>
+        ))}
+      </Grid>
+    </Card>
+  )
+}
+
+/* ================================================================== */
+/* Accounts onboarded                                                  */
+/* ================================================================== */
+function AccountsInputTab({ tx }: { tx: Tx }) {
+  const { accounts, projects, unit, open } = tx
+  const [q, setQ] = useState('')
+  const [fProject, setFProject] = useState('All')
+  const [fStatus, setFStatus] = useState('All')
+  const unitProjects = projects.items.filter((p) => p.businessUnit === unit)
+  const rows = useMemo(() => accounts.items.filter((a) => a.businessUnit === unit && (fProject === 'All' || a.projectId === fProject) && (fStatus === 'All' || a.status === fStatus) && (!q || `${a.name} ${a.gbu} ${a.type} ${a.owner} ${projectName(projects.items, a.projectId)}`.toLowerCase().includes(q.toLowerCase()))).sort((a, b) => projectName(projects.items, a.projectId).localeCompare(projectName(projects.items, b.projectId)) || ACCOUNT_STATUSES.indexOf(a.status) - ACCOUNT_STATUSES.indexOf(b.status) || a.plannedDate.localeCompare(b.plannedDate)), [accounts.items, projects.items, unit, q, fProject, fStatus])
+  const s = unitAccounts(unit, accounts.items)
+  const set = <K extends keyof TransitionAccount>(a: TransitionAccount, k: K, v: TransitionAccount[K]) => accounts.update({ ...a, [k]: v })
+  const setStatus = (a: TransitionAccount, status: AccountStatus) => accounts.update({ ...a, status, onboardedDate: isOnboarded({ status } as TransitionAccount) ? a.onboardedDate || TODAY : a.onboardedDate })
+  const setProject = (a: TransitionAccount, id: string) => { const p = projects.items.find((x) => x.id === id); if (p) accounts.update({ ...a, projectId: p.id, businessUnit: p.businessUnit }) }
+  const add = () => { const p = unitProjects.find((x) => x.id === fProject) ?? unitProjects[0]; if (!p) return; accounts.add({ id: uid('acc'), projectId: p.id, businessUnit: p.businessUnit, name: '', gbu: p.gbu, geography: p.region, type: 'Application', status: 'Planned', plannedDate: TODAY, onboardedDate: undefined, owner: p.globalOwner, notes: '' }) }
+  return (
+    <Card title="Accounts onboarded by project" subtitle={`${unit}: ${s.total} accounts · ${s.onboarded} onboarded (${s.live} live) · ${s.inKt} in KT · ${s.planned} planned · ${s.onHold} on hold. An account is a business, application, entity or platform onboarded to the GCC through a project; Onboarded and Live count towards the "Accounts Onboarded" tile.`} action={<AddBtn label="Add account" onClick={add} />}>
+      <UnitPicker tx={tx} counts={(n) => { const a = unitAccounts(n, accounts.items); return `${a.onboarded}/${a.total}` }} />
+      <GridToolbar q={q} onQ={setQ} placeholder="Search account, GBU, owner…" count={rows.length}>
+        <select className="input py-1.5 w-auto text-[12.5px]" value={unitProjects.some((p) => p.id === fProject) ? fProject : 'All'} onChange={(e) => setFProject(e.target.value)}><option value="All">All projects of {unit}</option>{unitProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+        <select className="input py-1.5 w-auto text-[12.5px]" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>{['All', ...ACCOUNT_STATUSES].map((st) => <option key={st}>{st}</option>)}</select>
+      </GridToolbar>
+      <Grid count={rows.length} minWidth={1500} headers={['Account', 'Project', 'Type', 'GBU served', 'Geography', 'Status', 'Planned', 'Onboarded', 'Owner', 'Notes', '']} empty={unitProjects.length ? 'No accounts yet. Use "Add account" to log one.' : 'Add a project to this business unit first (Projects tab).'}>
+        {rows.map((a) => (
+          <Row key={a.id}>
+            <Td min={260}><TextCell value={a.name} placeholder="e.g. ENGIE Networks – SAP FI/CO Europe" className="font-medium" onChange={(v) => set(a, 'name', v)} /></Td>
+            <Td min={200}><select className={clsx(selectCls, 'cursor-pointer max-w-[260px]')} value={a.projectId} onChange={(e) => setProject(a, e.target.value)}>{(unitProjects.some((p) => p.id === a.projectId) ? unitProjects : [...projects.items.filter((p) => p.id === a.projectId), ...unitProjects]).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Td>
+            <Td><SelectCell value={a.type} options={ACCOUNT_TYPES} onChange={(v) => set(a, 'type', v)} /></Td>
+            <Td><SelectCell value={a.gbu} options={GBUS.includes(a.gbu as never) ? GBUS : [a.gbu, ...GBUS]} onChange={(v) => set(a, 'gbu', v)} /></Td>
+            <Td><SelectCell value={a.geography} options={GEOGRAPHIES.includes(a.geography as never) ? GEOGRAPHIES : [a.geography, ...GEOGRAPHIES]} onChange={(v) => set(a, 'geography', v)} /></Td>
+            <Td><SelectCell value={a.status} options={ACCOUNT_STATUSES} onChange={(v) => setStatus(a, v)} /></Td>
+            <Td><DateCell value={a.plannedDate} onChange={(v) => set(a, 'plannedDate', v)} /></Td>
+            <Td><DateCell value={a.onboardedDate ?? ''} onChange={(v) => set(a, 'onboardedDate', v || undefined)} /></Td>
+            <Td min={120}><TextCell value={a.owner} placeholder="Owner" onChange={(v) => set(a, 'owner', v)} /></Td>
+            <Td min={220}><TextCell value={a.notes} placeholder="Notes" onChange={(v) => set(a, 'notes', v)} /></Td>
+            <Td sticky><EditBtn onClick={() => open({ kind: 'account', item: a })} /><RemoveBtn name={a.name || 'this account'} onClick={() => accounts.remove(a.id)} /></Td>
           </Row>
         ))}
       </Grid>
@@ -95,13 +148,14 @@ function WavesTab({ tx }: { tx: Tx }) {
   const set = <K extends keyof Wave>(w: Wave, k: K, v: Wave[K]) => waves.update({ ...w, [k]: v })
   const add = () => { const n = Math.max(0, ...sorted.map((w) => w.number)) + 1; const last = sorted[sorted.length - 1]; waves.add({ id: uid('wave'), number: n, name: '', startDate: last?.endDate ?? TODAY, endDate: last?.endDate ?? TODAY, status: 'Not Started', color: WAVE_COLORS[(n - 1) % WAVE_COLORS.length], lead: OWNERS[0] }) }
   return (
-    <Card title="Transition waves" subtitle="Each wave moves a set of business-unit projects to the GCC. Scope (business units) and progress are derived from the projects assigned to the wave in the Projects tab; dates, status and lead are entered here." action={<AddBtn label="Add wave" onClick={add} />}>
-      <Grid count={sorted.length} minWidth={1100} headers={['Wave', 'Name', 'Business units in scope (derived)', 'Start', 'End', 'Status', { label: 'Progress', right: true }, 'Wave lead', 'Colour', { label: 'Projects', right: true }, { label: 'KT items', right: true }, '']}>
+    <Card title="Transition waves" subtitle="The four waves of the ENGIE IT GCC footprint (Nov 2026 – Apr 2027). Scope (business units, capabilities) and progress are derived from the projects assigned to the wave in the Projects tab; dates, status and lead are entered here." action={<AddBtn label="Add wave" onClick={add} />}>
+      <Grid count={sorted.length} minWidth={1300} headers={['Wave', 'Name', 'Business units in scope (derived)', 'Capabilities (derived)', 'Start', 'End', 'Status', { label: 'Progress', right: true }, 'Wave lead', 'Colour', { label: 'Projects', right: true }, { label: 'KT items', right: true }, '']}>
         {sorted.map((w) => (
           <Row key={w.id}>
             <Td><span className="flex items-center gap-1.5 pl-1"><WaveDot wave={w} size={22} /><NumCell value={w.number} min={1} className="w-[52px]" onChange={(v) => set(w, 'number', v)} /></span></Td>
             <Td min={200}><TextCell value={w.name} placeholder="Wave name" onChange={(v) => set(w, 'name', v)} className="font-medium" /></Td>
-            <Td min={220}><span className="block px-1.5 text-[12px] text-ink-700 leading-snug">{waveScope(w, projects.items) || <span className="text-ink-400">no projects yet</span>}</span></Td>
+            <Td min={180}><span className="block px-1.5 text-[12px] text-ink-700 leading-snug">{waveScope(w, projects.items) || <span className="text-ink-400">no projects yet</span>}</span></Td>
+            <Td min={240}><span className="block px-1.5 text-[11.5px] text-ink-700 leading-snug max-w-[320px]" title={waveCapabilities(w, projects.items).join(', ')}>{waveCapabilities(w, projects.items).join(', ') || <span className="text-ink-400">—</span>}</span></Td>
             <Td><DateCell value={w.startDate} onChange={(v) => set(w, 'startDate', v)} /></Td>
             <Td><DateCell value={w.endDate} onChange={(v) => set(w, 'endDate', v)} /></Td>
             <Td><SelectCell value={w.status} options={WAVE_STATUSES} onChange={(v) => set(w, 'status', v)} /></Td>
@@ -134,15 +188,16 @@ function KtTab({ tx }: { tx: Tx }) {
     kt.update({ ...k, sessionsPlanned: planned, sessionsDone: done, status, signOff: status === 'Completed' && k.signOff === 'Not Started' ? 'Pending' : k.signOff })
   }
   const set = <K extends keyof KtItem>(k: KtItem, key: K, v: KtItem[K]) => kt.update({ ...k, [key]: v })
+  const setSignOff = (k: KtItem, v: KtItem['signOff']) => kt.update({ ...k, signOff: v, signedOffOn: v === 'Signed' ? k.signedOffOn || TODAY : undefined })
   const setProject = (k: KtItem, id: string) => { const p = projects.items.find((x) => x.id === id); if (p) kt.update({ ...k, projectId: p.id, businessUnit: p.businessUnit, wave: p.wave }) }
   const add = () => { const p = unitProjects.find((x) => x.id === fProject) ?? unitProjects[0]; if (!p) return; kt.add({ id: uid('kt'), projectId: p.id, businessUnit: p.businessUnit, process: '', wave: p.wave, globalOwner: p.globalOwner, indiaOwner: p.indiaLead, sessionsPlanned: 6, sessionsDone: 0, status: 'Not Started', signOff: 'Not Started', targetDate: TODAY }) }
   return (
-    <Card title="Knowledge transfer items by project" subtitle={`${unit}: ${s.total} items · ${s.done} of ${s.planned} sessions delivered (${s.pct}%) · ${s.signed} signed off. Status follows the sessions; sign-off is recorded by the global owner. Business unit and wave follow the project.`} action={<AddBtn label="Add KT item" onClick={add} />}>
+    <Card title="Knowledge transfer items by project" subtitle={`${unit}: ${s.total} items · ${s.signed} completed (signed off) · ${s.pending} pending · ${s.done} of ${s.planned} sessions delivered (${s.pct}%). Status follows the sessions; an item is completed once the global owner signs it off (the KT Tracking tab counts pending = not signed off). Business unit and wave follow the project.`} action={<AddBtn label="Add KT item" onClick={add} />}>
       <UnitPicker tx={tx} counts={(n) => String(kt.items.filter((k) => k.businessUnit === n).length)} />
       <GridToolbar q={q} onQ={setQ} placeholder="Search process, project, owner…" count={rows.length}>
         <select className="input py-1.5 w-auto text-[12.5px]" value={unitProjects.some((p) => p.id === fProject) ? fProject : 'All'} onChange={(e) => setFProject(e.target.value)}><option value="All">All projects of {unit}</option>{unitProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
       </GridToolbar>
-      <Grid count={rows.length} minWidth={1260} headers={['Process / activity', 'Project', 'Wave', 'Global owner', 'India owner', { label: 'Planned', right: true }, { label: 'Done', right: true }, 'Status', 'Sign-off', 'Target date', '']} empty={unitProjects.length ? 'No KT items yet. Use "Add KT item" to create one.' : 'Add a project to this business unit first (Projects tab).'}>
+      <Grid count={rows.length} minWidth={1500} headers={['Process / activity', 'Project', 'Wave', 'Global owner', 'India owner', { label: 'Planned', right: true }, { label: 'Done', right: true }, 'Status', 'Sign-off', 'Signed off on', 'Target date', 'Tracker', '']} empty={unitProjects.length ? 'No KT items yet. Use "Add KT item" to create one.' : 'Add a project to this business unit first (Projects tab).'}>
         {rows.map((k) => (
           <Row key={k.id}>
             <Td min={240}><TextCell value={k.process} placeholder="Process or activity" className="font-medium" onChange={(v) => set(k, 'process', v)} /></Td>
@@ -153,8 +208,10 @@ function KtTab({ tx }: { tx: Tx }) {
             <Td><NumCell value={k.sessionsPlanned} min={0} className="w-[60px]" onChange={(v) => setSessions(k, v, k.sessionsDone)} /></Td>
             <Td><NumCell value={k.sessionsDone} min={0} className="w-[60px]" onChange={(v) => setSessions(k, k.sessionsPlanned, v)} /></Td>
             <Td><SelectCell value={k.status} options={KT_STATUSES} onChange={(v) => set(k, 'status', v)} /></Td>
-            <Td><SelectCell value={k.signOff} options={KT_SIGNOFF} onChange={(v) => set(k, 'signOff', v)} /></Td>
+            <Td><SelectCell value={k.signOff} options={KT_SIGNOFF} onChange={(v) => setSignOff(k, v)} /></Td>
+            <Td>{k.signOff === 'Signed' ? <DateCell value={k.signedOffOn ?? ''} onChange={(v) => set(k, 'signedOffOn', v || undefined)} /> : <span className="block text-ink-400 px-2">—</span>}</Td>
             <Td><DateCell value={k.targetDate} onChange={(v) => set(k, 'targetDate', v)} /></Td>
+            <Td><span className={clsx('px-1.5 text-[11.5px] font-medium whitespace-nowrap', ktIsCompleted(k) ? 'text-green-700' : k.targetDate < TODAY ? 'text-red-600' : 'text-amber-600')}>{ktIsCompleted(k) ? 'Completed' : k.targetDate < TODAY ? 'Pending · overdue' : 'Pending'}</span></Td>
             <Td sticky><EditBtn onClick={() => open({ kind: 'kt', item: k })} /><RemoveBtn name={k.process || 'this KT item'} onClick={() => kt.remove(k.id)} /></Td>
           </Row>
         ))}
@@ -331,7 +388,9 @@ function SettingsTab({ tx, onSave }: { tx: Tx; onSave: (s: TransitionSettings) =
       <Card title="Derived headline numbers" subtitle="These come straight from the registers – change the projects, KT items, assessments, gaps and checklist to move them.">
         <div className="space-y-1">
           {[
-            ['Transition projects', `${projects.items.length} across ${tx.unitNames.length} business units`],
+            ['Transition projects', `${projects.items.length} across ${tx.unitNames.length} business units · ${new Set(projects.items.map((p) => p.capability)).size} capabilities`],
+            ['Accounts onboarded', `${accountStats(tx.accounts.items).onboarded} of ${tx.accounts.items.length} (${accountStats(tx.accounts.items).live} live · ${accountStats(tx.accounts.items).inKt} in KT)`],
+            ['KT items completed / pending', `${ktStats(kt.items).signed} / ${ktStats(kt.items).pending} (${ktStats(kt.items).overdue} overdue)`],
             ['Knowledge transfer (all waves)', `${ktStats(kt.items).pct}% – ${ktStats(kt.items).done} of ${ktStats(kt.items).planned} sessions`],
             ['Readiness (all projects)', `${avgScore(assessments.items)}% average`],
             ['Readiness gaps', `${gaps.items.length} (${gaps.items.filter((g) => g.status === 'New').length} new · ${gaps.items.filter((g) => g.status === 'Resolved').length} resolved)`],
@@ -360,9 +419,10 @@ function SaveBar({ dirty, saved, onSave, onDiscard }: { dirty: boolean; saved: b
 /* ================================================================== */
 export function TransitionInput({ tx, onSaveSettings }: { tx: Tx; onSaveSettings: (s: TransitionSettings) => void }) {
   return (
-    <InputLayout title="Transition Management" subtitle="Maintain the transition projects of each business unit, their knowledge transfer items, readiness scores and gaps, the waves and the stabilization checklist that drive the transition dashboards."
+    <InputLayout title="Transition Management" subtitle="Maintain the transition projects of each business unit and capability, the accounts they onboard, their knowledge transfer items, readiness scores and gaps, the waves and the stabilization checklist that drive the transition dashboards."
       tabs={[
         { name: 'Projects by business unit', content: <ProjectsTab tx={tx} /> },
+        { name: 'Accounts', content: <AccountsInputTab tx={tx} /> },
         { name: 'Knowledge transfer items', content: <KtTab tx={tx} /> },
         { name: 'Readiness assessments', content: <AssessmentsTab tx={tx} /> },
         { name: 'Readiness gaps', content: <GapsTab tx={tx} /> },

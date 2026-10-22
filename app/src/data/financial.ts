@@ -85,12 +85,12 @@ export const seedCostCategories: CostCategoryRow[] = [
 
 export interface FinancialMilestone { id: string; name: string; amountCr: number; dueDate: string; status: 'Completed' | 'On Track' | 'At Risk' | 'Pending' | 'Not Started' | 'Delayed'; workstream: string; owner: string }
 export const seedFinancialMilestones: FinancialMilestone[] = [
-  { id: 'fm-1', name: 'Office lease agreement', amountCr: 0.4, dueDate: '2026-10-15', status: 'Completed', workstream: 'Facilities & Workplace', owner: 'K. Nair' },
-  { id: 'fm-2', name: 'IT infrastructure setup', amountCr: 0.6, dueDate: '2026-11-30', status: 'On Track', workstream: 'Technology & Infrastructure', owner: 'R. Mehta' },
-  { id: 'fm-3', name: 'Wave 2 hiring spend', amountCr: 0.5, dueDate: '2026-12-31', status: 'At Risk', workstream: 'Talent & Hiring', owner: 'S. Iyer' },
-  { id: 'fm-4', name: 'Transition support costs', amountCr: 0.3, dueDate: '2027-02-28', status: 'Pending', workstream: 'Transition & Knowledge Transfer', owner: 'A. Sharma' },
-  { id: 'fm-5', name: 'Stabilization run-rate funding', amountCr: 0.8, dueDate: '2027-03-31', status: 'Not Started', workstream: 'Program Management', owner: 'V. Reddy' },
-  { id: 'fm-7', name: 'Year 1 operating budget release', amountCr: 2.5, dueDate: '2027-04-15', status: 'Not Started', workstream: 'Program Management', owner: 'V. Reddy' },
+  { id: 'fm-1', name: 'Office lease agreement', amountCr: 0.4, dueDate: '2027-02-15', status: 'Completed', workstream: 'Facilities & Workplace', owner: 'K. Nair' },
+  { id: 'fm-2', name: 'IT infrastructure setup', amountCr: 0.6, dueDate: '2027-03-30', status: 'On Track', workstream: 'Technology & Infrastructure', owner: 'R. Mehta' },
+  { id: 'fm-3', name: 'Wave 2 hiring spend', amountCr: 0.5, dueDate: '2027-04-30', status: 'At Risk', workstream: 'Talent & Hiring', owner: 'S. Iyer' },
+  { id: 'fm-4', name: 'Transition support costs', amountCr: 0.3, dueDate: '2027-06-28', status: 'Pending', workstream: 'Transition & Knowledge Transfer', owner: 'A. Sharma' },
+  { id: 'fm-5', name: 'Stabilization run-rate funding', amountCr: 0.8, dueDate: '2027-07-31', status: 'Not Started', workstream: 'Program Management', owner: 'V. Reddy' },
+  { id: 'fm-7', name: 'Year 1 operating budget release', amountCr: 2.5, dueDate: '2027-08-15', status: 'Not Started', workstream: 'Program Management', owner: 'V. Reddy' },
 ]
 
 export interface Benefit { id: string; area: string; targetCr: number; forecastCr: number; status: 'On Track' | 'At Risk' | 'Delayed' | 'Completed'; owner: string; startQuarter: string; description?: string }
@@ -120,37 +120,37 @@ export interface Commitment {
   committedCr: number; invoicedCr: number; paidCr: number; status: CommitmentStatus; date: string
 }
 export const seedCommitments: Commitment[] = [
-  { id: 'cm-1', poNumber: 'PO-26-0012', vendor: 'Prestige Realty', description: 'Office lease – Bengaluru Tower B (36 months)', workstream: 'Facilities & Workplace', category: 'Facilities & Real Estate', committedCr: 0.4, invoicedCr: 0.4, paidCr: 0.4, status: 'Closed', date: '2026-06-12' },
-  { id: 'cm-2', poNumber: 'PO-26-0018', vendor: 'Spacewise Interiors', description: 'Fit-out and workplace furniture', workstream: 'Facilities & Workplace', category: 'Facilities & Real Estate', committedCr: 0.15, invoicedCr: 0.1, paidCr: 0.05, status: 'In Progress', date: '2026-07-20' },
-  { id: 'cm-3', poNumber: 'PO-26-0021', vendor: 'Dell Technologies', description: 'End-user devices (450 laptops) and peripherals', workstream: 'Technology & Infrastructure', category: 'IT Hardware & Software', committedCr: 0.3, invoicedCr: 0.2, paidCr: 0.2, status: 'In Progress', date: '2026-07-28' },
-  { id: 'cm-4', poNumber: 'PO-26-0024', vendor: 'Cisco / Sify', description: 'Network, MPLS links and data-centre connectivity', workstream: 'Technology & Infrastructure', category: 'IT Hardware & Software', committedCr: 0.2, invoicedCr: 0.1, paidCr: 0.05, status: 'In Progress', date: '2026-08-05' },
-  { id: 'cm-5', poNumber: 'PO-26-0027', vendor: 'Microsoft', description: 'M365 and Azure licences – Year 1', workstream: 'Technology & Infrastructure', category: 'IT Hardware & Software', committedCr: 0.1, invoicedCr: 0.1, paidCr: 0.1, status: 'Closed', date: '2026-08-14' },
-  { id: 'cm-6', poNumber: 'PO-26-0031', vendor: 'ABC Recruitment Partners', description: 'Wave 1 and Wave 2 lateral hiring fees', workstream: 'Talent & Hiring', category: 'Professional Services', committedCr: 0.2, invoicedCr: 0.12, paidCr: 0.1, status: 'In Progress', date: '2026-08-22' },
-  { id: 'cm-7', poNumber: 'PO-26-0033', vendor: 'Khaitan & Co', description: 'Entity set-up, SEZ and statutory registrations', workstream: 'Legal & Compliance', category: 'Professional Services', committedCr: 0.15, invoicedCr: 0.15, paidCr: 0.15, status: 'Closed', date: '2026-05-30' },
-  { id: 'cm-8', poNumber: 'PO-26-0036', vendor: 'Deloitte', description: 'Transition methodology and knowledge-transfer support', workstream: 'Transition & Knowledge Transfer', category: 'Professional Services', committedCr: 0.25, invoicedCr: 0.1, paidCr: 0.05, status: 'In Progress', date: '2026-09-02' },
-  { id: 'cm-9', poNumber: 'PO-26-0040', vendor: 'MakeMyTrip Corporate', description: 'Transition travel and relocation (Wave 2)', workstream: 'Transition & Knowledge Transfer', category: 'Travel & Relocation', committedCr: 0.1, invoicedCr: 0.04, paidCr: 0.04, status: 'Open', date: '2026-09-18' },
-  { id: 'cm-10', poNumber: 'PO-26-0042', vendor: 'FutureFactor360', description: 'PMO and Command Center services', workstream: 'Program Management', category: 'Professional Services', committedCr: 0.2, invoicedCr: 0.12, paidCr: 0.12, status: 'In Progress', date: '2026-04-10' },
-  { id: 'cm-11', poNumber: 'PO-26-0045', vendor: 'ICICI Lombard', description: 'Insurance and employee benefits cover', workstream: 'Other (Travel, Misc)', category: 'Other Operating Costs', committedCr: 0.05, invoicedCr: 0.05, paidCr: 0.0, status: 'Approved', date: '2026-10-01' },
-  { id: 'cm-12', poNumber: 'PO-26-0047', vendor: 'Tata Communications', description: 'Security operations centre and monitoring', workstream: 'Technology & Infrastructure', category: 'IT Hardware & Software', committedCr: 0.12, invoicedCr: 0.0, paidCr: 0.0, status: 'Open', date: '2026-10-12' },
+  { id: 'cm-1', poNumber: 'PO-26-0012', vendor: 'Panchshil Realty', description: 'Office lease – Pune, Kharadi IT Park (36 months)', workstream: 'Facilities & Workplace', category: 'Facilities & Real Estate', committedCr: 0.4, invoicedCr: 0.4, paidCr: 0.4, status: 'Closed', date: '2026-10-12' },
+  { id: 'cm-2', poNumber: 'PO-26-0018', vendor: 'Spacewise Interiors', description: 'Fit-out and workplace furniture', workstream: 'Facilities & Workplace', category: 'Facilities & Real Estate', committedCr: 0.15, invoicedCr: 0.1, paidCr: 0.05, status: 'In Progress', date: '2026-11-20' },
+  { id: 'cm-3', poNumber: 'PO-26-0021', vendor: 'Dell Technologies', description: 'End-user devices (400 laptops) and peripherals', workstream: 'Technology & Infrastructure', category: 'IT Hardware & Software', committedCr: 0.3, invoicedCr: 0.2, paidCr: 0.2, status: 'In Progress', date: '2026-11-28' },
+  { id: 'cm-4', poNumber: 'PO-26-0024', vendor: 'Cisco / Sify', description: 'Network, MPLS links and data-centre connectivity', workstream: 'Technology & Infrastructure', category: 'IT Hardware & Software', committedCr: 0.2, invoicedCr: 0.1, paidCr: 0.05, status: 'In Progress', date: '2026-12-05' },
+  { id: 'cm-5', poNumber: 'PO-26-0027', vendor: 'Microsoft', description: 'M365 and Azure licences – Year 1', workstream: 'Technology & Infrastructure', category: 'IT Hardware & Software', committedCr: 0.1, invoicedCr: 0.1, paidCr: 0.1, status: 'Closed', date: '2026-12-14' },
+  { id: 'cm-6', poNumber: 'PO-26-0031', vendor: 'ABC Recruitment Partners', description: 'Wave 1 and Wave 2 lateral hiring fees', workstream: 'Talent & Hiring', category: 'Professional Services', committedCr: 0.2, invoicedCr: 0.12, paidCr: 0.1, status: 'In Progress', date: '2026-12-22' },
+  { id: 'cm-7', poNumber: 'PO-26-0033', vendor: 'Khaitan & Co', description: 'Entity set-up, SEZ and statutory registrations', workstream: 'Legal & Compliance', category: 'Professional Services', committedCr: 0.15, invoicedCr: 0.15, paidCr: 0.15, status: 'Closed', date: '2026-09-30' },
+  { id: 'cm-8', poNumber: 'PO-26-0036', vendor: 'Deloitte', description: 'Transition methodology and knowledge-transfer support', workstream: 'Transition & Knowledge Transfer', category: 'Professional Services', committedCr: 0.25, invoicedCr: 0.1, paidCr: 0.05, status: 'In Progress', date: '2027-01-02' },
+  { id: 'cm-9', poNumber: 'PO-26-0040', vendor: 'MakeMyTrip Corporate', description: 'Transition travel and relocation (Wave 2)', workstream: 'Transition & Knowledge Transfer', category: 'Travel & Relocation', committedCr: 0.1, invoicedCr: 0.04, paidCr: 0.04, status: 'Open', date: '2027-01-18' },
+  { id: 'cm-10', poNumber: 'PO-26-0042', vendor: 'FutureFactor360', description: 'PMO and Command Center services', workstream: 'Program Management', category: 'Professional Services', committedCr: 0.2, invoicedCr: 0.12, paidCr: 0.12, status: 'In Progress', date: '2026-08-10' },
+  { id: 'cm-11', poNumber: 'PO-26-0045', vendor: 'ICICI Lombard', description: 'Insurance and employee benefits cover', workstream: 'Other (Travel, Misc)', category: 'Other Operating Costs', committedCr: 0.05, invoicedCr: 0.05, paidCr: 0.0, status: 'Approved', date: '2027-02-01' },
+  { id: 'cm-12', poNumber: 'PO-26-0047', vendor: 'Tata Communications', description: 'Security operations centre and monitoring', workstream: 'Technology & Infrastructure', category: 'IT Hardware & Software', committedCr: 0.12, invoicedCr: 0.0, paidCr: 0.0, status: 'Open', date: '2027-02-12' },
 ]
 
 export type ApprovalStatus = 'Pending' | 'Approved' | 'Rejected'
 export interface FinancialApproval { id: string; item: string; amountCr: number; requester: string; approver: string; workstream: string; status: ApprovalStatus; date: string; notes?: string }
 export const seedApprovals: FinancialApproval[] = [
-  { id: 'ap-1', item: 'Wave 2 hiring budget increase', amountCr: 0.15, requester: 'S. Iyer', approver: 'Global CFO', workstream: 'Talent & Hiring', status: 'Pending', date: '2026-10-14', notes: 'Lateral hiring premium for niche cloud skills' },
-  { id: 'ap-2', item: 'Additional SOC monitoring licences', amountCr: 0.06, requester: 'R. Mehta', approver: 'Global CIO', workstream: 'Technology & Infrastructure', status: 'Pending', date: '2026-10-16' },
-  { id: 'ap-3', item: 'Transition travel – Wave 3 pre-visits', amountCr: 0.04, requester: 'A. Sharma', approver: 'Global COO', workstream: 'Transition & Knowledge Transfer', status: 'Pending', date: '2026-10-18' },
-  { id: 'ap-4', item: 'Office fit-out change order (cafeteria)', amountCr: 0.05, requester: 'K. Nair', approver: 'Global CFO', workstream: 'Facilities & Workplace', status: 'Approved', date: '2026-09-28' },
-  { id: 'ap-5', item: 'Contingency release – network redundancy', amountCr: 0.08, requester: 'R. Mehta', approver: 'Steering Committee', workstream: 'Technology & Infrastructure', status: 'Approved', date: '2026-09-15' },
-  { id: 'ap-6', item: 'Executive offsite in Goa', amountCr: 0.03, requester: 'M. Khan', approver: 'Global CFO', workstream: 'Other (Travel, Misc)', status: 'Rejected', date: '2026-09-10', notes: 'Deferred to Operate phase' },
+  { id: 'ap-1', item: 'Wave 2 hiring budget increase', amountCr: 0.15, requester: 'S. Iyer', approver: 'Global CFO', workstream: 'Talent & Hiring', status: 'Pending', date: '2027-02-14', notes: 'Lateral hiring premium for niche cloud skills' },
+  { id: 'ap-2', item: 'Additional SOC monitoring licences', amountCr: 0.06, requester: 'R. Mehta', approver: 'Global CIO', workstream: 'Technology & Infrastructure', status: 'Pending', date: '2027-02-16' },
+  { id: 'ap-3', item: 'Transition travel – Wave 3 pre-visits', amountCr: 0.04, requester: 'A. Sharma', approver: 'Global COO', workstream: 'Transition & Knowledge Transfer', status: 'Pending', date: '2027-02-18' },
+  { id: 'ap-4', item: 'Office fit-out change order (cafeteria)', amountCr: 0.05, requester: 'K. Nair', approver: 'Global CFO', workstream: 'Facilities & Workplace', status: 'Approved', date: '2027-01-28' },
+  { id: 'ap-5', item: 'Contingency release – network redundancy', amountCr: 0.08, requester: 'R. Mehta', approver: 'Steering Committee', workstream: 'Technology & Infrastructure', status: 'Approved', date: '2027-01-15' },
+  { id: 'ap-6', item: 'Executive offsite in Goa', amountCr: 0.03, requester: 'M. Khan', approver: 'Global CFO', workstream: 'Other (Travel, Misc)', status: 'Rejected', date: '2027-01-10', notes: 'Deferred to Operate phase' },
 ]
 
 export interface FinanceScenario {
   id: string; name: string; investmentCr: number; annualBenefitsCr: number; year1RealizationPct: number; year2RealizationPct: number; costInflationPct: number; status: 'Recommended' | 'Option' | 'Not Preferred'; description: string
 }
 export const seedScenarios: FinanceScenario[] = [
-  { id: 'sc-base', name: 'Base', investmentCr: 3.8, annualBenefitsCr: 9.4, year1RealizationPct: 40, year2RealizationPct: 80, costInflationPct: 6, status: 'Recommended', description: 'Current plan: 450 FTE by Dec 2026, two transition waves.' },
-  { id: 'sc-accel', name: 'Accelerated', investmentCr: 4.4, annualBenefitsCr: 11.0, year1RealizationPct: 55, year2RealizationPct: 90, costInflationPct: 7, status: 'Option', description: 'Pull Wave 3 forward by two quarters with lateral hiring premium.' },
+  { id: 'sc-base', name: 'Base', investmentCr: 3.8, annualBenefitsCr: 9.4, year1RealizationPct: 40, year2RealizationPct: 80, costInflationPct: 6, status: 'Recommended', description: 'Current plan: 400 Pune IT FTE by Apr 2027 across four transition waves, 494 by Year 5.' },
+  { id: 'sc-accel', name: 'Accelerated', investmentCr: 4.4, annualBenefitsCr: 11.0, year1RealizationPct: 55, year2RealizationPct: 90, costInflationPct: 7, status: 'Option', description: 'Pull Wave 4 (Integration & Engineering) forward by one quarter with a lateral hiring premium.' },
   { id: 'sc-cons', name: 'Conservative', investmentCr: 4.0, annualBenefitsCr: 7.5, year1RealizationPct: 30, year2RealizationPct: 65, costInflationPct: 6, status: 'Option', description: 'Slower ramp, single transition wave per year, higher retention buffer.' },
 ]
 

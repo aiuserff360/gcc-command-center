@@ -42,7 +42,7 @@ export function PeopleCostsInput({ cm, unit, onUnit }: { cm: CostModel; unit: st
 
   return (
     <div className="space-y-4">
-      <UnitSelector title="Compensation scope" subtitle="Edit the program default or give a business unit its own compensation (e.g. SAP and Microsoft practices +10 %, shared services −10 %). Benefits and other people costs are program-level." cards={cards} selected={scope} onSelect={onUnit} />
+      <UnitSelector title="Compensation scope" subtitle="Edit the program default or give a business unit its own compensation (e.g. Enterprise Applications and Data, Analytics & AI +10 %, Digital Workplace and IT Service Management −5 %). Benefits and other people costs are program-level." cards={cards} selected={scope} onSelect={onUnit} />
 
       <Card title="Compensation mode" subtitle="How base salary moves across the horizon. Escalation applies to every salary component and the fixed benefits.">
         <div className="flex items-center gap-4 flex-wrap text-[12.5px]">

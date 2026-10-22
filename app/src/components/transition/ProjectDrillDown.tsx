@@ -1,19 +1,20 @@
 /**
- * Project drill-down – a slide-over opened from any blue project link. Overview and timeline, KT items (add / +1 session /
- * mark done / sign-off), readiness by dimension (editable scores, status, next action), gaps (add / resolve), linked
+ * Project drill-down – a slide-over opened from any blue project link. Overview and timeline, accounts onboarded (add /
+ * status change), KT items (add / +1 session / mark done / sign-off), readiness by dimension (editable scores, status, next action), gaps (add / resolve), linked
  * Transition milestones, risks & issues of the project / business unit, and notes. Everything writes straight to the collections.
  */
 import { useEffect, useState } from 'react'
 import clsx from 'clsx'
-import { X, Plus, Pencil, Trash2, Check, CheckCircle2, Link2, Save, Rocket } from 'lucide-react'
+import { X, Plus, Pencil, Trash2, Check, CheckCircle2, Link2, Save, Rocket, PauseCircle, MapPin } from 'lucide-react'
 import { Badge, Progress, Ring, Table, EmptyNote } from '../ui'
 import { TODAY } from '../../data/common'
 import type { Milestone } from '../../data/shared'
 import { isOpen } from '../../data/shared'
 import { uid } from '../../store/useStore'
+import { subY1 } from '../../data/businessUnits'
 import {
-  projectKt, assessmentScore, readinessColor, blankAssessment, ktStatusFor, isTransitionMilestone, milestoneWave, raidLink, raidLabel, projectStatusColor, fmtD, DIMENSIONS, DIM_KEY, READINESS_STATUSES,
-  type KtItem, type ReadinessGap, type ReadinessAssessment,
+  projectKt, projectAccounts, isOnboarded, accountStatusColor, capabilityOf, assessmentScore, readinessColor, blankAssessment, ktStatusFor, ktIsCompleted, ktIsPending, ktIsOverdue, isTransitionMilestone, milestoneWave, raidLink, raidLabel, projectStatusColor, fmtD, DIMENSIONS, DIM_KEY, READINESS_STATUSES, ACCOUNT_STATUSES,
+  type KtItem, type ReadinessGap, type ReadinessAssessment, type TransitionAccount, type AccountStatus,
 } from '../../data/transition'
 import type { Tx } from './types'
 import { WaveDot, StatusBadge, GanttRows, DIM_ICON, TIGHT } from './Overview'
@@ -37,7 +38,7 @@ const Small = ({ children, onClick, tone = 'bg-brand-50 text-brand-600 hover:bg-
 )
 
 export function ProjectDrillDown({ tx, projectId, blocked, onClose }: { tx: Tx; projectId: string | null; blocked: boolean; onClose: () => void }) {
-  const { projects, waves, kt, assessments, gaps, milestones, msWaves, msProjects, raid, raidLinks, open } = tx
+  const { projects, subs, accounts, waves, kt, assessments, gaps, milestones, msWaves, msProjects, raid, raidLinks, open } = tx
   const p = projects.items.find((x) => x.id === projectId)
   const [notes, setNotes] = useState('')
   const [linkMs, setLinkMs] = useState('')
@@ -51,6 +52,10 @@ export function ProjectDrillDown({ tx, projectId, blocked, onClose }: { tx: Tx; 
 
   if (!projectId || !p) return null
   const wave = waves.items.find((w) => w.number === p.wave)
+  const cap = capabilityOf(p, subs.items)
+  const accs = accounts.items.filter((a) => a.projectId === p.id).sort((a, b) => ACCOUNT_STATUSES.indexOf(a.status) - ACCOUNT_STATUSES.indexOf(b.status) || a.plannedDate.localeCompare(b.plannedDate))
+  const as = projectAccounts(p, accounts.items)
+  const setAccStatus = (a: TransitionAccount, status: AccountStatus) => accounts.update({ ...a, status, onboardedDate: isOnboarded({ status } as TransitionAccount) ? a.onboardedDate || TODAY : a.onboardedDate })
   const items = kt.items.filter((k) => k.projectId === p.id).sort((a, b) => a.targetDate.localeCompare(b.targetDate))
   const ks = projectKt(p, kt.items)
   const a = assessments.items.find((x) => x.projectId === p.id)
@@ -64,10 +69,11 @@ export function ProjectDrillDown({ tx, projectId, blocked, onClose }: { tx: Tx; 
     const status = ktStatusFor(planned, done)
     kt.update({ ...k, sessionsPlanned: planned, sessionsDone: Math.max(0, done), status, signOff: status === 'Completed' && k.signOff === 'Not Started' ? 'Pending' : k.signOff })
   }
+  const signOff = (k: KtItem) => kt.update({ ...k, sessionsDone: Math.max(k.sessionsDone, k.sessionsPlanned), status: 'Completed', signOff: 'Signed', signedOffOn: TODAY })
   const setDim = (key: keyof ReadinessAssessment, v: number) => { if (a) assessments.update({ ...a, [key]: Math.max(0, Math.min(100, v)), assessedOn: TODAY }) }
   const removeProject = () => {
-    if (!window.confirm(`Remove project “${p.name}” with its ${items.length} KT items, readiness assessment and ${projGaps.length} gaps? This cannot be undone.`)) return
-    items.forEach((k) => kt.remove(k.id)); if (a) assessments.remove(a.id); projGaps.forEach((g) => gaps.remove(g.id)); msProjects.items.filter((l) => l.projectId === p.id).forEach((l) => msProjects.remove(l.id))
+    if (!window.confirm(`Remove project “${p.name}” with its ${accs.length} accounts, ${items.length} KT items, readiness assessment and ${projGaps.length} gaps? This cannot be undone.`)) return
+    items.forEach((k) => kt.remove(k.id)); accs.forEach((x) => accounts.remove(x.id)); if (a) assessments.remove(a.id); projGaps.forEach((g) => gaps.remove(g.id)); msProjects.items.filter((l) => l.projectId === p.id).forEach((l) => msProjects.remove(l.id))
     projects.remove(p.id); onClose()
   }
 
@@ -77,16 +83,16 @@ export function ProjectDrillDown({ tx, projectId, blocked, onClose }: { tx: Tx; 
         {/* header */}
         <div className="bg-white border-b border-line px-6 py-4 flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="text-[11.5px] text-ink-500 flex items-center gap-1.5">{p.businessUnit} <span className="text-ink-300">·</span> <WaveDot wave={wave} size={16} /> Wave {p.wave}{wave?.name ? ` – ${wave.name}` : ''}</div>
+            <div className="text-[11.5px] text-ink-500 flex items-center gap-1.5 flex-wrap">{p.businessUnit} <span className="text-ink-300">·</span> <span className="text-ink-900 font-medium">{p.capability}</span> <span className="text-ink-300">·</span> <MapPin size={11} /> from {p.deliveryLocation} <span className="text-ink-300">·</span> <WaveDot wave={wave} size={16} /> Wave {p.wave}{wave?.name ? ` – ${wave.name}` : ''}</div>
             <h3 className="text-[20px] font-bold text-navy-900 leading-tight truncate">{p.name}</h3>
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               <StatusBadge value={p.status} />
               <span className="flex items-center gap-1.5 text-[12px] text-ink-500"><Progress value={p.progress} color={projectStatusColor(p.status)} className="w-[80px]" /><b className="text-ink-900">{p.progress}%</b></span>
-              <span className="text-[12px] text-ink-500">KT <b className="text-ink-900">{ks.pct}%</b> · readiness <b className="text-ink-900">{score}%</b> · go-live <b className="text-ink-900">{fmtD(p.goLiveDate)}</b> · {p.ftes} FTEs</span>
+              <span className="text-[12px] text-ink-500">accounts onboarded <b className="text-teal-700">{as.onboarded} / {as.total}</b> · KT <b className="text-ink-900">{ks.signed} / {ks.total}</b> signed off · readiness <b className="text-ink-900">{score}%</b> · go-live <b className="text-ink-900">{fmtD(p.goLiveDate)}</b> · {p.ftes} FTEs</span>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button className="btn-primary" onClick={() => open({ kind: 'kt', item: null, projectId: p.id })}><Plus size={14} /> Add KT item</button>
+            <button className="btn-primary" onClick={() => open({ kind: 'account', item: null, projectId: p.id })}><Plus size={14} /> Add account</button>
             <button className="btn-secondary" onClick={() => open({ kind: 'project', item: p })}><Pencil size={14} /> Edit project</button>
             <button className="btn-danger" onClick={removeProject}><Trash2 size={14} /> Remove</button>
             <button className="text-ink-500 hover:text-ink-900 cursor-pointer ml-1" onClick={onClose} title="Close"><X size={18} /></button>
@@ -98,15 +104,17 @@ export function ProjectDrillDown({ tx, projectId, blocked, onClose }: { tx: Tx; 
           <div className="card px-5 py-4">
             <div className="grid grid-cols-6 gap-x-4 gap-y-3">
               <Detail label="Business unit" value={p.businessUnit} />
+              <Detail label="Capability / service" value={p.capability || '—'} />
+              <Detail label="GBU served" value={p.gbu || '—'} />
+              <Detail label="Geography" value={p.region || '—'} />
+              <Detail label="Current delivery location" value={p.deliveryLocation || '—'} />
+              <Detail label="Transition type" value={p.transitionType || '—'} />
               <Detail label="Wave" value={<span className="inline-flex items-center gap-1.5"><WaveDot wave={wave} size={18} /> Wave {p.wave}</span>} />
               <Detail label="Status" value={<StatusBadge value={p.status} />} />
               <Detail label="Global owner" value={p.globalOwner || '—'} />
               <Detail label="India lead" value={p.indiaLead} />
-              <Detail label="FTEs transitioning" value={p.ftes} />
-              <Detail label="Start" value={fmtD(p.startDate)} />
-              <Detail label="End" value={fmtD(p.endDate)} />
-              <Detail label="Go-live" value={<span className={p.goLiveDate < TODAY && !['Completed', 'Stabilizing'].includes(p.status) ? 'text-red-600' : ''}>{fmtD(p.goLiveDate)}</span>} />
-              <Detail label="Region / client" value={p.region || '—'} wide />
+              <Detail label="Target Pune FTEs" value={<span>{p.ftes}{cap && <span className="text-ink-500 font-normal"> · capability {cap.currentHc} → {subY1(cap)} HC</span>}</span>} />
+              <Detail label="Start · end · go-live" value={<span>{fmtD(p.startDate)} · {fmtD(p.endDate)} · <span className={p.goLiveDate < TODAY && !['Completed', 'Stabilizing'].includes(p.status) ? 'text-red-600' : ''}>{fmtD(p.goLiveDate)}</span></span>} />
               <Detail label="Scope" value={<span className="text-ink-700 font-normal">{p.scopeSummary || '—'}</span>} wide />
               <Detail label="Description" value={<span className="text-ink-700 font-normal">{p.description || '—'}</span>} wide />
             </div>
@@ -119,21 +127,52 @@ export function ProjectDrillDown({ tx, projectId, blocked, onClose }: { tx: Tx; 
             </div>
           </div>
 
+          {/* accounts onboarded */}
+          <Section title="Accounts onboarded" sub={`${as.onboarded} of ${as.total} accounts onboarded (${as.pct}%) · ${as.live} live · ${as.onboardedOnly} onboarded · ${as.inKt} in KT · ${as.planned} planned · ${as.onHold} on hold`} action={<button className="btn-secondary" onClick={() => open({ kind: 'account', item: null, projectId: p.id })}><Plus size={14} /> Add account</button>}>
+            {as.total > 0 && (
+              <div className="flex h-2 rounded-full overflow-hidden bg-slate-200 mb-2">
+                {ACCOUNT_STATUSES.map((s) => { const n = accs.filter((x) => x.status === s).length; return n ? <span key={s} title={`${s}: ${n}`} style={{ width: `${(n / as.total) * 100}%`, background: accountStatusColor[s] }} /> : null })}
+              </div>
+            )}
+            <div className={TIGHT}><Table<TransitionAccount> compact rows={accs} onRowClick={(x) => open({ kind: 'account', item: x })} empty="No accounts logged yet – add the first application, service, entity or platform this project onboards." columns={[
+              { key: 'name', header: 'Account', render: (x) => <span className="block leading-snug min-w-[200px]"><span className="font-medium">{x.name}</span>{x.notes && <span className="block text-[10.5px] text-ink-500 truncate max-w-[300px]" title={x.notes}>{x.notes}</span>}</span> },
+              { key: 'type', header: 'Type', className: 'whitespace-nowrap' },
+              { key: 'gbu', header: 'GBU served', className: 'whitespace-nowrap' },
+              { key: 'geography', header: 'Geography', className: 'whitespace-nowrap' },
+              { key: 'owner', header: 'Owner', className: 'whitespace-nowrap' },
+              { key: 'status', header: 'Status', render: (x) => (
+                <select className="rounded-md border border-transparent hover:border-line bg-transparent text-[11.5px] font-medium px-1 py-0.5 cursor-pointer" style={{ color: x.status === 'Planned' ? '#1E5BBE' : accountStatusColor[x.status] }} value={x.status} onClick={(e) => e.stopPropagation()} onChange={(e) => setAccStatus(x, e.target.value as AccountStatus)}>
+                  {ACCOUNT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>) },
+              { key: 'planned', header: 'Planned', className: 'whitespace-nowrap', render: (x) => <span className={x.plannedDate < TODAY && !isOnboarded(x) && x.status !== 'On hold' ? 'text-red-600 font-medium' : ''}>{fmtD(x.plannedDate)}</span> },
+              { key: 'onboarded', header: 'Onboarded', className: 'whitespace-nowrap', render: (x) => x.onboardedDate ? fmtD(x.onboardedDate) : '—' },
+              { key: 'act', header: '', className: 'text-right whitespace-nowrap', render: (x) => (
+                <span className="inline-flex items-center gap-1">
+                  {(x.status === 'Planned' || x.status === 'On hold') && <Small title="Start knowledge transfer" onClick={() => setAccStatus(x, 'In KT')}>Start KT</Small>}
+                  {x.status === 'In KT' && <Small title="Mark onboarded to the GCC" tone="bg-green-50 text-green-700 hover:bg-green-100" onClick={() => setAccStatus(x, 'Onboarded')}><Check size={11} /> Onboarded</Small>}
+                  {x.status === 'Onboarded' && <Small title="Account live from Pune" tone="bg-teal-50 text-teal-700 hover:bg-teal-100" onClick={() => setAccStatus(x, 'Live')}><Rocket size={11} /> Go live</Small>}
+                  {(x.status === 'Planned' || x.status === 'In KT') && <Small title="Put on hold" tone="bg-amber-50 text-amber-700 hover:bg-amber-100" onClick={() => setAccStatus(x, 'On hold')}><PauseCircle size={11} /></Small>}
+                  <button className="text-ink-400 hover:text-brand-600 cursor-pointer p-0.5" title="Edit" onClick={(e) => { e.stopPropagation(); open({ kind: 'account', item: x }) }}><Pencil size={12} /></button>
+                  <button className="text-ink-400 hover:text-red-600 cursor-pointer p-0.5" title="Remove" onClick={(e) => { e.stopPropagation(); if (window.confirm(`Remove account “${x.name}”?`)) accounts.remove(x.id) }}><Trash2 size={12} /></button>
+                </span>) },
+            ]} /></div>
+          </Section>
+
           {/* KT items */}
-          <Section title="Knowledge transfer items" sub={`${ks.done} of ${ks.planned} sessions delivered (${ks.pct}%) · ${ks.completed} of ${ks.total} items complete · ${ks.signed} signed off`} action={<button className="btn-secondary" onClick={() => open({ kind: 'kt', item: null, projectId: p.id })}><Plus size={14} /> Add KT item</button>}>
+          <Section title="Knowledge transfer items" sub={`${ks.signed} of ${ks.total} items completed (signed off) · ${ks.pending} pending (${ks.awaitingSignOff} awaiting sign-off, ${ks.overdue} overdue) · ${ks.done} of ${ks.planned} sessions delivered (${ks.pct}%)`} action={<button className="btn-secondary" onClick={() => open({ kind: 'kt', item: null, projectId: p.id })}><Plus size={14} /> Add KT item</button>}>
             <div className={TIGHT}><Table<KtItem> compact rows={items} onRowClick={(k) => open({ kind: 'kt', item: k })} empty="No KT items yet – add the first process to transfer." columns={[
               { key: 'process', header: 'Process / activity', render: (k) => <span className="font-medium">{k.process}</span> },
               { key: 'globalOwner', header: 'Global owner', className: 'whitespace-nowrap' },
               { key: 'indiaOwner', header: 'India owner', className: 'whitespace-nowrap' },
               { key: 'sessions', header: 'Sessions done / planned', render: (k) => <span className="flex items-center gap-2"><Progress value={k.sessionsPlanned ? (k.sessionsDone / k.sessionsPlanned) * 100 : 0} className="w-[70px]" /><span className="whitespace-nowrap">{k.sessionsDone} / {k.sessionsPlanned}</span></span> },
-              { key: 'targetDate', header: 'Target', className: 'whitespace-nowrap', render: (k) => <span className={k.status !== 'Completed' && k.targetDate < TODAY ? 'text-red-600 font-medium' : ''}>{fmtD(k.targetDate)}</span> },
-              { key: 'status', header: 'Status', render: (k) => <Badge value={k.status} /> },
-              { key: 'signOff', header: 'Sign-off', render: (k) => <Badge value={k.signOff === 'Signed' ? 'Completed' : k.signOff} /> },
+              { key: 'targetDate', header: 'Target', className: 'whitespace-nowrap', render: (k) => <span className={ktIsOverdue(k) ? 'text-red-600 font-medium' : ''}>{fmtD(k.targetDate)}</span> },
+              { key: 'status', header: 'Sessions', render: (k) => <Badge value={k.status} /> },
+              { key: 'signOff', header: 'Tracker', render: (k) => ktIsCompleted(k) ? <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-700 whitespace-nowrap"><CheckCircle2 size={11} /> Completed{k.signedOffOn ? ` · ${fmtD(k.signedOffOn)}` : ''}</span> : <span className={clsx('text-[11px] font-medium whitespace-nowrap', ktIsOverdue(k) ? 'text-red-600' : 'text-amber-600')}>Pending{k.status === 'Completed' ? ' · awaiting sign-off' : ''}</span> },
               { key: 'act', header: '', className: 'text-right whitespace-nowrap', render: (k) => (
                 <span className="inline-flex items-center gap-1">
                   {k.status !== 'Completed' && <Small title="Record one more delivered session" onClick={() => setSessions(k, k.sessionsPlanned, k.sessionsDone + 1)}>+1 session</Small>}
                   {k.status !== 'Completed' && <Small title="Mark all planned sessions delivered" tone="bg-green-50 text-green-700 hover:bg-green-100" onClick={() => setSessions(k, k.sessionsPlanned, k.sessionsPlanned)}><Check size={11} /> Mark done</Small>}
-                  {k.status === 'Completed' && k.signOff !== 'Signed' && <Small title="Record the global owner's sign-off" tone="bg-violet-50 text-violet-700 hover:bg-violet-100" onClick={() => kt.update({ ...k, signOff: 'Signed' })}><CheckCircle2 size={11} /> Sign off</Small>}
+                  {ktIsPending(k) && <Small title="Record the global owner's sign-off (completes the item)" tone="bg-violet-50 text-violet-700 hover:bg-violet-100" onClick={() => signOff(k)}><CheckCircle2 size={11} /> Sign off</Small>}
                   <button className="text-ink-400 hover:text-brand-600 cursor-pointer p-0.5" title="Edit" onClick={(e) => { e.stopPropagation(); open({ kind: 'kt', item: k }) }}><Pencil size={12} /></button>
                   <button className="text-ink-400 hover:text-red-600 cursor-pointer p-0.5" title="Remove" onClick={(e) => { e.stopPropagation(); if (window.confirm(`Remove KT item “${k.process}”?`)) kt.remove(k.id) }}><Trash2 size={12} /></button>
                 </span>) },
@@ -216,7 +255,7 @@ export function ProjectDrillDown({ tx, projectId, blocked, onClose }: { tx: Tx; 
           <Section title="Notes" sub="Free-text notes on this project (decisions, blockers, context for the next steering review)" action={<button className="btn-primary disabled:opacity-50" disabled={notes === (p.notes ?? '')} onClick={() => projects.update({ ...p, notes })}><Save size={14} /> Save notes</button>}>
             <textarea className="input min-h-[88px] text-[12.5px]" value={notes} placeholder="Add notes…" onChange={(e) => setNotes(e.target.value)} />
           </Section>
-          <div className="text-[11px] text-ink-400 flex items-center gap-1 pb-2"><Rocket size={11} /> Go-live {fmtD(p.goLiveDate)} · last assessed {a ? fmtD(a.assessedOn) : '—'}</div>
+          <div className="text-[11px] text-ink-400 flex items-center gap-1 pb-2"><Rocket size={11} /> Go-live {fmtD(p.goLiveDate)} · last assessed {a ? fmtD(a.assessedOn) : '—'} · {p.capability} transitions from {p.deliveryLocation} for {p.gbu} in Wave {p.wave}</div>
         </div>
       </aside>
     </div>

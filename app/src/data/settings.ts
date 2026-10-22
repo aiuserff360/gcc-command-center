@@ -15,20 +15,20 @@ export interface User {
   lastActive: string
 }
 export const seedUsers: User[] = [
-  { id: 'us-001', name: 'Anita Sharma', role: 'Program Manager', workstream: 'All', handle: 'a.sharma', status: 'Active', lastActive: '2026-10-20' },
-  { id: 'us-002', name: 'Deepak Singh', role: 'Program Manager', workstream: 'All', handle: 'd.singh', status: 'Active', lastActive: '2026-10-20' },
-  { id: 'us-003', name: 'Rahul Mehta', role: 'Workstream Lead', workstream: 'Technology & Infrastructure', handle: 'r.mehta', status: 'Active', lastActive: '2026-10-20' },
-  { id: 'us-004', name: 'Sunita Iyer', role: 'Workstream Lead', workstream: 'Talent & Hiring', handle: 's.iyer', status: 'Active', lastActive: '2026-10-19' },
-  { id: 'us-005', name: 'Prakash Rao', role: 'Workstream Lead', workstream: 'Legal & Compliance', handle: 'p.rao', status: 'Active', lastActive: '2026-10-17' },
-  { id: 'us-006', name: 'Kavya Nair', role: 'Workstream Lead', workstream: 'Facilities & Workplace', handle: 'k.nair', status: 'Active', lastActive: '2026-10-19' },
-  { id: 'us-007', name: 'Mohammed Khan', role: 'Workstream Lead', workstream: 'Operations Setup', handle: 'm.khan', status: 'Active', lastActive: '2026-10-16' },
-  { id: 'us-008', name: 'Vikram Reddy', role: 'Workstream Lead', workstream: 'Finance & Procurement', handle: 'v.reddy', status: 'Active', lastActive: '2026-10-20' },
-  { id: 'us-009', name: 'Claire Dubois', role: 'Steering Member', workstream: 'All', handle: 'c.dubois', status: 'Active', lastActive: '2026-10-16' },
-  { id: 'us-010', name: 'Marc Lefèvre', role: 'Steering Member', workstream: 'All', handle: 'm.lefevre', status: 'Active', lastActive: '2026-10-15' },
+  { id: 'us-001', name: 'Anita Sharma', role: 'Program Manager', workstream: 'All', handle: 'a.sharma', status: 'Active', lastActive: '2027-02-20' },
+  { id: 'us-002', name: 'Deepak Singh', role: 'Program Manager', workstream: 'All', handle: 'd.singh', status: 'Active', lastActive: '2027-02-20' },
+  { id: 'us-003', name: 'Rahul Mehta', role: 'Workstream Lead', workstream: 'Technology & Infrastructure', handle: 'r.mehta', status: 'Active', lastActive: '2027-02-20' },
+  { id: 'us-004', name: 'Sunita Iyer', role: 'Workstream Lead', workstream: 'Talent & Hiring', handle: 's.iyer', status: 'Active', lastActive: '2027-02-19' },
+  { id: 'us-005', name: 'Prakash Rao', role: 'Workstream Lead', workstream: 'Legal & Compliance', handle: 'p.rao', status: 'Active', lastActive: '2027-02-17' },
+  { id: 'us-006', name: 'Kavya Nair', role: 'Workstream Lead', workstream: 'Facilities & Workplace', handle: 'k.nair', status: 'Active', lastActive: '2027-02-19' },
+  { id: 'us-007', name: 'Mohammed Khan', role: 'Workstream Lead', workstream: 'Operations Setup', handle: 'm.khan', status: 'Active', lastActive: '2027-02-16' },
+  { id: 'us-008', name: 'Vikram Reddy', role: 'Workstream Lead', workstream: 'Finance & Procurement', handle: 'v.reddy', status: 'Active', lastActive: '2027-02-20' },
+  { id: 'us-009', name: 'Claire Dubois', role: 'Steering Member', workstream: 'All', handle: 'c.dubois', status: 'Active', lastActive: '2027-02-16' },
+  { id: 'us-010', name: 'Marc Lefèvre', role: 'Steering Member', workstream: 'All', handle: 'm.lefevre', status: 'Active', lastActive: '2027-02-15' },
   { id: 'us-011', name: 'Hannah Weber', role: 'Steering Member', workstream: 'All', handle: 'h.weber', status: 'Invited', lastActive: '' },
-  { id: 'us-012', name: 'Thomas Moreau', role: 'Steering Member', workstream: 'All', handle: 't.moreau', status: 'Active', lastActive: '2026-10-16' },
-  { id: 'us-013', name: 'Neha Kulkarni', role: 'Steering Member', workstream: 'All', handle: 'n.kulkarni', status: 'Active', lastActive: '2026-10-18' },
-  { id: 'us-014', name: 'Arjun Desai', role: 'Viewer', workstream: 'Finance & Procurement', handle: 'a.desai', status: 'Active', lastActive: '2026-10-14' },
+  { id: 'us-012', name: 'Thomas Moreau', role: 'Steering Member', workstream: 'All', handle: 't.moreau', status: 'Active', lastActive: '2027-02-16' },
+  { id: 'us-013', name: 'Neha Kulkarni', role: 'Steering Member', workstream: 'All', handle: 'n.kulkarni', status: 'Active', lastActive: '2027-02-18' },
+  { id: 'us-014', name: 'Arjun Desai', role: 'Viewer', workstream: 'Finance & Procurement', handle: 'a.desai', status: 'Active', lastActive: '2027-02-14' },
   { id: 'us-015', name: 'Priya Menon', role: 'Viewer', workstream: 'Talent & Hiring', handle: 'p.menon', status: 'Invited', lastActive: '' },
 ]
 

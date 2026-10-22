@@ -105,7 +105,7 @@ export function Topbar({ variant: _variant }: { variant: 'dashboard' | 'page' })
 
       {/* Right: date, notifications, user */}
       <div className="flex items-center gap-4 shrink-0 ml-auto">
-        <span className="text-[12.5px] text-ink-700 whitespace-nowrap hidden xl:inline">Mon, 20 Oct 2026</span>
+        <span className="text-[12.5px] text-ink-700 whitespace-nowrap hidden xl:inline">Mon, 22 Feb 2027</span>
         <CurrencyToggle />
         <div className="relative">
           <button onClick={() => setNotif((v) => !v)} className="relative text-ink-700 hover:text-ink-900 cursor-pointer flex">
@@ -171,7 +171,7 @@ export function CurrencyToggle() {
   )
 }
 
-export function PageHeader({ title, subtitle, viewLabel = 'View by', viewValue, viewOptions, onView, dateRange = '01 Jan 2026 – 31 Dec 2027', right, onEdit, editLabel = 'Edit' }: {
+export function PageHeader({ title, subtitle, viewLabel = 'View by', viewValue, viewOptions, onView, dateRange = '01 May 2026 – 30 Apr 2028', right, onEdit, editLabel = 'Edit' }: {
   title: string; subtitle: string; viewLabel?: string; viewValue?: string; viewOptions?: readonly string[]; onView?: (v: string) => void; dateRange?: string; right?: ReactNode
   /** Opens this page's editor (KPIs / settings). Rendered as the standard top-right "Edit" button. */
   onEdit?: () => void; editLabel?: string
@@ -189,7 +189,7 @@ export function PageHeader({ title, subtitle, viewLabel = 'View by', viewValue, 
         <label className="card px-3 py-2 flex items-center gap-2 text-[13px] font-medium text-ink-900">
           <Calendar size={16} className="text-brand-600" />
           <select value={range} onChange={(e) => setRange(e.target.value)} className="bg-transparent outline-none cursor-pointer">
-            {[dateRange, '01 Jan 2026 – 31 Dec 2026', '01 Jul 2026 – 31 Dec 2026', '01 Sep 2026 – 31 Dec 2026', '01 Jan 2027 – 31 Dec 2027'].filter((v, i, a) => a.indexOf(v) === i).map((o) => <option key={o}>{o}</option>)}
+            {[dateRange, '01 Nov 2026 – 30 Apr 2027', '01 Jan 2027 – 31 Dec 2027', '01 May 2026 – 30 Apr 2027', '01 May 2027 – 30 Apr 2028'].filter((v, i, a) => a.indexOf(v) === i).map((o) => <option key={o}>{o}</option>)}
           </select>
         </label>
         {onEdit && <button className="btn-primary" onClick={onEdit}><Pencil size={13} /> {editLabel}</button>}
@@ -245,10 +245,10 @@ function Assistant({ onClose }: { onClose: () => void }) {
     { who: 'ai', text: `Hi ${useStore.getState().user?.name.split(' ')[0] ?? 'there'}. I can summarise program status, explain a variance, or draft a steering committee note. What do you need?` },
   ])
   const canned: Record<string, string> = {
-    status: 'Program is 72% complete with 84% milestone adherence. Six critical issues are open. The IT infrastructure readiness milestone (23 Oct 2026) is At Risk and is the main threat to the 12 Nov 2026 go-live target.',
-    hiring: 'Talent onboarded is 320 of 450 FTEs (+12% vs plan). Wave 2 hiring is 20% behind plan; consider accelerating lateral hiring for Senior Data Engineer and Cybersecurity Analyst roles.',
+    status: 'ENGIE IT GCC Pune is 64% complete with 84% milestone adherence. Six critical issues are open. The IT infrastructure readiness milestone (23 Feb 2027) is At Risk and is the main threat to the 04 Mar Wave 3 go/no-go and the 30 Apr 2027 full-footprint target.',
+    hiring: 'Pune headcount onboarded is 268 of 400 (plan to date 285 at ramp month 4, −6% vs plan). Wave 1 (Infrastructure & Cloud, Cybersecurity & IAM) is complete; the Wave 2 gap sits in Enterprise Applications (SAP Functional / Technical from France) and Data Engineers. Consider accelerating lateral hiring through the two specialist agencies.',
     budget: (() => { const { currency, eurRate } = useStore.getState(); const f = (cr: number) => formatMoney(cr, currency, eurRate); return `Approved budget ${f(4.0)}, actual spend ${f(2.6)} (65%), forecast at completion ${f(3.8)} leaving ${f(0.2)} headroom. Other (Travel, Misc) is the only workstream over budget (+${f(0.1)}).` })(),
-    risk: 'Top risk is the delay in IT infrastructure provisioning (impact score 9.0, Critical, owner R. Mehta). It is linked to 4 downstream deliverables. Recommended action: escalate the network provisioning issue to the steering committee.',
+    risk: 'Top risk is the delay in IT infrastructure provisioning for the Pune site (impact score 9.0, Critical, owner R. Mehta). It is linked to 4 downstream deliverables including the Network cut-over from France. Recommended action: escalate the network provisioning issue to the steering committee (SC-10, 28 Feb).',
   }
   const ask = () => {
     if (!q.trim()) return

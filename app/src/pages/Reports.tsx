@@ -5,14 +5,14 @@ import { PageHeader } from '../components/layout/AppShell'
 import { InputLayout } from '../components/layout/InputLayout'
 import { Card, KpiTile, Badge, Progress, Table, Tabs, Modal, Field, Input, Select, TextArea, FormGrid, Legend, SectionTitle, ConfirmDelete, EmptyNote } from '../components/ui'
 import { tooltipStyle } from '../components/charts'
-import { useBusinessUnits } from '../components/footprint/BusinessUnits'
+import { seedBusinessUnits, seedSubUnits, rollUpUnits, subUnitsOf, subY1, programRamp, unitRamp, RAMP_MONTHS, buShortName, type BusinessUnit, type SubUnit } from '../data/businessUnits'
 import { useCollection, useStore, uid } from '../store/useStore'
 import { seedMilestones, seedRaid, seedProgramKpis, seedWorkstreamSummaries, isOpen, type Milestone, type RaidItem, type ProgramKpis, type WorkstreamSummary } from '../data/shared'
 import { fmtDate, CHART_COLORS, MONTHS, TODAY, WORKSTREAM_META, OWNERS, type Workstream } from '../data/common'
 import { useMoney } from '../data/money'
 import {
-  seedReports, seedReportCommentary, seedReportSchedules, seedRecipients, REPORT_TYPES, REPORT_STATUSES, CADENCES, CHANNELS, RECIPIENT_GROUPS, COMMENTARY_META,
-  type Report, type ReportCommentary, type ReportSchedule, type Recipient, type CommentaryId,
+  seedReports, seedReportCommentary, seedReportSchedules, seedRecipients, seedHeadcountActuals, REPORT_TYPES, REPORT_STATUSES, CADENCES, CHANNELS, RECIPIENT_GROUPS, COMMENTARY_META,
+  type Report, type ReportCommentary, type ReportSchedule, type Recipient, type CommentaryId, type HeadcountActual,
 } from '../data/reports'
 
 const TABS = ['Report Library', 'Weekly Program Update', 'Monthly Steering Committee Dashboard', 'Financial Report', 'Hiring & Workforce Report', 'Schedules & Distribution']
@@ -177,8 +177,8 @@ function Library({ reportsC, input }: { reportsC: ReturnType<typeof useCollectio
 function GenerateModal({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (r: Report) => void }) {
   const [f, setF] = useState<Report>({ id: '', name: `Weekly Program Update – ${weekLabel(TODAY)}`, type: 'Weekly', period: `${fmtDate(addDays(TODAY, -6)).slice(0, 6).trim()} – ${fmtDate(TODAY)}`, owner: 'A. Sharma', generatedOn: TODAY, status: 'Draft', recipients: 14 })
   const setType = (type: Report['type']) => {
-    const names: Record<Report['type'], string> = { Weekly: `Weekly Program Update – ${weekLabel(TODAY)}`, Monthly: 'Steering Committee Dashboard – Oct 2026', Financial: 'Financial Report – Oct 2026', Hiring: 'Hiring & Workforce Report – Oct 2026', 'Ad hoc': 'Ad hoc report' }
-    const periods: Record<Report['type'], string> = { Weekly: `${fmtDate(addDays(TODAY, -6)).slice(0, 6).trim()} – ${fmtDate(TODAY)}`, Monthly: 'Oct 2026', Financial: 'Oct 2026 (MTD)', Hiring: 'Oct 2026 (MTD)', 'Ad hoc': `As of ${fmtDate(TODAY)}` }
+    const names: Record<Report['type'], string> = { Weekly: `Weekly Program Update – ${weekLabel(TODAY)}`, Monthly: 'Steering Committee Dashboard – Feb 2027', Financial: 'Financial Report – Feb 2027', Hiring: 'Hiring & Workforce Report – Feb 2027', 'Ad hoc': 'Ad hoc report' }
+    const periods: Record<Report['type'], string> = { Weekly: `${fmtDate(addDays(TODAY, -6)).slice(0, 6).trim()} – ${fmtDate(TODAY)}`, Monthly: 'Feb 2027', Financial: 'Feb 2027 (MTD)', Hiring: 'Feb 2027 (MTD)', 'Ad hoc': `As of ${fmtDate(TODAY)}` }
     const rec: Record<Report['type'], number> = { Weekly: 14, Monthly: 9, Financial: 7, Hiring: 11, 'Ad hoc': 6 }
     setF({ ...f, type, name: names[type], period: periods[type], recipients: rec[type] })
   }
@@ -370,30 +370,31 @@ function WeeklyUpdate({ k, milestones, raid, wss, commentary, commentaryC, repor
 /* ====================================================================== */
 /* Monthly Steering Committee Dashboard                                    */
 /* ====================================================================== */
-const STEERCO_MONTHS = ['2026-08', '2026-09', '2026-10', '2026-11']
+/** Months with a steering pack: the first four ramp months (Nov 2026 – Feb 2027). */
+const STEERCO_MONTHS = ['2026-11', '2026-12', '2027-01', '2027-02']
 const monthName = (ym: string) => `${MONTHS[+ym.slice(5, 7) - 1]} ${ym.slice(0, 4)}`
+/** '2027-01' → 'Jan 27' (the RAMP_MONTHS label). */
+const rampLabel = (ym: string) => `${MONTHS[+ym.slice(5, 7) - 1]} ${ym.slice(2, 4)}`
 const nextMonth = (ym: string) => { const [y, m] = ym.split('-').map(Number); return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}` }
 
 function SteerCo({ k, milestones, raid, wss, commentary }: { k: ProgramKpis; milestones: Milestone[]; raid: RaidItem[]; wss: WorkstreamSummary[]; commentary?: ReportCommentary }) {
   const m = useMoney()
-  const [month, setMonth] = useState('2026-10')
+  const [month, setMonth] = useState('2027-01')
   const nm = nextMonth(month)
+  const { items: subUnits } = useCollection<SubUnit>('subUnits', seedSubUnits)
+  const { items: actuals } = useCollection<HeadcountActual>('headcountActuals', seedHeadcountActuals)
   const nextMs = useMemo(() => milestones.filter((m) => monthKey(m.dueDate) === nm).sort((a, b) => a.dueDate.localeCompare(b.dueDate)), [milestones, nm])
   const top5 = useMemo(() => raid.filter(isOpen).filter((r) => r.type === 'Risk').sort((a, b) => b.impactScore - a.impactScore).slice(0, 5), [raid])
   const decisions = useMemo(() => raid.filter((r) => isOpen(r) && (r.escalationStatus === 'Awaiting Decision' || r.escalated)).slice(0, 4), [raid])
   const budget = useMemo(() => wss.map((w) => ({ name: SHORT(w.name), Budget: m.toDisplay(w.approvedBudgetCr), Actual: m.toDisplay(w.actualSpendCr) })), [wss, m.currency, m.rate]) // eslint-disable-line react-hooks/exhaustive-deps
   const fmtDisp = (v: number) => `${m.symbol} ${v.toFixed(m.digits)} ${m.unit}`
+  // Year-1 month-wise ramp (plan = sum of capability ramps from the organisation structure) up to the pack month.
   const headcount = useMemo(() => {
-    const idx = +month.slice(5, 7) - 1
-    const planRamp = [80, 110, 150, 180, 210, 250, 290, 320, 350, 390, 420, 450]
-    const scale = k.talentTarget / 450
-    return MONTHS.slice(Math.max(0, idx - 5), idx + 1).map((m, i, arr) => {
-      const j = idx - (arr.length - 1 - i)
-      const plan = Math.round(planRamp[j] * scale)
-      const actual = j < 9 ? Math.round(plan * 0.94) : j === 9 ? k.talentOnboarded : undefined
-      return { month: m, Plan: plan, Actual: actual }
-    })
-  }, [k, month])
+    const idx = Math.max(0, RAMP_MONTHS.indexOf(rampLabel(month) as (typeof RAMP_MONTHS)[number]))
+    const plan = programRamp(subUnits)
+    return RAMP_MONTHS.slice(0, idx + 1).map((m, i) => ({ month: m, Plan: plan[i], Actual: actuals.find((a) => a.month === m)?.actual }))
+  }, [subUnits, actuals, month])
+  const onboardedAtMonth = headcount[headcount.length - 1]?.Actual ?? k.talentOnboarded
   // month offset for "as of" KPIs (earlier months shown slightly lower)
   const off = (STEERCO_MONTHS.indexOf(month) - 2)
   const adj = (v: number, step: number) => Math.max(0, Math.round(v + off * step))
@@ -422,7 +423,7 @@ function SteerCo({ k, milestones, raid, wss, commentary }: { k: ProgramKpis; mil
         <div className="grid grid-cols-6 gap-3">
           {[
             ['Program Completion', `${adj(k.programCompletion, 6)}%`, 'text-green-600'], ['Milestone Adherence', `${adj(k.milestoneAdherence, 4)}%`, 'text-brand-600'],
-            ['Talent Onboarded', `${adj(k.talentOnboarded, 35)} / ${k.talentTarget}`, 'text-navy-900'], ['Budget Consumed', `${Math.round(((k.actualSpendCr + off * 0.3) / k.approvedBudgetCr) * 100)}%`, 'text-navy-900'],
+            ['Talent Onboarded', `${onboardedAtMonth} / ${k.talentTarget}`, 'text-navy-900'], ['Budget Consumed', `${Math.round(((k.actualSpendCr + off * 0.3) / k.approvedBudgetCr) * 100)}%`, 'text-navy-900'],
             ['Open Critical Issues', String(adj(k.openCriticalIssues, -2)), 'text-red-600'], ['Transition Readiness', `${adj(k.transitionReadiness, 10)}%`, 'text-green-600'],
           ].map(([l, v, c]) => (
             <div key={l} className="rounded-lg bg-surface p-3"><div className={`text-[21px] font-bold leading-tight ${c}`}>{v}</div><div className="text-[12px] text-ink-700 mt-0.5">{l}</div></div>
@@ -644,7 +645,10 @@ const daysSince = (iso?: string) => (iso ? Math.max(0, Math.round((new Date(TODA
 function HiringReport({ k, commentaryC }: { k: ProgramKpis; commentaryC: ReturnType<typeof useCollection<ReportCommentary>> }) {
   const headcountPlan = useStore((s) => s.collections['headcountPlan']) as AnyRec[] | undefined
   const positionsAll = useStore((s) => s.collections['positions']) as AnyRec[] | undefined
-  const { items: businessUnits } = useBusinessUnits()
+  const busC = useCollection<BusinessUnit>('businessUnits', seedBusinessUnits)
+  const { items: subUnits } = useCollection<SubUnit>('subUnits', seedSubUnits)
+  const { items: actuals } = useCollection<HeadcountActual>('headcountActuals', seedHeadcountActuals)
+  const businessUnits = useMemo(() => rollUpUnits(busC.items, subUnits).filter((b) => b.status !== 'Out of Scope'), [busC.items, subUnits])
   const funnelC = useCollection<FunnelStage>('hiringFunnel', seedFunnel)
   const commentary = commentaryC.items.find((c) => c.id === 'hiring') ?? seedReportCommentary.find((c) => c.id === 'hiring')!
   const [text, setText] = useState(commentary.text)
@@ -655,10 +659,20 @@ function HiringReport({ k, commentaryC }: { k: ProgramKpis; commentaryC: ReturnT
       const list = headcountPlan.map((r, i) => ({ label: strOf(r, ['month', 'period', 'wave', 'name', ...BU_KEYS, 'label']) ?? `#${i + 1}`, Plan: numOf(r, ['plan', 'planned', 'planHeadcount', 'approved', 'target']) ?? 0, Actual: numOf(r, ['actual', 'onboarded', 'actualHeadcount', 'filled', 'hired']) as number | undefined }))
       if (list.some((r) => r.Plan || r.Actual)) return { data: list.slice(0, 12), synthetic: false }
     }
-    const planRamp = [80, 110, 150, 180, 210, 250, 290, 320, 350, 390, 420, 450]
-    const scale = k.talentTarget / 450
-    return { data: MONTHS.map((m, i) => ({ label: m, Plan: Math.round(planRamp[i] * scale), Actual: i < 9 ? Math.round(planRamp[i] * scale * 0.94) : i === 9 ? k.talentOnboarded : undefined })), synthetic: true }
-  }, [headcountPlan, k])
+    const plan = programRamp(subUnits)
+    return { data: RAMP_MONTHS.map((m, i) => ({ label: m, Plan: plan[i], Actual: actuals.find((a) => a.month === m)?.actual })), synthetic: true }
+  }, [headcountPlan, subUnits, actuals])
+  // Ramp month of the reporting date = the last month with an actual; plan "to date" reads that month of every capability ramp.
+  const toDateIdx = useMemo(() => Math.max(0, ...actuals.map((a) => RAMP_MONTHS.indexOf(a.month as (typeof RAMP_MONTHS)[number]))), [actuals])
+  type PlanRow = { id: string; label: string; kind: 'unit' | 'sub'; gbu: string; loc: string; role: string; wave: string; current: number; toDate: number; target: number; y5: number }
+  const planRows = useMemo<PlanRow[]>(() => businessUnits.flatMap((b) => {
+    const mine = subUnitsOf(subUnits, b.id)
+    const gbus = Array.from(new Set(mine.map((s) => s.gbuServed)))
+    const unit: PlanRow = { id: b.id, label: b.name, kind: 'unit', gbu: gbus.length === 1 ? gbus[0] : 'Multiple GBUs', loc: Array.from(new Set(mine.map((s) => s.deliveryLocation))).join(', '), role: '', wave: b.wave, current: mine.reduce((t, s) => t + s.currentHc, 0), toDate: unitRamp(subUnits, b.id)[toDateIdx] ?? 0, target: b.y1, y5: b.y5 }
+    return [unit, ...mine.map((s): PlanRow => ({ id: s.id, label: s.name, kind: 'sub', gbu: s.gbuServed, loc: s.deliveryLocation, role: s.roleSkill, wave: s.wave, current: s.currentHc, toDate: s.ramp[toDateIdx] ?? 0, target: subY1(s), y5: s.y5 }))]
+  }), [businessUnits, subUnits, toDateIdx])
+  const planTotals = useMemo(() => planRows.filter((r) => r.kind === 'unit').reduce((t, r) => ({ current: t.current + r.current, toDate: t.toDate + r.toDate, target: t.target + r.target, y5: t.y5 + r.y5 }), { current: 0, toDate: 0, target: 0, y5: 0 }), [planRows])
+  const byUnitChart = useMemo(() => planRows.filter((r) => r.kind === 'unit').map((r) => ({ name: buShortName(r.label), 'Plan to date': r.toDate, 'Target (Year 1)': r.target })), [planRows])
 
   // open positions from Resource Management, grouped by business unit (field may be 'businessUnit' or the older 'workstream')
   const positions = useMemo(() => (positionsAll ?? []).filter(isOpenPos), [positionsAll])
@@ -694,11 +708,11 @@ function HiringReport({ k, commentaryC }: { k: ProgramKpis; commentaryC: ReturnT
   }, [positions])
   // placeholder rows when the Resource Management page has not captured positions yet – named by business unit
   const placeholderPositions = useMemo(() => {
-    const bu = (i: number) => businessUnits[i % Math.max(1, businessUnits.length)]?.name ?? 'Business unit'
+    const bu = (id: string, fallback: string) => businessUnits.find((b) => b.id === id)?.name ?? fallback
     return [
-      { id: 'op-1', stage: `SAP S/4HANA Consultant (${bu(0)}) – 3 open, 52 days`, candidates: 3 }, { id: 'op-2', stage: `Dynamics 365 Engineer (${bu(1)}) – 2 open, 47 days`, candidates: 2 },
-      { id: 'op-3', stage: `Data Engineer (${bu(2)}) – 6 open, 21 days`, candidates: 6 }, { id: 'op-4', stage: `Product Engineer (${bu(3)}) – 12 open, 14 days`, candidates: 12 },
-      { id: 'op-5', stage: `Cloud Platform Engineer (${bu(4)}) – 1 open, 33 days`, candidates: 1 }, { id: 'op-6', stage: `GL Accountant (${bu(5)}) – 2 open, 9 days`, candidates: 2 },
+      { id: 'op-1', stage: `SAP Functional / Technical (${bu('bu-apps', 'Enterprise Applications')}) – 11 open, 52 days`, candidates: 11 }, { id: 'op-2', stage: `Data Engineers (${bu('bu-data', 'Data, Analytics & AI')}) – 6 open, 47 days`, candidates: 6 },
+      { id: 'op-3', stage: `IAM Specialists (${bu('bu-cyber', 'Cybersecurity & IAM')}) – 2 open, 21 days`, candidates: 2 }, { id: 'op-4', stage: `Cloud Engineers (${bu('bu-infra', 'Infrastructure & Cloud')}) – 4 open, 14 days`, candidates: 4 },
+      { id: 'op-5', stage: `Service Desk Analysts (${bu('bu-dwp', 'Digital Workplace')}) – 7 open, 9 days`, candidates: 7 }, { id: 'op-6', stage: `Service Managers (${bu('bu-itsm', 'IT Service Management')}) – 5 open, 12 days`, candidates: 5 },
     ]
   }, [businessUnits])
 
@@ -711,14 +725,14 @@ function HiringReport({ k, commentaryC }: { k: ProgramKpis; commentaryC: ReturnT
     <div className="space-y-4">
       <style>{PRINT_CSS}</style>
       <div className="flex items-center justify-between no-print">
-        <p className="text-[12.5px] text-ink-500">{hc.synthetic ? 'Headcount curve synthesized from program KPIs (talent onboarded / target) until the Resource Management page captures a headcount plan.' : 'Headcount plan from Resource Management.'}</p>
+        <p className="text-[12.5px] text-ink-500">{hc.synthetic ? `Year-1 month-wise plan (${RAMP_MONTHS[0]} – ${RAMP_MONTHS[RAMP_MONTHS.length - 1]}) from the organisation structure in GCC Setup vs actual Pune headcount; the Resource Management headcount plan takes over once captured.` : 'Headcount plan from Resource Management.'}</p>
         <button className="btn-secondary" onClick={() => window.print()}><Printer size={14} /> Print / Save as PDF</button>
       </div>
       <div id="print-area" className="space-y-4">
         <div className="grid grid-cols-5 gap-4">
           <KpiTile tone="navy" icon={<Users size={20} />} value={k.talentTarget} label="Approved Headcount" />
           <KpiTile tone="green" icon={<CheckCircle2 size={20} />} value={k.talentOnboarded} label="Onboarded" sub={`${Math.round((k.talentOnboarded / k.talentTarget) * 100)}% of target`} />
-          <KpiTile tone="amber" icon={<AlertTriangle size={20} />} value={gap} label="Hiring Gap" sub={`+${k.talentDeltaVsPlan}% vs plan`} />
+          <KpiTile tone="amber" icon={<AlertTriangle size={20} />} value={gap} label="Hiring Gap" sub={`${k.talentDeltaVsPlan >= 0 ? '+' : ''}${k.talentDeltaVsPlan}% vs plan to date`} />
           <KpiTile tone="blue" icon={<FileText size={20} />} value={positions.length || (funnel.find((f) => f.stage === 'Offer Extended')?.candidates ?? 0)} label={positions.length ? 'Open Positions' : 'Offers Extended'} sub={positions.length ? `across ${posByBu.length} business unit${posByBu.length === 1 ? '' : 's'}` : undefined} />
           <KpiTile tone="teal" icon={<Send size={20} />} value={`${Math.round(((funnel.find((f) => f.stage === 'Joined')?.candidates ?? 0) / Math.max(1, funnel.find((f) => f.stage === 'Offer Extended')?.candidates ?? 1)) * 100)}%`} label="Offer Acceptance Rate" />
         </div>
@@ -731,8 +745,8 @@ function HiringReport({ k, commentaryC }: { k: ProgramKpis; commentaryC: ReturnT
                   <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
                   <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
                   <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} />
-                  <Bar dataKey="Plan" fill={CHART_COLORS.blueFaint} radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="Actual" fill={CHART_COLORS.blue} radius={[3, 3, 0, 0]}><LabelList dataKey="Actual" position="top" style={{ fontSize: 9.5, fill: '#374151' }} /></Bar>
+                  <Bar dataKey="Plan" fill={CHART_COLORS.blueFaint} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+                  <Bar dataKey="Actual" fill={CHART_COLORS.blue} radius={[3, 3, 0, 0]} isAnimationActive={false}><LabelList dataKey="Actual" position="top" style={{ fontSize: 9.5, fill: '#374151' }} /></Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -750,7 +764,35 @@ function HiringReport({ k, commentaryC }: { k: ProgramKpis; commentaryC: ReturnT
             </div>
           </Card>
         </div>
-        <div className="grid grid-cols-[1.3fr_1fr] gap-4">
+        <Card title="Headcount plan by business unit and capability" subtitle={`Current HC at source, plan to date (${RAMP_MONTHS[toDateIdx]}), target Pune HC at the end of year 1 and the Year 5 exit – from the organisation structure in GCC Setup`}>
+            <Table<PlanRow> compact rows={planRows} columns={[
+              { key: 'label', header: 'Business unit / capability', render: (r) => r.kind === 'unit' ? <span className="font-semibold text-ink-900">{r.label}</span> : <span className="pl-4 text-ink-700">{r.label}</span> },
+              { key: 'gbu', header: 'GBU served', className: 'whitespace-nowrap', render: (r) => <span className={r.kind === 'unit' ? 'text-ink-500' : ''}>{r.gbu}</span> },
+              { key: 'loc', header: 'Current delivery location', className: 'whitespace-nowrap', render: (r) => <span className={r.kind === 'unit' ? 'text-ink-500' : ''}>{r.loc}</span> },
+              { key: 'role', header: 'Role / skill', render: (r) => r.role || <span className="text-ink-400">—</span> },
+              { key: 'wave', header: 'Wave', className: 'whitespace-nowrap' },
+              { key: 'current', header: 'Current HC', className: 'text-right', render: (r) => <span className={r.kind === 'unit' ? 'font-semibold' : ''}>{r.current}</span> },
+              { key: 'toDate', header: 'Plan to date', className: 'text-right', render: (r) => <span className={r.kind === 'unit' ? 'font-semibold' : ''}>{r.toDate}</span> },
+              { key: 'target', header: 'Target Pune HC', className: 'text-right', render: (r) => <span className={r.kind === 'unit' ? 'font-semibold text-brand-600' : ''}>{r.target}</span> },
+              { key: 'y5', header: 'Year 5', className: 'text-right', render: (r) => <span className={r.kind === 'unit' ? 'font-semibold' : 'text-ink-500'}>{r.y5}</span> },
+            ]} />
+            <div className="mt-2 pt-2 border-t border-line text-[12px] text-ink-700 flex flex-wrap gap-x-4 gap-y-1"><span className="font-semibold text-ink-900">Total ({businessUnits.length} business units, {subUnits.length} capabilities)</span><span>Current HC <b>{planTotals.current}</b></span><span>Plan to date <b>{planTotals.toDate}</b> · actual <b>{k.talentOnboarded}</b></span><span>Target Pune HC <b className="text-brand-600">{planTotals.target}</b></span><span>Year 5 <b>{planTotals.y5}</b></span></div>
+        </Card>
+        <div className="grid grid-cols-[1fr_1.3fr] gap-4">
+          <Card title="Plan to date vs target by business unit" subtitle="Cumulative Pune headcount at the reporting month against the end-of-year-1 target" headerRight={<Legend items={[{ label: 'Plan to date', color: CHART_COLORS.blueFaint }, { label: 'Target (Year 1)', color: CHART_COLORS.blue }]} />}>
+            <div className="h-[300px]">
+              <ResponsiveContainer>
+                <BarChart data={byUnitChart} layout="vertical" margin={{ top: 4, right: 28, left: 8, bottom: 0 }} barCategoryGap="22%" barGap={2}>
+                  <CartesianGrid horizontal={false} />
+                  <XAxis type="number" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="name" width={84} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+                  <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} />
+                  <Bar dataKey="Plan to date" fill={CHART_COLORS.blueFaint} radius={[0, 3, 3, 0]} isAnimationActive={false} />
+                  <Bar dataKey="Target (Year 1)" fill={CHART_COLORS.blue} radius={[0, 3, 3, 0]} isAnimationActive={false}><LabelList dataKey="Target (Year 1)" position="right" style={{ fontSize: 10.5, fill: '#111827', fontWeight: 600 }} /></Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
           <Card title="Open positions by business unit" subtitle={positions.length ? `${positions.length} open positions from Resource Management` : 'Illustrative – no open positions captured yet on the Resource Management page'}>
             {positions.length ? (
               <div className="space-y-3">
@@ -767,12 +809,12 @@ function HiringReport({ k, commentaryC }: { k: ProgramKpis; commentaryC: ReturnT
               <Table<FunnelStage> compact rows={placeholderPositions} columns={[{ key: 'stage', header: 'Role (business unit) – open, days open' }, { key: 'candidates', header: 'Open', className: 'text-right' }]} />
             )}
           </Card>
-          <Card title="Commentary" headerRight={<span className="text-[11.5px] text-ink-500">Updated {fmtDate(commentary.updatedOn)}</span>}>
-            <TextArea className="no-print min-h-[150px]" value={text} onChange={(e) => setText(e.target.value)} onBlur={save} />
-            <p className="hidden print:block text-[13px] whitespace-pre-wrap">{text}</p>
-            <div className="flex justify-end mt-2 no-print"><button className="btn-secondary" onClick={save} disabled={text === commentary.text}>Save commentary</button></div>
-          </Card>
         </div>
+        <Card title="Commentary" headerRight={<span className="text-[11.5px] text-ink-500">Updated {fmtDate(commentary.updatedOn)}</span>}>
+          <TextArea className="no-print min-h-[110px]" value={text} onChange={(e) => setText(e.target.value)} onBlur={save} />
+          <p className="hidden print:block text-[13px] whitespace-pre-wrap">{text}</p>
+          <div className="flex justify-end mt-2 no-print"><button className="btn-secondary" onClick={save} disabled={text === commentary.text}>Save commentary</button></div>
+        </Card>
       </div>
       {editStage && (
         <Modal open onClose={() => setEditStage(null)} title={`Edit funnel stage – ${editStage.stage}`} width="max-w-md" footer={<><button className="btn-secondary" onClick={() => setEditStage(null)}>Cancel</button><button className="btn-primary" onClick={() => { funnelC.update(editStage); setEditStage(null) }}>Save</button></>}>

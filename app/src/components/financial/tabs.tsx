@@ -206,7 +206,7 @@ export const COMMITMENT_FIELDS: FieldSpec<Commitment>[] = [
   { key: 'status', label: 'Status', type: 'select', options: ['Open', 'Approved', 'In Progress', 'Closed'] },
   { key: 'date', label: 'PO date', type: 'date' },
 ]
-export const newCommitment = (): Commitment => ({ id: uid('cm'), poNumber: `PO-26-00${Math.floor(50 + Math.random() * 49)}`, vendor: '', description: '', workstream: FIN_WORKSTREAMS[0], category: COST_CATEGORIES[0], committedCr: 0, invoicedCr: 0, paidCr: 0, status: 'Open', date: '2026-10-20' })
+export const newCommitment = (): Commitment => ({ id: uid('cm'), poNumber: `PO-26-00${Math.floor(50 + Math.random() * 49)}`, vendor: '', description: '', workstream: FIN_WORKSTREAMS[0], category: COST_CATEGORIES[0], committedCr: 0, invoicedCr: 0, paidCr: 0, status: 'Open', date: '2027-02-22' })
 
 export function CommitmentsTable({ rows, m, onRow, compact }: { rows: Commitment[]; m: Money; onRow: (c: Commitment) => void; compact?: boolean }) {
   const tc = sum(rows.map((c) => c.committedCr)), ti = sum(rows.map((c) => c.invoicedCr)), tp = sum(rows.map((c) => c.paidCr))
@@ -522,7 +522,7 @@ export function ApprovalsTab({ fin }: { fin: Fin }) {
         <StatBox label="Paid" value={mfmt(m, fin.paid, 2)} tone="text-green-600" sub={<span className="flex items-center gap-2"><Progress value={pct(fin.paid, fin.committed)} className="flex-1" color="#16A34A" />{pct(fin.paid, fin.committed)}% of committed</span>} />
       </div>
 
-              <Card title="Approval Queue" subtitle="Approve or reject budget requests; decisions update the status immediately." action={<div className="flex items-center gap-2"><FilterSelect label="Status" value={filter} options={['All', 'Pending', 'Approved', 'Rejected']} onChange={setFilter} /><button className="btn-primary" onClick={() => apEd.open({ id: uid('ap'), item: '', amountCr: 0, requester: '', approver: 'Global CFO', workstream: FIN_WORKSTREAMS[0], status: 'Pending', date: '2026-10-20', notes: '' }, true)}><Plus size={14} /> New request</button></div>}>
+              <Card title="Approval Queue" subtitle="Approve or reject budget requests; decisions update the status immediately." action={<div className="flex items-center gap-2"><FilterSelect label="Status" value={filter} options={['All', 'Pending', 'Approved', 'Rejected']} onChange={setFilter} /><button className="btn-primary" onClick={() => apEd.open({ id: uid('ap'), item: '', amountCr: 0, requester: '', approver: 'Global CFO', workstream: FIN_WORKSTREAMS[0], status: 'Pending', date: '2027-02-22', notes: '' }, true)}><Plus size={14} /> New request</button></div>}>
           {approvals.length === 0 && <EmptyNote>No approval requests match this filter.</EmptyNote>}
           {approvals.length > 0 && (
             <Tbl>

@@ -1,43 +1,24 @@
-// Resource Management – types, constants and seed data. Wording mirrors mockups/05-resource-management.jpeg,
-// with the client's changes: headcount is by BUSINESS UNIT (src/data/businessUnits.ts), the GCC is Pune-only for now,
-// and every requisition carries its own candidate pipeline ('candidates' collection).
-import { OWNERS, TODAY, MONTHS, CHART_COLORS } from './common'
-import { seedBusinessUnits, BU_NAMES } from './businessUnits'
+// Resource Management – types, constants and seed data, aligned to the ENGIE IT GCC model (src/data/businessUnits.ts):
+//   business unit (IT domain) → capability (sub-unit) → positions / people / actuals.
+// The headcount PLAN is owned by the organisation structure (sub-unit ramps: month-wise for year 1, annual for years 2–5);
+// this module owns the ACTUALS (per capability and month), the requisitions with their candidate pipelines, the allocation
+// sample, skills, people cost, time to hire and attrition. The GCC is Pune-only for now.
+import { OWNERS, TODAY, CHART_COLORS } from './common'
+import { seedBusinessUnits, seedSubUnits, RAMP_MONTHS, RAMP_START, buShortName, type SubUnit } from './businessUnits'
 
-/* ---------- Business units on this page ---------- */
-/** Short names used in compact tables / chart axes. Unknown names fall back to the full name. */
-export const BU_SHORT: Record<string, string> = {
-  'SAP Practice': 'SAP',
-  'Microsoft Practice': 'Microsoft',
-  'Data & AI Practice': 'Data & AI',
-  'R&D – Product Engineering': 'R&D Product',
-  'R&D – Platform & Cloud': 'R&D Cloud',
-  'Finance Shared Services': 'Finance SS',
-  'HR Shared Services': 'HR SS',
-}
-export const buShort = (name: string) => BU_SHORT[name] ?? name
+/* ---------- Business units / capabilities on this page ---------- */
+export const buShort = (name: string) => buShortName(name)
 /** Two-line labels for narrow chart axes ("\n" = line break, see WrapTick). */
 export const BU_AXIS: Record<string, string> = {
-  'SAP Practice': 'SAP', 'Microsoft Practice': 'Microsoft', 'Data & AI Practice': 'Data &\nAI', 'R&D – Product Engineering': 'R&D\nProduct', 'R&D – Platform & Cloud': 'R&D\nCloud', 'Finance Shared Services': 'Finance\nSS', 'HR Shared Services': 'HR\nSS',
+  'Infrastructure & Cloud': 'Infra &\nCloud', 'Digital Workplace': 'Digital\nWorkplace', 'Cybersecurity & IAM': 'Cyber &\nIAM', 'Enterprise Applications': 'Enterprise\nApps',
+  'Data, Analytics & AI': 'Data &\nAI', 'Integration & Engineering': 'Integration\n& Eng.', 'IT Service Management': 'ITSM',
 }
 export const buAxis = (name: string) => BU_AXIS[name] ?? buShort(name)
-/** Fallback mapping for rows that still carry the old function / workstream names (persisted data, imports). */
-export const LEGACY_FN_TO_BU: Record<string, string> = {
-  'Engineering & Product': 'R&D – Product Engineering',
-  'Data & Analytics': 'Data & AI Practice',
-  'IT & Infrastructure': 'R&D – Platform & Cloud',
-  'Finance & Accounting': 'Finance Shared Services',
-  'HR & People Services': 'HR Shared Services',
-  'Procurement & Supply Chain': 'Finance Shared Services',
-  'Other / Central': 'SAP Practice',
-}
-/** Resolve any stored name to a business unit from the live list (legacy function names are mapped, unknown names kept). */
-export const normalizeBu = (name: string | undefined, live: readonly string[] = BU_NAMES) => {
-  if (!name) return live[0] ?? ''
-  if (live.includes(name)) return name
-  const mapped = LEGACY_FN_TO_BU[name]
-  return mapped && live.includes(mapped) ? mapped : name
-}
+/** Resolve any stored name to a business unit from the live list (unknown names kept so nothing is silently dropped). */
+export const normalizeBu = (name: string | undefined, live: readonly string[]) => (name && live.includes(name) ? name : name || live[0] || '')
+/** Where a requisition's work comes from, in the slide's wording: "Transition from France", "Build (new capability)". */
+export const sourceLabel = (s?: Pick<SubUnit, 'transitionType' | 'deliveryLocation'> | null) =>
+  !s ? '—' : s.transitionType === 'Build' ? 'Build (new capability)' : s.transitionType === 'Transition' ? `Transition from ${s.deliveryLocation}` : `Build / transition from ${s.deliveryLocation}`
 
 /** Suggested locations when a second site is added later; the GCC is Pune-only today. */
 export const RES_LOCATIONS = ['Pune', 'Bengaluru', 'Hyderabad', 'Chennai'] as const
@@ -48,6 +29,10 @@ export const POSITION_STATUSES = ['Open', 'In Interview', 'Offer', 'Joined', 'On
 export type PositionStatus = (typeof POSITION_STATUSES)[number]
 export const GRADES = ['L1', 'L2', 'L3', 'L4', 'L5'] as const
 export const COST_BANDS = ['Band A', 'Band B', 'Band C', 'Band D'] as const
+/** Year selector for every headcount view: month-wise for the first year, annual bars for years 2–5. */
+export const HC_VIEWS = ['Year 1 month-wise', 'Years 2–5 annual'] as const
+export type HcView = (typeof HC_VIEWS)[number]
+export const OUT_YEARS = ['Year 2', 'Year 3', 'Year 4', 'Year 5'] as const
 
 /* ---------- Date helpers (local, no TZ shift) ---------- */
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -57,39 +42,64 @@ export const addDays = (iso: string, n: number) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 export const daysBetween = (from: string, to = TODAY) => Math.max(0, Math.round((new Date(to + 'T00:00:00').getTime() - new Date(from + 'T00:00:00').getTime()) / 86400000))
+/** Ramp month index (0 = Nov 26) of an ISO date, clamped to the first year. */
+export const rampIndexOf = (iso: string) => {
+  const [y, m] = iso.split('-').map(Number)
+  const [sy, sm] = RAMP_START.split('-').map(Number)
+  return Math.max(0, Math.min(RAMP_MONTHS.length - 1, (y - sy) * 12 + (m - sm)))
+}
+/** First day of a ramp month: 0 → 2026-11-01. */
+export const rampMonthStart = (i: number) => {
+  const [sy, sm] = RAMP_START.split('-').map(Number)
+  const total = sy * 12 + (sm - 1) + i
+  return `${Math.floor(total / 12)}-${pad((total % 12) + 1)}-01`
+}
+/** Reporting month = the ramp month that contains TODAY (Feb 27 → index 3). */
+export const REPORTING_IDX = rampIndexOf(TODAY)
+export const REPORTING_MONTH = RAMP_MONTHS[REPORTING_IDX]
 
 /* ---------- Types ---------- */
 export interface Position {
-  id: string; role: string; businessUnit: string; location: string; priority: Priority; status: PositionStatus
+  id: string; role: string; businessUnit: string; capability: string; location: string; priority: Priority; status: PositionStatus
   openedOn: string; targetDate: string; hiringManager: string; grade: string; notes?: string
 }
 export const isOpenPosition = (p: Position) => p.status === 'Open' || p.status === 'In Interview' || p.status === 'Offer'
+export const isInHiring = (p: Position) => p.status === 'In Interview' || p.status === 'Offer'
 export const isCriticalPosition = (p: Position) => p.priority === 'Critical' || p.priority === 'High'
 export const positionDaysOpen = (p: Position) => daysBetween(p.openedOn)
 export const reqId = (p: Position) => p.id.toUpperCase().replace('POS-', 'REQ-')
 
-export interface HeadcountMonth { id: string; month: string; planned: number; actual: number; target: number; plannedUtil: number; actualUtil: number }
-export interface BuHeadcount { id: string; businessUnit: string; onboarded: number; inHiring: number; open: number }
+/** Cumulative Pune headcount actually onboarded per capability, per month of year 1 (null = not reported yet). */
+export interface CapabilityActuals { id: string; businessUnit: string; capability: string; actuals: (number | null)[] }
+/** Derived headcount row (per capability, rolled up to the business unit). */
+export interface CapHeadcount { id: string; businessUnit: string; capability: string; onboarded: number; inHiring: number; open: number; plan: number; target: number }
+export interface BuHeadcount { id: string; businessUnit: string; onboarded: number; inHiring: number; open: number; plan: number; target: number; capabilities: CapHeadcount[] }
 export interface FunnelStage { id: string; stage: string; candidates: number }
-export interface HiringTarget { id: string; businessUnit: string; targets: number[] /* Jan..Dec */ }
 export interface SkillRow { id: string; category: string; required: number; available: number; owner: string }
 export interface TrainingPlan { id: string; program: string; skill: string; participants: number; startDate: string; endDate: string; status: 'Planned' | 'In Progress' | 'Completed'; owner: string }
-export interface Employee { id: string; name: string; role: string; businessUnit: string; location: string; grade: string; allocationPct: number; costBand: string; annualCostL: number; startDate: string }
+export interface Employee { id: string; name: string; role: string; businessUnit: string; capability: string; location: string; grade: string; allocationPct: number; costBand: string; annualCostL: number; startDate: string }
 export interface PeopleCostRow { id: string; businessUnit: string; budgetCr: number; actualCr: number }
 export interface LocationRow { id: string; name: string; ftes: number; seats: number; costIndex: number; color: string; office: string }
-export interface ForecastQuarter { id: string; quarter: string; base: number; accelerated: number; conservative: number }
 export interface TimeToHireRow { id: string; businessUnit: string; actual: number; target: number }
 export interface AttritionMonth { id: string; month: string; ratePct: number; benchmarkPct: number; exits: number; regretted: number }
-export interface ExitRecord { id: string; name: string; role: string; businessUnit: string; location: string; exitDate: string; reason: string; regretted: boolean; tenureMonths: number }
+export interface ExitRecord { id: string; name: string; role: string; businessUnit: string; capability: string; location: string; exitDate: string; reason: string; regretted: boolean; tenureMonths: number }
 export interface RetentionAction { id: string; action: string; segment: string; owner: string; dueDate: string; status: 'Planned' | 'In Progress' | 'Completed'; impact: 'High' | 'Medium' | 'Low' }
-export interface ResourceSettings { id: string; fteTarget: number; avgTimeToHireMonths: number; timeToHireTargetMonths: number; seatRatio: number; currentMonth: string }
+export interface ResourceSettings {
+  id: string; schema: string; fteTarget: number; avgTimeToHireMonths: number; timeToHireTargetMonths: number; seatRatio: number
+  /** reporting month – one of RAMP_MONTHS; the FTEs Onboarded KPI reads this month's actuals */
+  currentMonth: string
+  /** forecast scenarios for the annual view: accelerated = plan × (1 + %), conservative = plan × (1 − %) */
+  acceleratedPct: number; conservativePct: number
+}
+/** Bumped whenever the seed model changes; persisted data from an older schema is re-seeded (string: program variants scale numbers). */
+export const RESOURCE_SCHEMA = 'engie-v3'
 
 /* ---------- Candidates (application pipeline per requisition) ---------- */
 export const CANDIDATE_STAGES = ['Applied', 'Screened', 'Round 1 technical', 'Round 2 technical / case', 'HR round', 'Offer', 'Accepted', 'Joined'] as const
 export type CandidateStage = (typeof CANDIDATE_STAGES)[number]
 export const CANDIDATE_STATUSES = ['In process', 'Offer', 'Rejected', 'Withdrawn', 'Joined'] as const
 export type CandidateStatus = (typeof CANDIDATE_STATUSES)[number]
-export const CANDIDATE_SOURCES = ['LinkedIn', 'Naukri', 'Referral', 'Agency', 'Campus', 'Careers site', 'Internal'] as const
+export const CANDIDATE_SOURCES = ['LinkedIn', 'Naukri', 'Referral', 'Agency', 'Campus', 'Careers site', 'Internal', 'ENGIE transfer'] as const
 export interface Candidate {
   id: string; positionId: string; name: string; source: string
   /** furthest stage reached */
@@ -146,204 +156,211 @@ export function requisitionStage(cands: Candidate[]): CandidateStage | 'No appli
 
 /* ---------- Seeds ---------- */
 export const seedResourceSettings: ResourceSettings[] = [
-  { id: 'res-settings', fteTarget: 450, avgTimeToHireMonths: 4.2, timeToHireTargetMonths: 3.4, seatRatio: 1.2, currentMonth: 'Oct' },
+  { id: 'res-settings', schema: RESOURCE_SCHEMA, fteTarget: 400, avgTimeToHireMonths: 1.5, timeToHireTargetMonths: 1.2, seatRatio: 1.1, currentMonth: REPORTING_MONTH, acceleratedPct: 8, conservativePct: 10 },
 ]
 
-const PLANNED = [50, 80, 110, 140, 170, 200, 225, 250, 270, 286, 360, 450]
-const ACTUAL = [55, 85, 115, 150, 185, 220, 250, 280, 300, 320, 350, 385]
-const TARGET = [100, 135, 170, 205, 240, 275, 310, 345, 380, 410, 435, 450]
-const PLAN_UTIL = [22, 26, 30, 36, 42, 48, 54, 58, 62, 62, 76, 88]
-const ACT_UTIL = [18, 24, 30, 34, 42, 50, 56, 60, 66, 68, 74, 82]
-export const seedHeadcountPlan: HeadcountMonth[] = MONTHS.map((m, i) => ({ id: `hc-${m}`, month: m, planned: PLANNED[i], actual: ACTUAL[i], target: TARGET[i], plannedUtil: PLAN_UTIL[i], actualUtil: ACT_UTIL[i] }))
+const SUBS = seedSubUnits
+const BU = seedBusinessUnits
+const buName = (buId: string) => BU.find((b) => b.id === buId)?.name ?? buId
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 
 /**
- * Headcount by business unit. Onboarded (320 of the 450 target) is split in proportion to the business units' FTE plan
- * (src/data/businessUnits.ts); "open" equals the open requisitions per business unit in the register below.
+ * Actual onboarded headcount per capability at the reporting month (Feb 27): plan 285, actual 268.
+ * The shortfall sits where transitions lag – SAP (France), cloud / network (Europe), workplace and IAM.
  */
-const BU = seedBusinessUnits
-const buId = (name: string) => BU.find((b) => b.name === name)?.id.replace('bu-', '') ?? name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-export const OPEN_PER_BU: Record<string, number> = { 'SAP Practice': 20, 'Microsoft Practice': 14, 'Data & AI Practice': 10, 'R&D – Product Engineering': 9, 'R&D – Platform & Cloud': 6, 'Finance Shared Services': 5, 'HR Shared Services': 4 } // 68
-const ONBOARDED_PER_BU: Record<string, number> = { 'SAP Practice': 107, 'Microsoft Practice': 75, 'Data & AI Practice': 47, 'R&D – Product Engineering': 38, 'R&D – Platform & Cloud': 21, 'Finance Shared Services': 17, 'HR Shared Services': 15 } // 320
-const IN_HIRING_PER_BU: Record<string, number> = { 'SAP Practice': 18, 'Microsoft Practice': 13, 'Data & AI Practice': 9, 'R&D – Product Engineering': 8, 'R&D – Platform & Cloud': 6, 'Finance Shared Services': 4, 'HR Shared Services': 4 } // 62
-export const seedBuHeadcount: BuHeadcount[] = BU.map((b) => ({ id: `bh-${buId(b.name)}`, businessUnit: b.name, onboarded: ONBOARDED_PER_BU[b.name] ?? 0, inHiring: IN_HIRING_PER_BU[b.name] ?? 0, open: OPEN_PER_BU[b.name] ?? 0 }))
+const DEFICIT_AT_REPORTING: Record<string, number> = {
+  'su-cloud-ops': 2, 'su-network': 2, 'su-euc': 2, 'su-wp-support': 1, 'su-iam': 1, 'su-secops': 1, 'su-sap': 5, 'su-bizapps': 1, 'su-dataeng': 1, 'su-svcmgmt': 1,
+} // 17
+/** Actual cumulative headcount per month up to the reporting month: the plan minus a shortfall that grows into the reporting month. */
+export function buildCapabilityActuals(subs: SubUnit[] = SUBS, reportingIdx = REPORTING_IDX): CapabilityActuals[] {
+  return subs.map((s) => {
+    const deficit = DEFICIT_AT_REPORTING[s.id] ?? 0
+    const actuals: (number | null)[] = RAMP_MONTHS.map((_, i) => {
+      if (i > reportingIdx) return null
+      const plan = s.ramp[i] ?? 0
+      const cut = Math.round((deficit * (i + 1)) / (reportingIdx + 1))
+      return Math.max(0, plan - cut)
+    })
+    // actuals are cumulative – never let a month fall below the previous one
+    for (let i = 1; i <= reportingIdx; i++) if ((actuals[i] ?? 0) < (actuals[i - 1] ?? 0)) actuals[i] = actuals[i - 1]
+    return { id: `ca-${s.id}`, businessUnit: buName(s.businessUnitId), capability: s.name, actuals }
+  })
+}
+export const seedCapabilityActuals: CapabilityActuals[] = buildCapabilityActuals()
+const actualAt = (subId: string) => seedCapabilityActuals.find((a) => a.id === `ca-${subId}`)?.actuals[REPORTING_IDX] ?? 0
 
 export const FUNNEL_COLORS = [CHART_COLORS.blue, CHART_COLORS.blueLight, CHART_COLORS.teal, CHART_COLORS.green, CHART_COLORS.amber, CHART_COLORS.orange, CHART_COLORS.violet, CHART_COLORS.navy]
 
 export const seedTimeToHire: TimeToHireRow[] = [
-  { id: 'tth-sap', businessUnit: 'SAP Practice', actual: 42, target: 30 },
-  { id: 'tth-ms', businessUnit: 'Microsoft Practice', actual: 38, target: 30 },
-  { id: 'tth-data', businessUnit: 'Data & AI Practice', actual: 52, target: 35 },
-  { id: 'tth-rd-prod', businessUnit: 'R&D – Product Engineering', actual: 45, target: 30 },
-  { id: 'tth-rd-cloud', businessUnit: 'R&D – Platform & Cloud', actual: 40, target: 30 },
-  { id: 'tth-fin', businessUnit: 'Finance Shared Services', actual: 32, target: 25 },
-  { id: 'tth-hr', businessUnit: 'HR Shared Services', actual: 28, target: 25 },
+  { id: 'tth-infra', businessUnit: 'Infrastructure & Cloud', actual: 38, target: 30 },
+  { id: 'tth-dwp', businessUnit: 'Digital Workplace', actual: 29, target: 30 },
+  { id: 'tth-cyber', businessUnit: 'Cybersecurity & IAM', actual: 48, target: 35 },
+  { id: 'tth-apps', businessUnit: 'Enterprise Applications', actual: 54, target: 35 },
+  { id: 'tth-data', businessUnit: 'Data, Analytics & AI', actual: 46, target: 35 },
+  { id: 'tth-eng', businessUnit: 'Integration & Engineering', actual: 36, target: 30 },
+  { id: 'tth-itsm', businessUnit: 'IT Service Management', actual: 27, target: 25 },
 ]
 
-/** Single location today: Pune hosts all 320 onboarded FTEs. A second site can be added from the Location Mix tab. */
+/** Single location today: Pune hosts all 268 onboarded FTEs. A second site can be added from the Location Mix tab. */
 export const seedLocationMix: LocationRow[] = [
-  { id: 'loc-pune', name: 'Pune', ftes: 320, seats: 384, costIndex: 1.0, color: CHART_COLORS.blue, office: 'EON Free Zone, Cluster C' },
+  { id: 'loc-pune', name: 'Pune', ftes: 268, seats: 440, costIndex: 1.0, color: CHART_COLORS.blue, office: 'EON Free Zone, Kharadi – Tower 4' },
 ]
 export const LOCATION_COLORS = [CHART_COLORS.blue, CHART_COLORS.blueLight, CHART_COLORS.green, CHART_COLORS.orange, CHART_COLORS.violet]
 
+/** Required = year-1 target of the capabilities needing the skill; available = onboarded today. */
 export const seedSkills: SkillRow[] = [
-  { id: 'sk-sap', category: 'SAP S/4HANA', required: 60, available: 44, owner: 'R. Mehta' },
-  { id: 'sk-ms', category: 'Microsoft Dynamics / Power Platform', required: 40, available: 28, owner: 'R. Mehta' },
-  { id: 'sk-cloud', category: 'Cloud (Azure/AWS)', required: 45, available: 30, owner: 'M. Khan' },
-  { id: 'sk-data', category: 'Data Engineering & AI/ML', required: 35, available: 22, owner: 'S. Iyer' },
-  { id: 'sk-prod', category: 'Product Engineering', required: 50, available: 42, owner: 'M. Khan' },
-  { id: 'sk-cyber', category: 'Cybersecurity', required: 20, available: 11, owner: 'M. Khan' },
-  { id: 'sk-fin', category: 'Finance & HR operations', required: 25, available: 20, owner: 'V. Reddy' },
+  { id: 'sk-cloud', category: 'Cloud operations (Azure / AWS)', required: 52, available: 39, owner: 'R. Mehta' },
+  { id: 'sk-network', category: 'Network & SD-WAN', required: 44, available: 33, owner: 'R. Mehta' },
+  { id: 'sk-sap', category: 'SAP S/4HANA functional / technical', required: 71, available: 44, owner: 'V. Reddy' },
+  { id: 'sk-appsupport', category: 'Application support (Americas GBUs)', required: 36, available: 24, owner: 'V. Reddy' },
+  { id: 'sk-iam', category: 'Identity & access (SailPoint, PAM)', required: 20, available: 15, owner: 'P. Rao' },
+  { id: 'sk-secops', category: 'Security operations (SOC, vulnerability)', required: 16, available: 10, owner: 'P. Rao' },
+  { id: 'sk-data', category: 'Data engineering (Databricks / Snowflake)', required: 41, available: 29, owner: 'S. Iyer' },
+  { id: 'sk-ai', category: 'BI, AI & automation', required: 12, available: 8, owner: 'S. Iyer' },
+  { id: 'sk-workplace', category: 'Digital workplace (M365 / Intune)', required: 40, available: 22, owner: 'K. Nair' },
+  { id: 'sk-itsm', category: 'ITSM / ServiceNow', required: 31, available: 21, owner: 'D. Singh' },
+  { id: 'sk-integration', category: 'Integration, DevOps & engineering', required: 26, available: 15, owner: 'M. Khan' },
 ]
 
 export const seedTrainingPlans: TrainingPlan[] = [
-  { id: 'tp-1', program: 'SAP S/4HANA finance academy', skill: 'SAP S/4HANA', participants: 18, startDate: '2026-09-07', endDate: '2026-11-27', status: 'In Progress', owner: 'R. Mehta' },
-  { id: 'tp-2', program: 'Azure Solutions Architect bootcamp', skill: 'Cloud (Azure/AWS)', participants: 24, startDate: '2026-11-02', endDate: '2026-12-18', status: 'Planned', owner: 'M. Khan' },
-  { id: 'tp-3', program: 'Databricks & GenAI certification track', skill: 'Data Engineering & AI/ML', participants: 15, startDate: '2026-10-05', endDate: '2026-12-04', status: 'In Progress', owner: 'S. Iyer' },
-  { id: 'tp-4', program: 'Power Platform developer programme', skill: 'Microsoft Dynamics / Power Platform', participants: 12, startDate: '2026-11-16', endDate: '2027-01-29', status: 'Planned', owner: 'R. Mehta' },
-  { id: 'tp-5', program: 'Security operations (SOC) upskilling', skill: 'Cybersecurity', participants: 10, startDate: '2026-08-10', endDate: '2026-10-09', status: 'Completed', owner: 'M. Khan' },
+  { id: 'tp-1', program: 'SAP S/4HANA knowledge-transfer academy (France → Pune)', skill: 'SAP S/4HANA functional / technical', participants: 26, startDate: '2027-01-11', endDate: '2027-04-02', status: 'In Progress', owner: 'V. Reddy' },
+  { id: 'tp-2', program: 'Azure / AWS cloud operations certification track', skill: 'Cloud operations (Azure / AWS)', participants: 22, startDate: '2026-12-07', endDate: '2027-02-26', status: 'In Progress', owner: 'R. Mehta' },
+  { id: 'tp-3', program: 'SailPoint IdentityNow & CyberArk PAM certification', skill: 'Identity & access (SailPoint, PAM)', participants: 10, startDate: '2027-03-01', endDate: '2027-04-23', status: 'Planned', owner: 'P. Rao' },
+  { id: 'tp-4', program: 'Databricks & Snowflake data engineering bootcamp', skill: 'Data engineering (Databricks / Snowflake)', participants: 16, startDate: '2027-02-08', endDate: '2027-04-09', status: 'In Progress', owner: 'S. Iyer' },
+  { id: 'tp-5', program: 'ServiceNow ITSM fundamentals & ITIL 4', skill: 'ITSM / ServiceNow', participants: 18, startDate: '2027-03-15', endDate: '2027-05-07', status: 'Planned', owner: 'D. Singh' },
+  { id: 'tp-6', program: 'ENGIE business induction – GBUs, geographies, energy value chain', skill: 'Application support (Americas GBUs)', participants: 120, startDate: '2026-11-09', endDate: '2027-01-29', status: 'Completed', owner: 'K. Nair' },
+  { id: 'tp-7', program: 'M365 / Intune modern workplace programme', skill: 'Digital workplace (M365 / Intune)', participants: 14, startDate: '2027-01-18', endDate: '2027-03-12', status: 'In Progress', owner: 'K. Nair' },
 ]
 
+/** Annual people cost per business unit in ₹ Cr: budget = year-1 target × blended cost, run-rate = onboarded × blended cost. */
 export const seedPeopleCost: PeopleCostRow[] = [
-  { id: 'pc-sap', businessUnit: 'SAP Practice', budgetCr: 1.7, actualCr: 1.25 },
-  { id: 'pc-ms', businessUnit: 'Microsoft Practice', budgetCr: 1.2, actualCr: 0.88 },
-  { id: 'pc-data', businessUnit: 'Data & AI Practice', budgetCr: 0.8, actualCr: 0.58 },
-  { id: 'pc-rd-prod', businessUnit: 'R&D – Product Engineering', budgetCr: 0.65, actualCr: 0.47 },
-  { id: 'pc-rd-cloud', businessUnit: 'R&D – Platform & Cloud', budgetCr: 0.4, actualCr: 0.3 },
-  { id: 'pc-fin', businessUnit: 'Finance Shared Services', budgetCr: 0.25, actualCr: 0.18 },
-  { id: 'pc-hr', businessUnit: 'HR Shared Services', budgetCr: 0.2, actualCr: 0.14 },
+  { id: 'pc-infra', businessUnit: 'Infrastructure & Cloud', budgetCr: 18.2, actualCr: 13.6 },
+  { id: 'pc-dwp', businessUnit: 'Digital Workplace', budgetCr: 4.4, actualCr: 2.4 },
+  { id: 'pc-cyber', businessUnit: 'Cybersecurity & IAM', budgetCr: 7.2, actualCr: 5.0 },
+  { id: 'pc-apps', businessUnit: 'Enterprise Applications', budgetCr: 22.5, actualCr: 14.3 },
+  { id: 'pc-data', businessUnit: 'Data, Analytics & AI', budgetCr: 11.7, actualCr: 8.1 },
+  { id: 'pc-eng', businessUnit: 'Integration & Engineering', budgetCr: 4.9, actualCr: 2.9 },
+  { id: 'pc-itsm', businessUnit: 'IT Service Management', budgetCr: 4.3, actualCr: 2.9 },
 ]
 
-export const seedHeadcountForecast: ForecastQuarter[] = [
-  { id: 'fq-1', quarter: "Q1'26", base: 100, accelerated: 110, conservative: 90 },
-  { id: 'fq-2', quarter: "Q2'26", base: 165, accelerated: 185, conservative: 140 },
-  { id: 'fq-3', quarter: "Q3'26", base: 230, accelerated: 260, conservative: 195 },
-  { id: 'fq-4', quarter: "Q4'26", base: 290, accelerated: 330, conservative: 245 },
-  { id: 'fq-5', quarter: "Q1'27", base: 340, accelerated: 390, conservative: 290 },
-  { id: 'fq-6', quarter: "Q2'27", base: 385, accelerated: 440, conservative: 325 },
-  { id: 'fq-7', quarter: "Q3'27", base: 420, accelerated: 485, conservative: 355 },
-  { id: 'fq-8', quarter: "Q4'27", base: 450, accelerated: 520, conservative: 380 },
-]
-
-export const seedHiringTargets: HiringTarget[] = [
-  { id: 'ht-sap', businessUnit: 'SAP Practice', targets: [3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 4, 4] },
-  { id: 'ht-ms', businessUnit: 'Microsoft Practice', targets: [2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 3, 3] },
-  { id: 'ht-data', businessUnit: 'Data & AI Practice', targets: [1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 2, 1] },
-  { id: 'ht-rd-prod', businessUnit: 'R&D – Product Engineering', targets: [1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2] },
-  { id: 'ht-rd-cloud', businessUnit: 'R&D – Platform & Cloud', targets: [1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1] },
-  { id: 'ht-fin', businessUnit: 'Finance Shared Services', targets: [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0] },
-  { id: 'ht-hr', businessUnit: 'HR Shared Services', targets: [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0] },
-]
-
-const ATTR_RATE = [6.0, 6.4, 7.1, 7.8, 8.3, 9.0, 9.6, 10.1, 10.8, 11.4]
-const ATTR_EXITS = [1, 1, 2, 2, 2, 3, 3, 3, 4, 4]
-const ATTR_REGRET = [0, 1, 1, 1, 1, 2, 1, 2, 2, 3]
-export const seedAttrition: AttritionMonth[] = MONTHS.slice(0, 10).map((m, i) => ({ id: `at-${m}`, month: m, ratePct: ATTR_RATE[i], benchmarkPct: 12, exits: ATTR_EXITS[i], regretted: ATTR_REGRET[i] }))
+/** Annualised attrition since the ramp started (Nov 26); benchmark = Pune IT GCC market. */
+const ATTR_RATE = [0, 1.8, 3.6, 5.1]
+const ATTR_EXITS = [0, 1, 2, 3]
+const ATTR_REGRET = [0, 1, 1, 2]
+export const seedAttrition: AttritionMonth[] = RAMP_MONTHS.slice(0, REPORTING_IDX + 1).map((m, i) => ({ id: `at-${slug(m)}`, month: m, ratePct: ATTR_RATE[i] ?? 0, benchmarkPct: 12, exits: ATTR_EXITS[i] ?? 0, regretted: ATTR_REGRET[i] ?? 0 }))
 
 export const EXIT_REASONS = ['Better compensation', 'Career growth', 'Relocation', 'Higher studies', 'Personal reasons', 'Performance', 'Role mismatch'] as const
 export const seedExits: ExitRecord[] = [
-  { id: 'ex-1', name: 'Rohit Kulkarni', role: 'Data Engineer', businessUnit: 'Data & AI Practice', location: 'Pune', exitDate: '2026-10-09', reason: 'Better compensation', regretted: true, tenureMonths: 7 },
-  { id: 'ex-2', name: 'Shreya Menon', role: 'Backend Engineer', businessUnit: 'R&D – Product Engineering', location: 'Pune', exitDate: '2026-10-02', reason: 'Career growth', regretted: true, tenureMonths: 8 },
-  { id: 'ex-3', name: 'Imran Shaikh', role: 'SAP Basis Consultant', businessUnit: 'SAP Practice', location: 'Pune', exitDate: '2026-09-25', reason: 'Relocation', regretted: false, tenureMonths: 6 },
-  { id: 'ex-4', name: 'Pallavi Joshi', role: 'AP Analyst', businessUnit: 'Finance Shared Services', location: 'Pune', exitDate: '2026-09-18', reason: 'Personal reasons', regretted: false, tenureMonths: 5 },
-  { id: 'ex-5', name: 'Karthik Raman', role: 'Cloud Engineer', businessUnit: 'R&D – Platform & Cloud', location: 'Pune', exitDate: '2026-09-04', reason: 'Better compensation', regretted: true, tenureMonths: 9 },
-  { id: 'ex-6', name: 'Neha Agarwal', role: 'Dynamics 365 Consultant', businessUnit: 'Microsoft Practice', location: 'Pune', exitDate: '2026-08-21', reason: 'Career growth', regretted: true, tenureMonths: 6 },
-  { id: 'ex-7', name: 'Vikram Pillai', role: 'SAP MM Consultant', businessUnit: 'SAP Practice', location: 'Pune', exitDate: '2026-08-07', reason: 'Role mismatch', regretted: false, tenureMonths: 4 },
-  { id: 'ex-8', name: 'Ananya Bose', role: 'HR Operations Analyst', businessUnit: 'HR Shared Services', location: 'Pune', exitDate: '2026-07-24', reason: 'Higher studies', regretted: false, tenureMonths: 7 },
+  { id: 'ex-1', name: 'Rohit Kulkarni', role: 'Data Engineer (Databricks)', businessUnit: 'Data, Analytics & AI', capability: 'Data Engineering', location: 'Pune', exitDate: '2027-02-12', reason: 'Better compensation', regretted: true, tenureMonths: 3 },
+  { id: 'ex-2', name: 'Shreya Menon', role: 'Cloud Engineer (Azure)', businessUnit: 'Infrastructure & Cloud', capability: 'Cloud Operations', location: 'Pune', exitDate: '2027-02-05', reason: 'Career growth', regretted: true, tenureMonths: 3 },
+  { id: 'ex-3', name: 'Imran Shaikh', role: 'SAP Basis Administrator', businessUnit: 'Enterprise Applications', capability: 'SAP / ERP', location: 'Pune', exitDate: '2027-01-29', reason: 'Relocation', regretted: false, tenureMonths: 2 },
+  { id: 'ex-4', name: 'Pallavi Joshi', role: 'Network Engineer', businessUnit: 'Infrastructure & Cloud', capability: 'Network', location: 'Pune', exitDate: '2027-01-15', reason: 'Role mismatch', regretted: false, tenureMonths: 2 },
+  { id: 'ex-5', name: 'Karthik Raman', role: 'IAM Specialist', businessUnit: 'Cybersecurity & IAM', capability: 'Identity & Access', location: 'Pune', exitDate: '2027-01-08', reason: 'Better compensation', regretted: true, tenureMonths: 2 },
+  { id: 'ex-6', name: 'Neha Agarwal', role: 'Service Manager', businessUnit: 'IT Service Management', capability: 'Service Management', location: 'Pune', exitDate: '2026-12-18', reason: 'Personal reasons', regretted: false, tenureMonths: 1 },
 ]
 
 export const seedRetentionActions: RetentionAction[] = [
-  { id: 'ra-1', action: 'Mid-cycle compensation correction for Data & Cloud engineers', segment: 'Critical skills (L3–L4)', owner: 'S. Iyer', dueDate: '2026-11-15', status: 'In Progress', impact: 'High' },
-  { id: 'ra-2', action: 'Launch GCC career-path framework and promotion calendar', segment: 'All employees', owner: 'A. Sharma', dueDate: '2026-12-01', status: 'Planned', impact: 'High' },
-  { id: 'ra-3', action: 'Stay interviews for top-50 critical talent', segment: 'High performers', owner: 'S. Iyer', dueDate: '2026-10-31', status: 'In Progress', impact: 'Medium' },
-  { id: 'ra-4', action: 'Retention bonus for Wave 1 joiners completing 18 months', segment: 'Wave 1 cohort', owner: 'D. Singh', dueDate: '2027-01-31', status: 'Planned', impact: 'Medium' },
-  { id: 'ra-5', action: 'Manager capability programme (first-time managers)', segment: 'People managers', owner: 'M. Khan', dueDate: '2026-09-30', status: 'Completed', impact: 'Medium' },
+  { id: 'ra-1', action: 'Market correction for SAP, cloud and IAM specialists (critical transition skills)', segment: 'Critical skills (L3–L4)', owner: 'V. Reddy', dueDate: '2027-03-15', status: 'In Progress', impact: 'High' },
+  { id: 'ra-2', action: 'ENGIE IT GCC career-path framework and promotion calendar', segment: 'All employees', owner: 'A. Sharma', dueDate: '2027-04-01', status: 'Planned', impact: 'High' },
+  { id: 'ra-3', action: 'Stay interviews for the Wave 1 transition cohort (Infra, Cyber)', segment: 'Wave 1 joiners', owner: 'P. Rao', dueDate: '2027-02-28', status: 'In Progress', impact: 'Medium' },
+  { id: 'ra-4', action: 'Retention bonus for knowledge-transfer leads completing 18 months', segment: 'KT leads (France, USA, Europe)', owner: 'D. Singh', dueDate: '2027-05-31', status: 'Planned', impact: 'Medium' },
+  { id: 'ra-5', action: 'First-time manager programme for capability leads', segment: 'Capability leads', owner: 'M. Khan', dueDate: '2027-01-30', status: 'Completed', impact: 'Medium' },
 ]
 
-/* ---------- Positions (68 open: 24 Critical/High, 44 Medium/Low; plus 8 filled and 2 on hold) ---------- */
-const ROLE_POOL: Record<string, string[]> = {
-  'SAP Practice': ['SAP FICO Consultant', 'SAP MM Consultant', 'SAP SD Consultant', 'SAP ABAP Developer', 'SAP Basis Administrator', 'S/4HANA Solution Architect', 'SAP PP/QM Consultant', 'SAP Integration (BTP) Developer', 'SAP EWM Consultant', 'SAP Fiori Developer', 'SAP AMS Lead', 'SAP Data Migration Analyst'],
-  'Microsoft Practice': ['Dynamics 365 F&O Consultant', 'Power Platform Developer', 'Azure Application Developer', '.NET Engineer', 'Dynamics 365 CE Consultant', 'M365 Engineer', 'Power BI Developer', 'Microsoft Solution Architect', 'SharePoint Developer'],
-  'Data & AI Practice': ['Senior Data Engineer', 'Data Scientist', 'ML Engineer', 'BI Developer', 'Data Architect', 'GenAI Engineer', 'Analytics Lead', 'Data Governance Analyst'],
-  'R&D – Product Engineering': ['Senior Software Engineer', 'Full-stack Developer', 'Product Manager', 'QA Automation Engineer', 'Frontend Engineer', 'Backend Engineer', 'Site Reliability Engineer', 'UX Designer', 'Scrum Master'],
-  'R&D – Platform & Cloud': ['Cloud Platform Engineer', 'DevOps Engineer', 'Cybersecurity Analyst', 'Security Engineer', 'Infrastructure Architect', 'Identity & Access Engineer'],
-  'Finance Shared Services': ['FP&A Specialist', 'GL Accountant', 'AP Analyst', 'Treasury Analyst', 'Revenue Accountant'],
-  'HR Shared Services': ['HR Business Partner', 'Talent Acquisition Specialist', 'HR Operations Analyst', 'Payroll Specialist', 'L&D Lead'],
+/* ---------- Roles per capability (slide "Role / Skill" plus realistic variants) ---------- */
+export const ROLE_POOL: Record<string, string[]> = {
+  'Cloud Operations': ['Cloud Engineer (Azure)', 'Cloud Engineer (AWS)', 'Senior Cloud Engineer', 'Cloud Operations Lead', 'FinOps Analyst'],
+  Network: ['Network Engineer', 'Senior Network Engineer', 'SD-WAN Engineer', 'Network Security Engineer'],
+  'Hosting / Data Centre': ['Hosting Engineer', 'VMware Administrator', 'Storage & Backup Engineer'],
+  'Infrastructure Operations': ['Infrastructure Analyst', 'Linux Administrator', 'Windows Server Administrator'],
+  'End User Computing': ['Workplace Engineer', 'Intune / M365 Engineer', 'Senior Workplace Engineer', 'EUC Lead'],
+  'Service Desk': ['Service Desk Analyst', 'Service Desk Team Lead'],
+  Collaboration: ['Collaboration Engineer (Teams)', 'M365 Collaboration Specialist'],
+  'Workplace Support': ['Workplace Support Analyst', 'Deskside Support Engineer'],
+  'Identity & Access': ['IAM Specialist', 'IAM Engineer (SailPoint)', 'PAM Engineer (CyberArk)', 'Senior IAM Specialist'],
+  'Security Operations': ['SOC Analyst L1', 'SOC Analyst L2', 'Threat Detection Engineer'],
+  'Vulnerability Management': ['Vulnerability Analyst', 'Vulnerability Management Lead'],
+  'Security Engineering': ['Security Engineer', 'Cloud Security Engineer'],
+  'SAP / ERP': ['SAP FI/CO Functional Consultant', 'SAP MM Functional Consultant', 'SAP SD Functional Consultant', 'SAP ABAP Developer', 'SAP Basis Administrator', 'SAP PM Functional Consultant', 'SAP Integration (PI/PO) Developer', 'S/4HANA Solution Architect'],
+  'Business Applications': ['App Support Engineer', 'Senior App Support Engineer', 'Application Support Lead', 'Salesforce Support Engineer', 'ETRM Application Analyst'],
+  'Finance Applications': ['Finance Application Analyst'],
+  'HR Applications': ['HR Application Analyst (SuccessFactors)'],
+  'Data Engineering': ['Data Engineer', 'Senior Data Engineer', 'Data Engineer (Databricks)', 'Data Engineering Lead'],
+  'Data Platforms': ['Data Platform Engineer', 'Snowflake Platform Engineer'],
+  'BI / Analytics': ['BI Developer (Power BI)', 'Analytics Engineer'],
+  'AI / Automation': ['AI / Automation Engineer', 'GenAI Engineer', 'RPA Developer'],
+  'API / Integration': ['Integration Engineer', 'API Developer (MuleSoft)', 'Senior Integration Engineer'],
+  DevOps: ['DevOps Engineer', 'Platform Engineer (Kubernetes)', 'CI/CD Engineer'],
+  'Application Engineering': ['Application Engineer', 'Full-stack Engineer'],
+  Testing: ['Test Engineer', 'Test Automation Engineer'],
+  'Service Management': ['Service Manager', 'Service Delivery Manager', 'Senior Service Manager', 'Service Level Manager'],
+  'Incident / Problem': ['Incident Manager', 'Problem Manager', 'Major Incident Manager'],
+  'Change / Release': ['Change Manager', 'Release Manager'],
+  'IT Asset / Configuration': ['IT Asset Analyst', 'CMDB Analyst'],
 }
-const roleFor = (bu: string, k: number) => { const pool = ROLE_POOL[bu] ?? ['Analyst']; return pool[k % pool.length] }
+/** "Cloud Engineers" → "Cloud Engineer" for capabilities added later in GCC Setup. */
+const singular = (roleSkill: string) => roleSkill.replace(/s$/, '').replace(/ \/ /g, ' / ')
+export const rolesFor = (cap: string, roleSkill = '') => ROLE_POOL[cap] ?? (roleSkill ? [singular(roleSkill)] : ['Analyst'])
+const roleFor = (s: SubUnit, k: number) => { const pool = rolesFor(s.name, s.roleSkill); return pool[k % pool.length] }
 
+/* ---------- Positions: one requisition per head still to hire to reach the year-1 target (400 − 268 = 132 open) ---------- */
 function buildPositions(): Position[] {
-  const mk = (i: number, role: string, bu: string, pr: Priority, days: number, status: PositionStatus): Position => {
+  const mk = (i: number, role: string, s: SubUnit, pr: Priority, days: number, status: PositionStatus): Position => {
     const openedOn = addDays(TODAY, -days)
-    return { id: `pos-${String(i + 1).padStart(3, '0')}`, role, businessUnit: bu, location: DEFAULT_LOCATION, priority: pr, status, openedOn, targetDate: addDays(openedOn, 75 + (i % 3) * 15), hiringManager: OWNERS[i % OWNERS.length], grade: GRADES[1 + (i % 4)] }
+    return { id: `pos-${String(i + 1).padStart(3, '0')}`, role, businessUnit: buName(s.businessUnitId), capability: s.name, location: DEFAULT_LOCATION, priority: pr, status, openedOn, targetDate: addDays(openedOn, 45 + (i % 3) * 15), hiringManager: OWNERS[i % OWNERS.length], grade: GRADES[1 + (i % 4)] }
   }
-  // the five mock-up rows (longest-open requisitions)
-  const list: Position[] = [
-    mk(0, 'Senior Data Engineer', 'Data & AI Practice', 'High', 45, 'In Interview'),
-    mk(1, 'Cybersecurity Analyst', 'R&D – Platform & Cloud', 'High', 38, 'Open'),
-    mk(2, 'FP&A Specialist', 'Finance Shared Services', 'Medium', 28, 'In Interview'),
-    mk(3, 'HR Business Partner', 'HR Shared Services', 'Medium', 26, 'Open'),
-    mk(4, 'SAP FICO Consultant', 'SAP Practice', 'Critical', 24, 'Offer'),
-  ]
-  const remaining: Record<string, number> = { ...OPEN_PER_BU }
-  remaining['Data & AI Practice']--; remaining['R&D – Platform & Cloud']--; remaining['Finance Shared Services']--; remaining['HR Shared Services']--; remaining['SAP Practice']--
-  // round-robin across business units so the register is interleaved rather than grouped
-  const names = Object.keys(OPEN_PER_BU)
-  const perBu: Record<string, { role: string; bu: string }[]> = Object.fromEntries(names.map((bu) => [bu, Array.from({ length: remaining[bu] }, (_, k) => ({ role: roleFor(bu, k + 1), bu }))]))
-  const queue: { role: string; bu: string }[] = []
-  const total = names.reduce((s, b) => s + remaining[b], 0) // 63
-  while (queue.length < total) for (const bu of names) { const nxt = perBu[bu].shift(); if (nxt) queue.push(nxt) }
-  const n = queue.length
-  let acc = 0
-  const statuses: PositionStatus[] = ['Open', 'Open', 'In Interview', 'Open', 'Offer', 'In Interview']
-  queue.forEach((q, j) => {
-    const i = j + 5
-    acc += 21 // 63 × 21/63 = 21 more Critical/High → 24 in total
-    let pr: Priority
-    if (acc >= n) { acc -= n; pr = j % 2 ? 'High' : 'Critical' } else pr = j % 4 === 0 ? 'Low' : 'Medium'
-    const days = 3 + ((i * 5) % 21)
-    list.push(mk(i, q.role, q.bu, pr, days, statuses[i % statuses.length]))
+  // remaining to hire per capability, interleaved so the register is not grouped by capability
+  const queue: { s: SubUnit; k: number }[] = []
+  const remaining = SUBS.map((s) => ({ s, n: Math.max(0, s.targetHc - actualAt(s.id)), k: 0 }))
+  let left = remaining.reduce((t, r) => t + r.n, 0) // 132
+  while (left > 0) for (const r of remaining) if (r.k < r.n) { queue.push({ s: r.s, k: r.k++ }); left-- }
+  const statuses: PositionStatus[] = ['Open', 'In Interview', 'Open', 'Offer', 'In Interview', 'Open', 'Open', 'In Interview', 'Open', 'In Interview', 'Open'] // 6 open · 4 interview · 1 offer per cycle → 72 open, 60 in hiring
+  const hot: Priority[] = ['Critical', 'High', 'Medium', 'Medium', 'High', 'Medium', 'Low', 'Medium', 'Critical', 'Medium']
+  const cool: Priority[] = ['Medium', 'Low', 'Medium', 'High', 'Medium', 'Low']
+  const list = queue.map((q, j) => {
+    const scarce = q.s.transitionType === 'Transition' || q.s.name === 'Identity & Access' || q.s.name === 'Data Engineering'
+    const pr = scarce ? hot[(j + q.k) % hot.length] : cool[(j + q.k) % cool.length]
+    const days = 4 + ((j * 7 + q.k * 3) % 38)
+    return mk(j, roleFor(q.s, q.k), q.s, pr, days, statuses[j % statuses.length])
   })
+  const sub = (id: string) => SUBS.find((s) => s.id === id)!
   // filled this cycle (Joined) and parked requisitions
-  list.push(mk(68, 'S/4HANA Solution Architect', 'SAP Practice', 'Critical', 70, 'Joined'))
-  list.push(mk(69, 'Data Platform Lead', 'Data & AI Practice', 'Critical', 66, 'Joined'))
-  list.push(mk(70, 'Microsoft Solution Architect', 'Microsoft Practice', 'High', 62, 'Joined'))
-  list.push(mk(71, 'Engineering Manager', 'R&D – Product Engineering', 'High', 58, 'Joined'))
-  list.push(mk(72, 'DevOps Lead', 'R&D – Platform & Cloud', 'High', 55, 'Joined'))
-  list.push(mk(73, 'Finance Transformation Lead', 'Finance Shared Services', 'High', 60, 'Joined'))
-  list.push(mk(74, 'SAP ABAP Developer', 'SAP Practice', 'Medium', 52, 'Joined'))
-  list.push(mk(75, 'Power BI Developer', 'Microsoft Practice', 'Medium', 50, 'Joined'))
-  list.push(mk(76, 'Office Manager', 'HR Shared Services', 'Low', 30, 'On Hold'))
-  list.push(mk(77, 'SAP EWM Consultant', 'SAP Practice', 'Low', 20, 'On Hold'))
+  const n = list.length
+  list.push(mk(n, 'S/4HANA Solution Architect', sub('su-sap'), 'Critical', 74, 'Joined'))
+  list.push(mk(n + 1, 'Cloud Operations Lead', sub('su-cloud-ops'), 'Critical', 70, 'Joined'))
+  list.push(mk(n + 2, 'Data Engineering Lead', sub('su-dataeng'), 'High', 66, 'Joined'))
+  list.push(mk(n + 3, 'Senior IAM Specialist', sub('su-iam'), 'High', 62, 'Joined'))
+  list.push(mk(n + 4, 'Network Security Engineer', sub('su-network'), 'High', 58, 'Joined'))
+  list.push(mk(n + 5, 'Application Support Lead', sub('su-bizapps'), 'High', 60, 'Joined'))
+  list.push(mk(n + 6, 'Service Delivery Manager', sub('su-svcmgmt'), 'Medium', 52, 'Joined'))
+  list.push(mk(n + 7, 'EUC Lead', sub('su-euc'), 'Medium', 50, 'Joined'))
+  list.push(mk(n + 8, 'Finance Application Analyst', sub('su-finapps'), 'Low', 30, 'On Hold'))
+  list.push(mk(n + 9, 'HR Application Analyst (SuccessFactors)', sub('su-hrapps'), 'Low', 20, 'On Hold'))
   return list
 }
 export const seedPositions: Position[] = buildPositions()
 
-/* ---------- Employees (sample of onboarded FTEs for allocation) ---------- */
+/* ---------- Employees (sample of onboarded FTEs for allocation, ~15% of each capability) ---------- */
 const FIRST = ['Aarav', 'Diya', 'Ishaan', 'Meera', 'Kabir', 'Sanya', 'Arjun', 'Nisha', 'Rahul', 'Priya', 'Varun', 'Tanvi', 'Siddharth', 'Kavya', 'Aditya', 'Riya', 'Nikhil', 'Pooja', 'Manish', 'Sneha', 'Harsh', 'Lakshmi', 'Dev', 'Anjali', 'Yash', 'Swati', 'Rajat', 'Gayatri', 'Omkar', 'Bhavna', 'Tarun', 'Deepa', 'Sameer', 'Ritika', 'Gaurav', 'Madhuri', 'Ankit', 'Shruti', 'Rohan', 'Ira', 'Vivek', 'Mitali', 'Pranav', 'Aisha', 'Kunal', 'Nandini']
 const LAST = ['Sharma', 'Nair', 'Patel', 'Reddy', 'Iyer', 'Khan', 'Desai', 'Menon', 'Gupta', 'Rao', 'Verma', 'Bhat', 'Chowdhury', 'Joshi', 'Singh', 'Pillai', 'Mishra', 'Kapoor', 'Kulkarni', 'Deshpande', 'Jadhav', 'Shinde', 'Sawant', 'Ghosh', 'Banerjee', 'Shah']
-const EMP_ROLES: Record<string, string[]> = {
-  'SAP Practice': ['SAP FICO Consultant', 'SAP ABAP Developer', 'SAP MM Consultant', 'SAP Basis Administrator', 'S/4HANA Architect'],
-  'Microsoft Practice': ['Dynamics 365 Consultant', 'Power Platform Developer', '.NET Engineer', 'Azure Developer'],
-  'Data & AI Practice': ['Data Engineer', 'Data Scientist', 'BI Analyst', 'ML Engineer'],
-  'R&D – Product Engineering': ['Senior Software Engineer', 'Product Owner', 'QA Engineer', 'Frontend Engineer'],
-  'R&D – Platform & Cloud': ['Cloud Engineer', 'DevOps Engineer', 'Security Analyst'],
-  'Finance Shared Services': ['GL Accountant', 'FP&A Analyst', 'AP Specialist'],
-  'HR Shared Services': ['HR Generalist', 'Recruiter', 'HR Ops Analyst'],
-}
-const EMP_PER_BU: Record<string, number> = { 'SAP Practice': 10, 'Microsoft Practice': 7, 'Data & AI Practice': 5, 'R&D – Product Engineering': 5, 'R&D – Platform & Cloud': 3, 'Finance Shared Services': 3, 'HR Shared Services': 3 }
-const BAND_COST: Record<string, number> = { 'Band A': 8, 'Band B': 14, 'Band C': 22, 'Band D': 34 } // ₹ Lakh per annum
+const BAND_COST: Record<string, number> = { 'Band A': 9, 'Band B': 15, 'Band C': 24, 'Band D': 36 } // ₹ Lakh per annum
 function buildEmployees(): Employee[] {
   const out: Employee[] = []
   let i = 0
-  for (const bu of Object.keys(EMP_PER_BU)) {
-    for (let k = 0; k < EMP_PER_BU[bu]; k++, i++) {
+  for (const s of SUBS) {
+    const onboarded = actualAt(s.id)
+    const n = onboarded ? Math.max(1, Math.round(onboarded * 0.15)) : 0
+    const actuals = seedCapabilityActuals.find((a) => a.id === `ca-${s.id}`)?.actuals ?? []
+    const firstIdx = Math.max(0, actuals.findIndex((v) => (v ?? 0) > 0))
+    const roles = rolesFor(s.name, s.roleSkill)
+    for (let k = 0; k < n; k++, i++) {
       const band = COST_BANDS[(i + k) % 4]
       const alloc = [100, 100, 80, 100, 50, 100, 60, 100, 100, 30][i % 10]
-      const roles = EMP_ROLES[bu] ?? ['Analyst']
+      let startDate = addDays(rampMonthStart(firstIdx), (i * 11 + k * 5) % 45)
+      if (startDate > TODAY) startDate = addDays(TODAY, -(i % 20) - 1)
       out.push({
-        id: `emp-${String(i + 1).padStart(3, '0')}`, name: `${FIRST[i % FIRST.length]} ${LAST[(i * 5) % LAST.length]}`, role: roles[k % roles.length], businessUnit: bu,
-        location: DEFAULT_LOCATION, grade: GRADES[(i + 1) % 5], allocationPct: alloc, costBand: band, annualCostL: BAND_COST[band],
-        startDate: addDays('2026-01-12', (i * 9) % 270),
+        id: `emp-${String(i + 1).padStart(3, '0')}`, name: `${FIRST[i % FIRST.length]} ${LAST[(i * 5) % LAST.length]}`, role: roles[k % roles.length], businessUnit: buName(s.businessUnitId), capability: s.name,
+        location: DEFAULT_LOCATION, grade: GRADES[(i + 1) % 5], allocationPct: alloc, costBand: band, annualCostL: BAND_COST[band], startDate,
       })
     }
   }
@@ -357,7 +374,7 @@ function rng(seed: number) {
   let a = seed >>> 0
   return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296 }
 }
-const APPLICANTS: Record<Priority, [number, number]> = { Critical: [28, 40], High: [20, 30], Medium: [12, 20], Low: [8, 12] }
+const APPLICANTS: Record<Priority, [number, number]> = { Critical: [18, 26], High: [14, 20], Medium: [9, 14], Low: [6, 10] }
 /** probability of passing from stage i to i+1 */
 const PASS = [0.55, 0.5, 0.55, 0.6, 0.7, 0.8, 0.9]
 /** furthest stage any candidate can have reached, by requisition status */

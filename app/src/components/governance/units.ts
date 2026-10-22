@@ -5,7 +5,7 @@
 import { TODAY } from '../../data/common'
 import { isOpen, type RaidItem } from '../../data/shared'
 import type { RaidLink, TransitionProject } from '../../data/transition'
-import type { BusinessUnit } from '../../data/businessUnits'
+import { buShortName, type BusinessUnit } from '../../data/businessUnits'
 import { PROGRAM_WIDE, type Decision, type ChangeRequest, type ActionItem, type GovRaidLink, type GovernanceSettings, type GovEvent, type BuGovernance, type BuRaciRow, type Stakeholder, type Control, type SteeringMeeting } from '../../data/governance'
 
 /** Filter value meaning "no business unit filter". */
@@ -21,8 +21,8 @@ export function matchUnit(filter: string, tag: string | string[] | undefined): b
 }
 /** Multi-tag records (stakeholders, controls): empty list = Program-wide. */
 export const tagsLabel = (tags: string[]) => (tags.length ? tags : [PROGRAM_WIDE])
-/** Compact unit label for dense tables: 'R&D – Product Engineering' → 'R&D Product', 'Finance Shared Services' → 'Finance SS'. */
-export const shortUnit = (u: string) => u === PROGRAM_WIDE ? 'Program' : u.replace('R&D – ', 'R&D ').replace(' Engineering', '').replace(' & Cloud', '').replace(' Practice', '').replace(' Shared Services', ' SS')
+/** Compact unit label for dense tables: 'Infrastructure & Cloud' → 'Infra & Cloud', 'Data, Analytics & AI' → 'Data & AI' (see BU_SHORT_NAMES). */
+export const shortUnit = (u: string) => (u === PROGRAM_WIDE ? 'Program' : buShortName(u))
 export const isUnit = (filter: string) => filter !== UNIT_ALL && filter !== PROGRAM_WIDE
 
 /** Business unit of a shared RAID item: governance link first, then the transition link, else Program-wide. */

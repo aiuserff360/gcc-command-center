@@ -7,11 +7,11 @@ import { CHART_COLORS, TODAY } from '../../data/common'
 import type { RaidItem, Dependency } from '../../data/shared'
 import { isOpen, daysOpen } from '../../data/shared'
 import {
-  ktStats, projectKt, unitKt, milestoneWave, isTransitionMilestone, isTransitionRaid, raidLabel, raidLink, waveProgressColor, waveScope, waveUnits, waveProjects, waveProgress, waveGoLive, assessmentScore, readinessColor, dimAverage, avgScore, projectReadiness, projectStatusColor, shortBu,
-  DIMENSIONS, DIM_SHORT, KT_STATUSES, GAP_STATUSES, monthKey, monthLabel, fmtD,
-  type Wave, type KtItem, type ReadinessGap, type ChecklistItem, type TransitionProject, type ReadinessAssessment,
+  ktStats, projectKt, unitKt, milestoneWave, isTransitionMilestone, isTransitionRaid, raidLabel, raidLink, depLink, waveProgressColor, waveScope, waveUnits, waveCapabilities, waveProjects, waveProgress, waveGoLive, assessmentScore, readinessColor, dimAverage, avgScore, projectReadiness, projectStatusColor, shortBu, projectAccounts, unitAccounts, accountStats,
+  DIMENSIONS, DIM_SHORT, GAP_STATUSES, fmtD,
+  type Wave, type ReadinessGap, type ChecklistItem, type TransitionProject, type ReadinessAssessment,
 } from '../../data/transition'
-import { WaveDot, WaveGantt, GanttRows, DIM_ICON, ktByWave, TIGHT, ProjectLink, StatusBadge, sortWaves, activeAssessments, unitColor } from './Overview'
+import { WaveDot, WaveGantt, GanttRows, DIM_ICON, TIGHT, ProjectLink, StatusBadge, sortWaves, activeAssessments, unitColor } from './Overview'
 import type { Tx } from './types'
 
 const AddBtn = ({ label, onClick }: { label: string; onClick: () => void }) => <button className="btn-primary" onClick={onClick}><Plus size={14} /> {label}</button>
@@ -21,15 +21,17 @@ const UNIT_ALL = (names: string[]) => ['All', ...names]
 
 /** Shared project table used by the Wave Plan and Readiness tabs. */
 function ProjectRows({ tx, rows, showUnit = true }: { tx: Tx; rows: TransitionProject[]; showUnit?: boolean }) {
-  const { waves, kt, assessments, openProject } = tx
+  const { waves, kt, assessments, accounts, openProject } = tx
   const sorted = sortWaves(waves.items)
   return (
     <Table<TransitionProject> compact rows={rows} onRowClick={(p) => openProject(p.id)} empty="No projects in this selection." columns={[
       { key: 'name', header: 'Project', render: (p) => <span className="block min-w-[190px]"><ProjectLink project={p} onClick={() => openProject(p.id)} /></span> },
-      ...(showUnit ? [{ key: 'bu', header: 'Business unit', className: 'whitespace-nowrap', render: (p: TransitionProject) => <span className="text-[12px]">{p.businessUnit}</span> }] : []),
+      ...(showUnit ? [{ key: 'bu', header: 'Business unit · capability', render: (p: TransitionProject) => <span className="block leading-snug text-[12px] whitespace-nowrap">{p.businessUnit}<span className="block text-[10.5px] text-ink-500">{p.capability} · from {p.deliveryLocation}</span></span> }] : []),
+      { key: 'gbu', header: 'GBU served', className: 'whitespace-nowrap', render: (p) => <span className="text-[12px]">{p.gbu}</span> },
       { key: 'wave', header: 'Wave', render: (p) => <WaveDot wave={sorted.find((w) => w.number === p.wave)} size={22} /> },
       { key: 'status', header: 'Status', render: (p) => <StatusBadge value={p.status} /> },
       { key: 'progress', header: 'Progress', width: '120px', render: (p) => <span className="flex items-center gap-1.5"><Progress value={p.progress} color={projectStatusColor(p.status)} className="w-[64px]" /><span className="text-[12px] font-medium w-8 text-right">{p.progress}%</span></span> },
+      { key: 'accounts', header: 'Accounts', className: 'whitespace-nowrap', render: (p) => { const a = projectAccounts(p, accounts.items); return <span className="text-[12px]"><b className="text-teal-700">{a.onboarded}</b> / {a.total}</span> } },
       { key: 'kt', header: 'KT %', className: 'text-right', render: (p) => <span className="font-medium">{projectKt(p, kt.items).pct}%</span> },
       { key: 'readiness', header: 'Readiness', render: (p) => { const s = projectReadiness(p, assessments.items); return <span className="inline-flex items-center justify-center w-11 h-5.5 rounded-md text-[11.5px] font-semibold text-white" style={{ background: readinessColor(s) }}>{s}%</span> } },
       { key: 'goLiveDate', header: 'Go-live', className: 'whitespace-nowrap', render: (p) => fmtD(p.goLiveDate) },
@@ -43,22 +45,25 @@ function ProjectRows({ tx, rows, showUnit = true }: { tx: Tx; rows: TransitionPr
 /* Wave Plan                                                           */
 /* ================================================================== */
 export function WavePlan({ tx }: { tx: Tx }) {
-  const { waves, kt, projects, milestones, msWaves, msProjects, currentWave, open, openProject, unitNames } = tx
+  const { waves, kt, projects, accounts, milestones, msWaves, msProjects, currentWave, open, openProject, unitNames } = tx
   const sorted = sortWaves(waves.items)
   const [sel, setSel] = useState<number>(currentWave.number)
   const wave = sorted.find((w) => w.number === sel) ?? sorted[0]
   const wsMilestones = useMemo(() => milestones.items.filter(isTransitionMilestone).map((m) => ({ m, wave: milestoneWave(m, sorted, msWaves.items, projects.items, msProjects.items), project: projects.items.find((p) => msProjects.items.find((l) => l.id === m.id)?.projectId === p.id) })).filter((x) => !wave || x.wave === wave.number).sort((a, b) => a.m.dueDate.localeCompare(b.m.dueDate)), [milestones.items, msWaves.items, msProjects.items, projects.items, sorted, wave])
   const wp = wave ? waveProjects(wave, projects.items).sort((a, b) => a.businessUnit.localeCompare(b.businessUnit) || a.goLiveDate.localeCompare(b.goLiveDate)) : []
   const ks = ktStats(kt.items.filter((k) => k.wave === wave?.number))
+  const wa = accountStats(accounts.items.filter((a) => wp.some((p) => p.id === a.projectId)))
   const allRows = useMemo(() => [...projects.items].sort((a, b) => a.wave - b.wave || a.startDate.localeCompare(b.startDate)).map((p) => ({ id: p.id, label: <span className="flex items-center gap-1.5 min-w-0"><span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: unitColor(unitNames, p.businessUnit) }} /><span className="truncate" title={`${p.businessUnit} · ${p.name}`}>{p.name}</span></span>, start: p.startDate, end: p.endDate, color: sorted.find((w) => w.number === p.wave)?.color ?? '#94A3B8', progress: p.progress, marker: p.goLiveDate, title: `${p.name} (${p.businessUnit}) · Wave ${p.wave} · ${fmtD(p.startDate)} – ${fmtD(p.endDate)} · go-live ${fmtD(p.goLiveDate)}`, onClick: () => openProject(p.id) })), [projects.items, sorted, unitNames, openProject])
 
   return (
     <div className="space-y-4">
-      <Card title="Transition Waves" subtitle="Each wave moves a set of business-unit projects to the GCC. Scope and progress are derived from the projects in the wave; click a wave to edit its name, dates, status and lead." action={<AddBtn label="Add Wave" onClick={() => open({ kind: 'wave', item: null })} />}>
+      <Card title="Transition Waves" subtitle="The four waves of the ENGIE IT GCC footprint (Nov 2026 – Apr 2027). Each wave moves a set of capabilities to Pune; scope and progress are derived from the projects in the wave – click a wave to edit its name, dates, status and lead." action={<AddBtn label="Add Wave" onClick={() => open({ kind: 'wave', item: null })} />}>
         <Table<Wave> rows={sorted} onRowClick={(w) => open({ kind: 'wave', item: w })} columns={[
-          { key: 'number', header: 'Wave', render: (w) => <span className="inline-flex items-center gap-2 whitespace-nowrap"><WaveDot wave={w} /><span className="font-medium">{w.name}</span></span> },
-          { key: 'units', header: 'Business units in scope', render: (w) => <span className="flex flex-wrap gap-1 max-w-[360px]">{waveUnits(w, projects.items).map((u) => <span key={u} className="rounded-md bg-surface px-1.5 py-0.5 text-[11.5px] text-ink-700 whitespace-nowrap" title={u}>{shortBu(u)}</span>)}{!waveUnits(w, projects.items).length && <span className="text-ink-400 text-[12px]">no projects</span>}</span> },
+          { key: 'number', header: 'Wave', render: (w) => <span className="inline-flex items-center gap-2"><WaveDot wave={w} /><span className="font-medium block max-w-[220px] leading-snug">{w.name}</span></span> },
+          { key: 'units', header: 'Business units in scope', render: (w) => <span className="flex flex-wrap gap-1 max-w-[260px]">{waveUnits(w, projects.items).map((u) => <span key={u} className="rounded-md bg-surface px-1.5 py-0.5 text-[11.5px] text-ink-700 whitespace-nowrap" title={u}>{shortBu(u)}</span>)}{!waveUnits(w, projects.items).length && <span className="text-ink-400 text-[12px]">no projects</span>}</span> },
+          { key: 'caps', header: 'Capabilities', render: (w) => { const c = waveCapabilities(w, projects.items); return <span className="block min-w-[200px] max-w-[260px] text-[11.5px] text-ink-700 leading-snug" title={c.join(', ')}>{c.length ? <><b>{c.length}</b> · {c.slice(0, 3).join(', ')}{c.length > 3 ? ` +${c.length - 3} more` : ''}</> : '—'}</span> } },
           { key: 'projects', header: 'Projects', className: 'text-right', render: (w) => waveProjects(w, projects.items).length },
+          { key: 'ftes', header: 'FTEs', className: 'text-right', render: (w) => waveProjects(w, projects.items).reduce((s, p) => s + p.ftes, 0) },
           { key: 'startDate', header: 'Start Date', className: 'whitespace-nowrap', render: (w) => fmtD(w.startDate) },
           { key: 'endDate', header: 'End Date', className: 'whitespace-nowrap', render: (w) => fmtD(w.endDate) },
           { key: 'goLive', header: 'Last go-live', className: 'whitespace-nowrap', render: (w) => { const d = waveGoLive(w.number, projects.items); return d ? fmtD(d) : '—' } },
@@ -79,8 +84,11 @@ export function WavePlan({ tx }: { tx: Tx }) {
               <div className="flex items-center gap-3 mb-2"><WaveDot wave={wave} size={34} /><div className="min-w-0"><div className="text-[14px] font-semibold text-ink-900 truncate">Wave {wave.number} – {wave.name}</div><div className="text-[12px] text-ink-500">{fmtD(wave.startDate)} – {fmtD(wave.endDate)} · Lead {wave.lead}</div></div><span className="ml-auto"><Badge value={wave.status} /></span></div>
               <Stat label="Wave progress" value={<span className="flex items-center gap-2"><Progress value={waveProgress(wave, projects.items)} color={waveProgressColor(wave)} className="w-[100px]" />{waveProgress(wave, projects.items)}%</span>} />
               <Stat label="Business units in scope" value={<span className="text-right">{waveScope(wave, projects.items) || '—'}</span>} />
+              <Stat label="Capabilities" value={<span className="text-right block max-w-[320px] leading-snug">{waveCapabilities(wave, projects.items).join(', ') || '—'}</span>} />
+              <Stat label="From" value={Array.from(new Set(wp.map((p) => p.deliveryLocation))).join(', ') || '—'} />
               <Stat label="Projects" value={`${wp.length} (${wp.filter((p) => p.status === 'Completed').length} completed, ${wp.filter((p) => p.status === 'At Risk' || p.status === 'Delayed').length} at risk / delayed)`} />
-              <Stat label="FTEs transitioning" value={wp.reduce((s, p) => s + p.ftes, 0)} />
+              <Stat label="Target Pune FTEs" value={wp.reduce((s, p) => s + p.ftes, 0)} />
+              <Stat label="Accounts onboarded" value={`${wa.onboarded} of ${wa.total} (${wa.live} live, ${wa.inKt} in KT)`} />
               <Stat label="Knowledge transfer" value={`${ks.pct}% (${ks.done} / ${ks.planned} sessions, ${ks.completed} of ${ks.total} items complete)`} />
               <Stat label="Milestones" value={`${wsMilestones.length} (${wsMilestones.filter((x) => x.m.status === 'At Risk' || x.m.status === 'Delayed').length} at risk / delayed)`} />
               <div className="mt-2 flex gap-2"><button className="btn-secondary" onClick={() => open({ kind: 'wave', item: wave })}><Pencil size={13} /> Edit wave</button><button className="btn-secondary" onClick={() => open({ kind: 'project', item: null, wave: wave.number })}><Plus size={13} /> Add project</button><button className="btn-secondary" onClick={() => open({ kind: 'milestone', item: null, wave: wave.number })}><Plus size={13} /> Add milestone</button></div>
@@ -90,7 +98,7 @@ export function WavePlan({ tx }: { tx: Tx }) {
       </div>
 
       <div className="grid grid-cols-[1.5fr_1fr] gap-4">
-        <Card title={`Wave ${wave?.number ?? ''} projects by business unit`} subtitle="Click a project for its deep dive" action={<AddBtn label="Add Project" onClick={() => open({ kind: 'project', item: null, wave: wave?.number })} />}>
+        <Card title={`Wave ${wave?.number ?? ''} projects by business unit and capability`} subtitle="Click a project for its deep dive" action={<AddBtn label="Add Project" onClick={() => open({ kind: 'project', item: null, wave: wave?.number })} />}>
           <ProjectRows tx={tx} rows={wp} />
         </Card>
         <Card title={`Wave ${wave?.number ?? ''} Milestones`} action={<AddBtn label="Add Milestone" onClick={() => open({ kind: 'milestone', item: null, wave: wave?.number })} />}>
@@ -103,86 +111,9 @@ export function WavePlan({ tx }: { tx: Tx }) {
         </Card>
       </div>
 
-      <Card title="Project timeline across waves" subtitle="All transition projects, Sep '26 – Mar '27, coloured by wave; the flag marks go-live. Click a bar for the project deep dive.">
+      <Card title="Project timeline across waves" subtitle="All transition projects, Nov '26 – May '27, coloured by wave; the rocket marks go-live. Click a bar for the project deep dive.">
         <div className="mb-2"><Legend items={sorted.map((w) => ({ label: `Wave ${w.number}`, color: w.color }))} /></div>
         <GanttRows rows={allRows} labelWidth={230} height={16} />
-      </Card>
-    </div>
-  )
-}
-
-/* ================================================================== */
-/* Knowledge Transfer                                                  */
-/* ================================================================== */
-export function KnowledgeTransfer({ tx }: { tx: Tx }) {
-  const { waves, kt, projects, unitNames, open, openProject } = tx
-  const sorted = sortWaves(waves.items)
-  const [fUnit, setFUnit] = useState('All'); const [fProject, setFProject] = useState('All'); const [fWave, setFWave] = useState('All'); const [fStatus, setFStatus] = useState('All')
-  const projOptions = ['All', ...projects.items.filter((p) => fUnit === 'All' || p.businessUnit === fUnit).map((p) => p.name)]
-  const projectOf = (k: KtItem) => projects.items.find((p) => p.id === k.projectId)
-  const rows = kt.items.filter((k) => (fUnit === 'All' || k.businessUnit === fUnit) && (fProject === 'All' || projectOf(k)?.name === fProject) && (waveNo(fWave) === undefined || k.wave === waveNo(fWave)) && (fStatus === 'All' || k.status === fStatus)).sort((a, b) => a.wave - b.wave || a.businessUnit.localeCompare(b.businessUnit) || a.targetDate.localeCompare(b.targetDate))
-  const s = ktStats(rows)
-  const byUnit = unitNames.map((u) => ({ u, ...ktStats(rows.filter((k) => k.businessUnit === u)) })).filter((x) => x.total > 0)
-  const byProject = projects.items.filter((p) => fUnit === 'All' || p.businessUnit === fUnit).map((p) => ({ p, ...ktStats(rows.filter((k) => k.projectId === p.id)) })).filter((x) => x.total > 0)
-  const byWave = ktByWave(sorted, rows)
-  const months = useMemo(() => {
-    const map = new Map<string, { id: string; items: number; planned: number; done: number; signed: number }>()
-    rows.forEach((k) => { const key = monthKey(k.targetDate); const m = map.get(key) ?? { id: key, items: 0, planned: 0, done: 0, signed: 0 }; m.items++; m.planned += k.sessionsPlanned; m.done += Math.min(k.sessionsDone, k.sessionsPlanned); if (k.signOff === 'Signed') m.signed++; map.set(key, m) })
-    return [...map.values()].sort((a, b) => a.id.localeCompare(b.id))
-  }, [rows])
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 flex-wrap">
-        <FilterSelect label="Business unit" value={fUnit} options={UNIT_ALL(unitNames)} onChange={(v) => { setFUnit(v); setFProject('All') }} />
-        <FilterSelect label="Project" value={projOptions.includes(fProject) ? fProject : 'All'} options={projOptions} onChange={setFProject} />
-        <FilterSelect label="Wave" value={fWave} options={WAVE_ALL(sorted)} onChange={setFWave} />
-        <FilterSelect label="Status" value={fStatus} options={['All', ...KT_STATUSES]} onChange={setFStatus} />
-        <span className="ml-auto"><AddBtn label="Add KT Item" onClick={() => open({ kind: 'kt', item: null, projectId: projects.items.find((p) => fUnit === 'All' || p.businessUnit === fUnit)?.id })} /></span>
-      </div>
-      <div className="grid grid-cols-5 gap-4">
-        {[
-          ['KT Items', s.total, 'text-ink-900'], ['Sessions Delivered', `${s.done} / ${s.planned}`, 'text-brand-600'], ['KT Completion', `${s.pct}%`, 'text-green-600'], ['In Progress', s.inProgress, 'text-brand-600'], ['Signed Off', `${s.signed} / ${s.total}`, 'text-violet-600'],
-        ].map(([l, v, c]) => <div key={l as string} className="card px-4 py-3"><div className="text-[12px] text-ink-500">{l as string}</div><div className={`text-[22px] font-bold ${c as string}`}>{v as React.ReactNode}</div></div>)}
-      </div>
-      <div className="grid grid-cols-[1fr_1.1fr_1fr] gap-4">
-        <Card title="Knowledge Transfer Completion" subtitle="By wave">
-          <Legend items={[{ label: 'Completed', color: CHART_COLORS.green }, { label: 'In Progress', color: CHART_COLORS.blueLight }, { label: 'Not Started', color: CHART_COLORS.blueFaint }]} />
-          <div className="h-[200px] mt-2"><ResponsiveContainer><BarChart data={byWave} margin={{ top: 18, right: 4, left: -18, bottom: 0 }} barCategoryGap="30%">
-            <CartesianGrid vertical={false} /><XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11.5 }} /><YAxis tickLine={false} axisLine={false} domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} />
-            <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v) => [`${v}%`]} />
-            <Bar isAnimationActive={false} dataKey="Not Started" stackId="a" fill={CHART_COLORS.blueFaint} /><Bar isAnimationActive={false} dataKey="In Progress" stackId="a" fill={CHART_COLORS.blueLight} /><Bar isAnimationActive={false} dataKey="Completed" stackId="a" fill={CHART_COLORS.green} radius={[3, 3, 0, 0]}><LabelList dataKey="label" position="top" formatter={(v) => `${v}%`} style={{ fontSize: 11.5, fill: '#111827', fontWeight: 600 }} /></Bar>
-          </BarChart></ResponsiveContainer></div>
-        </Card>
-        <Card title={fUnit === 'All' ? 'Completion by Business Unit' : `Completion by Project – ${fUnit}`} subtitle="Sessions delivered / planned">
-          {fUnit === 'All'
-            ? (byUnit.length ? <BarList labelWidth={150} max={100} rows={byUnit.map((x) => ({ label: x.u, value: x.pct, color: x.pct >= 80 ? CHART_COLORS.green : x.pct >= 50 ? CHART_COLORS.blueLight : CHART_COLORS.amber, right: `${x.pct}% · ${x.done}/${x.planned}` }))} /> : <EmptyNote>No items match the filters.</EmptyNote>)
-            : (byProject.length ? <BarList labelWidth={170} max={100} rows={byProject.map((x) => ({ label: x.p.name, value: x.pct, color: x.pct >= 80 ? CHART_COLORS.green : x.pct >= 50 ? CHART_COLORS.blueLight : CHART_COLORS.amber, right: `${x.pct}% · ${x.done}/${x.planned}` }))} /> : <EmptyNote>No items match the filters.</EmptyNote>)}
-        </Card>
-        <Card title="Session Calendar Summary" subtitle="Sessions by target month">
-          <div className={TIGHT}><Table compact rows={months} columns={[
-            { key: 'id', header: 'Month', render: (m) => <span className="whitespace-nowrap font-medium">{monthLabel(m.id)}</span> },
-            { key: 'items', header: 'Items Due' },
-            { key: 'planned', header: 'Planned' },
-            { key: 'done', header: 'Delivered' },
-            { key: 'remaining', header: 'Remaining', render: (m) => <span className={m.planned - m.done > 0 && m.id < TODAY.slice(0, 7) ? 'text-red-600 font-medium' : ''}>{m.planned - m.done}</span> },
-            { key: 'signed', header: 'Signed Off', render: (m) => `${m.signed} / ${m.items}` },
-          ]} /></div>
-        </Card>
-      </div>
-      <Card title="Knowledge Transfer Tracker" subtitle={`${rows.length} items · click a row to edit · click the project for its deep dive`}>
-        <Table<KtItem> compact rows={rows} onRowClick={(k) => open({ kind: 'kt', item: k })} columns={[
-          { key: 'process', header: 'Process / Activity', render: (k) => <span className="font-medium">{k.process}</span> },
-          { key: 'bu', header: 'Business Unit', className: 'whitespace-nowrap', render: (k) => <span className="text-[12px]">{k.businessUnit}</span> },
-          { key: 'project', header: 'Project', render: (k) => { const p = projectOf(k); return p ? <ProjectLink project={p} onClick={() => openProject(p.id)} className="text-[12px]" /> : <span className="text-ink-400">–</span> } },
-          { key: 'wave', header: 'Wave', render: (k) => <WaveDot wave={sorted.find((w) => w.number === k.wave)} size={22} /> },
-          { key: 'globalOwner', header: 'Global Owner', className: 'whitespace-nowrap' },
-          { key: 'indiaOwner', header: 'India Owner', className: 'whitespace-nowrap' },
-          { key: 'sessions', header: 'Sessions', render: (k) => <span className="flex items-center gap-2"><Progress value={k.sessionsPlanned ? (k.sessionsDone / k.sessionsPlanned) * 100 : 0} className="w-[64px]" /><span className="text-[12px] whitespace-nowrap">{k.sessionsDone} / {k.sessionsPlanned}</span></span> },
-          { key: 'targetDate', header: 'Target Date', className: 'whitespace-nowrap', render: (k) => fmtD(k.targetDate) },
-          { key: 'status', header: 'Status', render: (k) => <Badge value={k.status} /> },
-          { key: 'signOff', header: 'Sign-off', render: (k) => <Badge value={k.signOff === 'Signed' ? 'Completed' : k.signOff} className="bg-transparent! px-0!" /> },
-        ]} />
       </Card>
     </div>
   )
@@ -211,7 +142,7 @@ export function Readiness({ tx }: { tx: Tx }) {
       <div className="grid grid-cols-[1.7fr_1fr] gap-4">
         <Card title="Readiness Matrix by Project" subtitle="Five dimension scores per project (average = readiness score) – click a row to update" headerRight={<FilterSelect label="Business unit" value={fUnit} options={UNIT_ALL(unitNames)} onChange={setFUnit} />} action={<AddBtn label="Update Readiness Assessment" onClick={() => open({ kind: 'assessment', item: null, projectId: rows[0]?.p.id })} />}>
           <div className={TIGHT}><Table compact rows={rows} onRowClick={(r) => (r.a ? open({ kind: 'assessment', item: r.a }) : open({ kind: 'assessment', item: null, projectId: r.p.id }))} columns={[
-            { key: 'project', header: 'Project', render: (r) => <span className="block leading-snug min-w-[150px]"><ProjectLink project={r.p} onClick={() => openProject(r.p.id)} /><span className="block text-[10.5px] text-ink-500">{r.p.businessUnit}</span></span> },
+            { key: 'project', header: 'Project', render: (r) => <span className="block leading-snug min-w-[150px]"><ProjectLink project={r.p} onClick={() => openProject(r.p.id)} /><span className="block text-[10.5px] text-ink-500">{shortBu(r.p.businessUnit)} · {r.p.capability} · from {r.p.deliveryLocation}</span></span> },
             { key: 'wave', header: 'Wave', render: (r) => <WaveDot wave={sorted.find((w) => w.number === r.p.wave)} size={20} /> },
             ...DIMENSIONS.map((d) => ({ key: d, header: DIM_SHORT[d], className: 'text-center', render: (r: (typeof rows)[number]) => (r.a ? cell(r.a[({ 'People & Organization': 'people', 'Process & Governance': 'process', 'Technology & Data': 'technology', 'Facilities & Infrastructure': 'facilities', 'Controls & Compliance': 'controls' } as const)[d]]) : <span className="text-ink-400">–</span>) })),
             { key: 'score', header: 'Score', className: 'text-center', render: (r) => (r.a ? <span className="font-semibold">{assessmentScore(r.a)}%</span> : <button className="link" onClick={(e) => { e.stopPropagation(); open({ kind: 'assessment', item: null, projectId: r.p.id }) }}>Assess</button>) },
@@ -326,11 +257,15 @@ export function RisksIssues({ tx }: { tx: Tx }) {
 /* Dependencies                                                        */
 /* ================================================================== */
 export function Dependencies({ tx }: { tx: Tx }) {
-  const { deps, open } = tx
+  const { deps, depLinks, projects, unitNames, open, openProject } = tx
   const [dir, setDir] = useState('Transition depends on')
-  const rows = deps.items.filter((d) => (dir === 'Transition depends on' ? d.from === 'Transition Readiness' : d.on === 'Transition Readiness')).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+  const [fUnit, setFUnit] = useState('All')
+  const linkOf = (id: string) => depLink(id, depLinks.items)
+  const all = deps.items.filter((d) => (dir === 'Transition depends on' ? d.from === 'Transition Readiness' : d.on === 'Transition Readiness'))
+  const rows = all.filter((d) => fUnit === 'All' || linkOf(d.id)?.businessUnit === fUnit).sort((a, b) => a.dueDate.localeCompare(b.dueDate))
   const byStatus = ['On Track', 'At Risk', 'Delayed', 'Completed'].map((s) => ({ name: s, value: rows.filter((d) => d.status === s).length, color: ({ 'On Track': '#16A34A', 'At Risk': '#F59E0B', Delayed: '#DC2626', Completed: '#5B9BF0' } as Record<string, string>)[s] ?? '#94A3B8' }))
   const byWs = Array.from(new Set(rows.map((d) => (dir === 'Transition depends on' ? d.on : d.from)))).map((ws) => ({ label: ws, value: rows.filter((d) => (dir === 'Transition depends on' ? d.on : d.from) === ws).length }))
+  const byUnit = unitNames.map((u) => ({ label: shortBu(u), value: all.filter((d) => linkOf(d.id)?.businessUnit === u).length })).filter((x) => x.value > 0)
   return (
     <div className="grid grid-cols-[1fr_2.4fr] gap-4">
       <div className="space-y-4">
@@ -341,18 +276,22 @@ export function Dependencies({ tx }: { tx: Tx }) {
         <Card title={dir === 'Transition depends on' ? 'By Providing Workstream' : 'By Dependent Workstream'}>
           <BarList labelWidth={150} rows={byWs.map((b) => ({ ...b, color: CHART_COLORS.violet }))} />
         </Card>
+        <Card title="By Business Unit" subtitle="Dependencies linked to a business unit / project">
+          {byUnit.length ? <BarList labelWidth={110} rows={byUnit.map((b) => ({ ...b, color: CHART_COLORS.teal }))} /> : <EmptyNote>No dependencies linked to a business unit yet.</EmptyNote>}
+        </Card>
       </div>
-      <Card title="Transition Dependencies" subtitle="What the transition of the business units depends on from the other program workstreams – click a row to edit"
-        headerRight={<FilterSelect label="Direction" value={dir} options={['Transition depends on', 'Depends on Transition']} onChange={setDir} />}
-        action={<AddBtn label="Add Dependency" onClick={() => open({ kind: 'dependency', item: null })} />}>
+      <Card title="Transition Dependencies" subtitle="What the transition of the business units and capabilities depends on from the other program workstreams – click a row to edit and link it to a business unit / project"
+        headerRight={<div className="flex gap-2"><FilterSelect label="Business unit" value={fUnit} options={UNIT_ALL(unitNames)} onChange={setFUnit} /><FilterSelect label="Direction" value={dir} options={['Transition depends on', 'Depends on Transition']} onChange={setDir} /></div>}
+        action={<AddBtn label="Add Dependency" onClick={() => open({ kind: 'dependency', item: null, businessUnit: fUnit === 'All' ? undefined : fUnit })} />}>
         <Table<Dependency> compact rows={rows} onRowClick={(d) => open({ kind: 'dependency', item: d })} columns={[
-          { key: 'ws', header: dir === 'Transition depends on' ? 'Depends On' : 'Dependent Workstream', render: (d) => <span className="font-medium">{dir === 'Transition depends on' ? d.on : d.from}</span> },
-          { key: 'type', header: 'Type' },
-          { key: 'description', header: 'Description', render: (d) => <span className="text-[12px] text-ink-700">{d.description}</span> },
+          { key: 'ws', header: dir === 'Transition depends on' ? 'Depends On' : 'Dependent Workstream', render: (d) => <span className="font-medium whitespace-nowrap">{dir === 'Transition depends on' ? d.on : d.from}</span> },
+          { key: 'type', header: 'Type', className: 'whitespace-nowrap' },
+          { key: 'description', header: 'Description', render: (d) => <span className="text-[12px] text-ink-700 block min-w-[200px]">{d.description}</span> },
+          { key: 'unit', header: 'Business unit / project', render: (d) => { const l = linkOf(d.id); const p = l?.projectId ? projects.items.find((x) => x.id === l.projectId) : undefined; return l ? <span className="block leading-snug text-[12px]"><span className="text-ink-700 whitespace-nowrap">{l.businessUnit}</span>{p && <span className="block"><ProjectLink project={p} onClick={() => openProject(p.id)} className="text-[11.5px]" /></span>}</span> : <span className="text-ink-400 text-[12px]">program-wide</span> } },
           { key: 'impact', header: 'Impact', render: (d) => <Badge value={d.impact} /> },
           { key: 'status', header: 'Status', render: (d) => <Badge value={d.status} /> },
-          { key: 'dueDate', header: 'Due Date', render: (d) => <span className={d.status !== 'Completed' && d.dueDate < TODAY ? 'text-red-600 font-medium' : ''}>{fmtD(d.dueDate)}</span> },
-          { key: 'owner', header: 'Owner' },
+          { key: 'dueDate', header: 'Due Date', className: 'whitespace-nowrap', render: (d) => <span className={d.status !== 'Completed' && d.dueDate < TODAY ? 'text-red-600 font-medium' : ''}>{fmtD(d.dueDate)}</span> },
+          { key: 'owner', header: 'Owner', className: 'whitespace-nowrap' },
         ]} />
       </Card>
     </div>
@@ -363,7 +302,7 @@ export function Dependencies({ tx }: { tx: Tx }) {
 /* Reports                                                             */
 /* ================================================================== */
 export function Reports({ tx }: { tx: Tx }) {
-  const { waves, kt, projects, milestones, msWaves, msProjects, raid, raidLinks, gaps, assessments, checklist, settings, currentWave, unitNames } = tx
+  const { waves, kt, projects, accounts, milestones, msWaves, msProjects, raid, raidLinks, gaps, assessments, checklist, settings, currentWave, unitNames } = tx
   const sorted = sortWaves(waves.items)
   const [sel, setSel] = useState(`Wave ${currentWave.number}`)
   const [copied, setCopied] = useState(false)
@@ -380,6 +319,7 @@ export function Reports({ tx }: { tx: Tx }) {
     const openGaps = g.filter((x) => x.status !== 'Resolved')
     const risks = raid.items.filter((r) => isTransitionRaid(r, raidLinks.items)).filter(isOpen).filter((r) => { const l = raidLink(r, raidLinks.items); return !l || waveUnits(wave, projects.items).includes(l.businessUnit) }).sort((a, b) => b.impactScore - a.impactScore).slice(0, 5)
     const done = checklist.items.filter((c) => c.done).length
+    const wa = accountStats(accounts.items.filter((a) => wp.some((p) => p.id === a.projectId)))
     const line = (s: string) => `- ${s}`
     const pName = (id: string) => projects.items.find((p) => p.id === id)?.name ?? id
     const goLive = waveGoLive(settings.goLiveWave, projects.items)
@@ -387,12 +327,17 @@ export function Reports({ tx }: { tx: Tx }) {
       `WAVE ${wave.number} STATUS REPORT – ${wave.name}`,
       `As of ${fmtD(TODAY)} · ${fmtD(wave.startDate)} – ${fmtD(wave.endDate)} · Lead: ${wave.lead}`,
       `Business units in scope: ${waveUnits(wave, projects.items).join(', ') || 'none'}`,
+      `Capabilities: ${waveCapabilities(wave, projects.items).join(', ') || 'none'}`,
       ``,
-      `Overall: ${wave.status}, ${waveProgress(wave, projects.items)}% complete across ${wp.length} projects (${wp.reduce((s, p) => s + p.ftes, 0)} FTEs).`,
-      ...wp.map((p) => line(`${p.name} (${p.businessUnit}): ${p.status}, ${p.progress}%, KT ${projectKt(p, kt.items).pct}%, readiness ${projectReadiness(p, assessments.items)}%, go-live ${fmtD(p.goLiveDate)}.`)),
+      `Overall: ${wave.status}, ${waveProgress(wave, projects.items)}% complete across ${wp.length} projects (${wp.reduce((s, p) => s + p.ftes, 0)} target Pune FTEs).`,
+      ...wp.map((p) => { const a = projectAccounts(p, accounts.items); return line(`${p.name} (${p.businessUnit} · ${p.capability}, from ${p.deliveryLocation} for ${p.gbu}): ${p.status}, ${p.progress}%, accounts onboarded ${a.onboarded}/${a.total}, KT ${projectKt(p, kt.items).pct}%, readiness ${projectReadiness(p, assessments.items)}%, go-live ${fmtD(p.goLiveDate)}.`) }),
+      ``,
+      `Accounts onboarded`,
+      line(`${wa.onboarded} of ${wa.total} accounts onboarded (${wa.live} live, ${wa.onboardedOnly} onboarded, ${wa.inKt} in KT, ${wa.planned} planned, ${wa.onHold} on hold).`),
+      ...accounts.items.filter((a) => wp.some((p) => p.id === a.projectId) && a.status === 'On hold').map((a) => line(`On hold: ${a.name} – ${a.notes || 'no reason recorded'}.`)),
       ``,
       `Knowledge transfer`,
-      line(`${ks.pct}% of planned sessions delivered (${ks.done} of ${ks.planned}); ${ks.completed} of ${ks.total} items complete, ${ks.signed} signed off.`),
+      line(`${ks.signed} of ${ks.total} items completed (signed off), ${ks.pending} pending (${ks.overdue} overdue); ${ks.pct}% of planned sessions delivered (${ks.done} of ${ks.planned}).`),
       ...kt.items.filter((k) => k.wave === wave.number && k.status !== 'Completed').slice(0, 4).map((k) => line(`${k.process} (${pName(k.projectId)}): ${k.sessionsDone}/${k.sessionsPlanned} sessions, ${k.status}, target ${fmtD(k.targetDate)}.`)),
       ``,
       `Readiness`,
@@ -409,14 +354,14 @@ export function Reports({ tx }: { tx: Tx }) {
       ``,
       `Stabilization readiness: ${checklist.items.length ? Math.round((done / checklist.items.length) * 100) : 0}% (${done} of ${checklist.items.length} checklist items). Target go-live Wave ${settings.goLiveWave}: ${goLive ? fmtD(goLive) : '—'} – ${settings.goLiveStatus}.`,
     ].join('\n')
-  }, [wave, kt.items, projects.items, milestones.items, msWaves.items, msProjects.items, raid.items, raidLinks.items, gaps.items, assessments.items, checklist.items, settings, sorted])
+  }, [wave, kt.items, projects.items, accounts.items, milestones.items, msWaves.items, msProjects.items, raid.items, raidLinks.items, gaps.items, assessments.items, checklist.items, settings, sorted])
 
   const copy = async () => {
     try { await navigator.clipboard.writeText(summary) } catch { /* clipboard unavailable in some contexts */ }
     setCopied(true); setTimeout(() => setCopied(false), 1800)
   }
 
-  const ktRows = unitNames.map((u) => { const s = unitKt(u, kt.items); const ps = projects.items.filter((p) => p.businessUnit === u); return { id: u, u, projects: ps.length, waves: Array.from(new Set(ps.map((p) => p.wave))).sort().join(', '), ...s } })
+  const ktRows = unitNames.map((u) => { const s = unitKt(u, kt.items); const ps = projects.items.filter((p) => p.businessUnit === u); const a = unitAccounts(u, accounts.items); return { id: u, u, projects: ps.length, caps: new Set(ps.map((p) => p.capability)).size, waves: Array.from(new Set(ps.map((p) => p.wave))).sort().join(', '), acc: a, ...s } })
   const trend = settings.trendMonths.map((m, i) => ({ month: m, Planned: settings.trendPlanned[i] ?? 0, Actual: settings.trendActual[i] ?? 0 }))
 
   return (
@@ -427,15 +372,17 @@ export function Reports({ tx }: { tx: Tx }) {
         <pre className="whitespace-pre-wrap font-sans text-[12.5px] leading-relaxed text-ink-900 bg-surface rounded-lg p-4 max-h-[620px] overflow-y-auto scroll-thin">{summary}</pre>
       </Card>
       <div className="space-y-4">
-        <Card title="KT Completion by Business Unit" subtitle="Knowledge transfer sessions by receiving business unit">
-          <Table compact rows={ktRows} columns={[
-            { key: 'u', header: 'Business Unit', render: (r) => <span className="font-medium">{r.u}</span> },
-            { key: 'projects', header: 'Projects', className: 'text-right' },
+        <Card title="KT Completion by Business Unit" subtitle="Knowledge transfer and accounts onboarded by receiving business unit">
+          <div className={TIGHT}><Table compact rows={ktRows} columns={[
+            { key: 'u', header: 'Business Unit', render: (r) => <span className="font-medium whitespace-nowrap">{r.u}</span> },
+            { key: 'projects', header: 'Projects', className: 'text-right', render: (r) => <span title={`${r.caps} capabilities`}>{r.projects}</span> },
             { key: 'waves', header: 'Waves', className: 'whitespace-nowrap' },
+            { key: 'acc', header: 'Accounts', className: 'whitespace-nowrap', render: (r) => <span><b className="text-teal-700">{r.acc.onboarded}</b> / {r.acc.total}</span> },
+            { key: 'items', header: 'KT done / pending', className: 'whitespace-nowrap', render: (r) => <span><span className="text-green-700 font-medium">{r.signed}</span> / <span className={r.pending ? 'text-amber-600' : ''}>{r.pending}</span></span> },
             { key: 'sessions', header: 'Sessions', className: 'whitespace-nowrap', render: (r) => `${r.done} / ${r.planned}` },
-            { key: 'pct', header: 'Completion', render: (r) => <span className="flex items-center gap-2"><Progress value={r.pct} className="w-[64px]" /><span className="text-[12.5px] font-medium w-8">{r.pct}%</span></span> },
+            { key: 'pct', header: 'Completion', render: (r) => <span className="flex items-center gap-2"><Progress value={r.pct} className="w-[56px]" /><span className="text-[12px] font-medium w-8">{r.pct}%</span></span> },
             { key: 'status', header: 'Status', render: (r) => <Badge value={r.pct >= 100 ? 'Completed' : r.pct > 0 ? 'In Progress' : 'Not Started'} /> },
-          ]} />
+          ]} /></div>
         </Card>
         <Card title="Transition Milestone Trend" subtitle="Planned vs actual milestone completion">
           <div className="h-[180px]"><ResponsiveContainer><BarChart data={trend} margin={{ top: 16, right: 4, left: -22, bottom: 0 }} barGap={2} barCategoryGap="28%">

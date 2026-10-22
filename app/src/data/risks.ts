@@ -107,22 +107,22 @@ export interface MitigationAction {
 }
 const MA = (id: string, riskCode: string, action: string, owner: string, due: string, status: MitigationStatus, effectiveness: Effectiveness): MitigationAction => ({ id, riskCode, action, owner, due, status, effectiveness })
 export const seedMitigationActions: MitigationAction[] = [
-  MA('ma-01', 'R-001', 'Escalate network provisioning issue to steering committee', 'A. Sharma', '2026-10-22', 'In Progress', 'High'),
-  MA('ma-02', 'R-001', 'Activate backup ISP and re-sequence endpoint rollout', 'R. Mehta', '2026-10-30', 'In Progress', 'Medium'),
-  MA('ma-03', 'R-002', 'Engage two specialist agencies for Senior Data Engineer pipeline', 'S. Iyer', '2026-10-24', 'In Progress', 'Medium'),
-  MA('ma-04', 'R-002', 'Open lateral hiring in Hyderabad for Cybersecurity roles', 'S. Iyer', '2026-11-05', 'Not Started', 'Not Assessed'),
-  MA('ma-05', 'R-003', 'Legal counsel to track labour-law amendments; prepare dual filing path', 'P. Rao', '2026-11-01', 'In Progress', 'High'),
-  MA('ma-06', 'R-005', 'Split laptop order across two suppliers; prioritise Wave 2 joiners', 'V. Reddy', '2026-10-27', 'Completed', 'High'),
-  MA('ma-07', 'R-007', 'Daily site walk and contractor penalty clause review', 'M. Khan', '2026-11-10', 'In Progress', 'Medium'),
-  MA('ma-08', 'R-009', 'Pre-approve role-based access bundles for each hiring wave', 'K. Nair', '2026-10-31', 'In Progress', 'Medium'),
-  MA('ma-09', 'R-010', 'Retention bonus for critical roles; career path communication', 'S. Iyer', '2026-11-15', 'Not Started', 'Not Assessed'),
-  MA('ma-10', 'R-011', 'Lock KT calendar with global process owners; weekly attendance tracking', 'A. Sharma', '2026-10-28', 'In Progress', 'High'),
-  MA('ma-11', 'R-012', 'Validate secondary DG set and UPS sizing with landlord', 'K. Nair', '2026-11-20', 'In Progress', 'High'),
-  MA('ma-12', 'R-013', 'Tax advisor methodology paper', 'P. Rao', '2026-11-15', 'Not Started', 'Not Assessed'),
-  MA('ma-13', 'R-014', 'Second parallel payroll run before go-live', 'V. Reddy', '2026-11-05', 'In Progress', 'Medium'),
-  MA('ma-14', 'R-016', 'Pre-joining bootcamp to improve offer-to-join conversion', 'S. Iyer', '2026-10-15', 'Overdue', 'Low'),
-  MA('ma-15', 'R-017', 'Order secondary circuit from alternate ISP', 'R. Mehta', '2026-10-12', 'Overdue', 'Low'),
-  MA('ma-16', 'R-039', 'Stage production build in cloud landing zone', 'R. Mehta', '2026-11-30', 'Not Started', 'Not Assessed'),
+  MA('ma-01', 'R-001', 'Escalate network provisioning issue to steering committee', 'A. Sharma', '2027-02-22', 'In Progress', 'High'),
+  MA('ma-02', 'R-001', 'Activate backup ISP and re-sequence endpoint rollout', 'R. Mehta', '2027-02-28', 'In Progress', 'Medium'),
+  MA('ma-03', 'R-002', 'Engage two specialist agencies for Senior Data Engineer pipeline', 'S. Iyer', '2027-02-24', 'In Progress', 'Medium'),
+  MA('ma-04', 'R-002', 'Open lateral hiring in Hyderabad for Cybersecurity roles', 'S. Iyer', '2027-03-05', 'Not Started', 'Not Assessed'),
+  MA('ma-05', 'R-003', 'Legal counsel to track labour-law amendments; prepare dual filing path', 'P. Rao', '2027-03-01', 'In Progress', 'High'),
+  MA('ma-06', 'R-005', 'Split laptop order across two suppliers; prioritise Wave 2 joiners', 'V. Reddy', '2027-02-27', 'Completed', 'High'),
+  MA('ma-07', 'R-007', 'Daily site walk and contractor penalty clause review', 'M. Khan', '2027-03-10', 'In Progress', 'Medium'),
+  MA('ma-08', 'R-009', 'Pre-approve role-based access bundles for each hiring wave', 'K. Nair', '2027-02-28', 'In Progress', 'Medium'),
+  MA('ma-09', 'R-010', 'Retention bonus for critical roles; career path communication', 'S. Iyer', '2027-03-15', 'Not Started', 'Not Assessed'),
+  MA('ma-10', 'R-011', 'Lock KT calendar with global process owners; weekly attendance tracking', 'A. Sharma', '2027-02-28', 'In Progress', 'High'),
+  MA('ma-11', 'R-012', 'Validate secondary DG set and UPS sizing with landlord', 'K. Nair', '2027-03-20', 'In Progress', 'High'),
+  MA('ma-12', 'R-013', 'Tax advisor methodology paper', 'P. Rao', '2027-03-15', 'Not Started', 'Not Assessed'),
+  MA('ma-13', 'R-014', 'Second parallel payroll run before go-live', 'V. Reddy', '2027-03-05', 'In Progress', 'Medium'),
+  MA('ma-14', 'R-016', 'Pre-joining bootcamp to improve offer-to-join conversion', 'S. Iyer', '2027-02-15', 'Overdue', 'Low'),
+  MA('ma-15', 'R-017', 'Order secondary circuit from alternate ISP', 'R. Mehta', '2027-02-12', 'Overdue', 'Low'),
+  MA('ma-16', 'R-039', 'Stage production build in cloud landing zone', 'R. Mehta', '2027-03-30', 'Not Started', 'Not Assessed'),
 ]
 
 /* ------------------------------------------------------------------ */
@@ -140,12 +140,12 @@ export interface EscalationDecision {
   decidedBy?: string
 }
 export const seedEscalationDecisions: EscalationDecision[] = [
-  { id: 'esc-r-001', raidId: 'r-001', decisionNeeded: 'Approve backup ISP contract (3% of Technology budget) and accept 2-week go-live slip for Wave 2', steeringDate: '2026-10-23', escalatedOn: '2026-10-10', escalatedTo: 'Steering Committee' },
-  { id: 'esc-r-002', raidId: 'r-002', decisionNeeded: 'Approve additional hiring support budget for specialist roles (two agencies)', steeringDate: '2026-10-23', escalatedOn: '2026-10-12', escalatedTo: 'Steering Committee' },
-  { id: 'esc-r-005', raidId: 'r-005', decisionNeeded: 'Approve split-order with second laptop supplier at 6% premium', steeringDate: '2026-10-16', escalatedOn: '2026-10-08', escalatedTo: 'Program Director', decision: 'Approved split order; procurement to execute by 27 Oct.', decidedOn: '2026-10-16', decidedBy: 'A. Sharma' },
-  { id: 'esc-r-010', raidId: 'r-010', decisionNeeded: 'Approve retention bonus scheme for 18 critical roles', steeringDate: '2026-10-16', escalatedOn: '2026-10-06', escalatedTo: 'Steering Committee', decision: 'Approved in principle; HR to finalise scheme by 15 Nov.', decidedOn: '2026-10-16', decidedBy: 'Global CHRO' },
-  { id: 'esc-r-011', raidId: 'r-011', decisionNeeded: 'Mandate global process owner attendance at KT sessions', steeringDate: '2026-10-09', escalatedOn: '2026-10-03', escalatedTo: 'Global COO', decision: 'Mandated; weekly attendance report to COO office.', decidedOn: '2026-10-09', decidedBy: 'Global COO' },
-  { id: 'esc-i-027', raidId: 'i-027', decisionNeeded: 'Expedite system access for Wave 1 joiners via temporary accounts', steeringDate: '2026-10-09', escalatedOn: '2026-10-08', escalatedTo: 'Global CIO', decision: 'Temporary accounts approved; resolved 14 Oct.', decidedOn: '2026-10-09', decidedBy: 'Global CIO' },
+  { id: 'esc-r-001', raidId: 'r-001', decisionNeeded: 'Approve backup ISP contract (3% of Technology budget) and accept 2-week go-live slip for Wave 2', steeringDate: '2027-02-23', escalatedOn: '2027-02-10', escalatedTo: 'Steering Committee' },
+  { id: 'esc-r-002', raidId: 'r-002', decisionNeeded: 'Approve additional hiring support budget for specialist roles (two agencies)', steeringDate: '2027-02-23', escalatedOn: '2027-02-12', escalatedTo: 'Steering Committee' },
+  { id: 'esc-r-005', raidId: 'r-005', decisionNeeded: 'Approve split-order with second laptop supplier at 6% premium', steeringDate: '2027-02-16', escalatedOn: '2027-02-08', escalatedTo: 'Program Director', decision: 'Approved split order; procurement to execute by 27 Oct.', decidedOn: '2027-02-16', decidedBy: 'A. Sharma' },
+  { id: 'esc-r-010', raidId: 'r-010', decisionNeeded: 'Approve retention bonus scheme for 18 critical roles', steeringDate: '2027-02-16', escalatedOn: '2027-02-06', escalatedTo: 'Steering Committee', decision: 'Approved in principle; HR to finalise scheme by 15 Nov.', decidedOn: '2027-02-16', decidedBy: 'Global CHRO' },
+  { id: 'esc-r-011', raidId: 'r-011', decisionNeeded: 'Mandate global process owner attendance at KT sessions', steeringDate: '2027-02-09', escalatedOn: '2027-02-03', escalatedTo: 'Global COO', decision: 'Mandated; weekly attendance report to COO office.', decidedOn: '2027-02-09', decidedBy: 'Global COO' },
+  { id: 'esc-i-027', raidId: 'i-027', decisionNeeded: 'Expedite system access for Wave 1 joiners via temporary accounts', steeringDate: '2027-02-09', escalatedOn: '2027-02-08', escalatedTo: 'Global CIO', decision: 'Temporary accounts approved; resolved 14 Oct.', decidedOn: '2027-02-09', decidedBy: 'Global CIO' },
 ]
 
 /* ------------------------------------------------------------------ */
@@ -172,7 +172,7 @@ export const matchesView = (r: RaidItem, view: string) => view === 'All Workstre
 
 /** Risk Status donut bucket for an open risk. */
 export type StatusBucket = 'On Track' | 'At Risk' | 'Overdue' | 'Not Started'
-export function statusBucket(r: RaidItem, today = '2026-10-20'): StatusBucket {
+export function statusBucket(r: RaidItem, today = '2027-02-20'): StatusBucket {
   if (r.status === 'Not Started') return 'Not Started'
   if (r.status === 'Overdue' || r.dueDate < today) return 'Overdue'
   if (r.status === 'At Risk' || r.status === 'Delayed' || (r.level === 'Critical' && r.status === 'Open')) return 'At Risk'

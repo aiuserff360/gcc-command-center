@@ -10,6 +10,10 @@ import { WrapTick, CardLegend, MiniStat } from './widgets'
 import { SkillForm, TrainingForm } from './forms'
 import { coverageColor } from './OverviewTab'
 
+/** Short axis labels for the seeded skill categories; other categories fall back to their first words. */
+const SKILL_AXIS: [RegExp, string][] = [[/^cloud/i, 'Cloud'], [/^network/i, 'Network'], [/^sap/i, 'SAP'], [/^application support/i, 'App\nsupport'], [/^identity/i, 'IAM'], [/^security op/i, 'SecOps'], [/^data eng/i, 'Data\neng.'], [/^bi/i, 'BI & AI'], [/^digital workplace/i, 'Workplace'], [/^itsm/i, 'ITSM'], [/^integration/i, 'Integration']]
+const axisLabel = (c: string) => SKILL_AXIS.find(([re]) => re.test(c))?.[1] ?? c.replace(/\s*\(.*\)/, '').split(' ').slice(0, 2).join('\n')
+
 export default function SkillsTab({ d }: { d: ResourceData }) {
   const { skills, trainingPlans } = d
   const [skill, setSkill] = useState<SkillRow | null>(null)
@@ -20,7 +24,7 @@ export default function SkillsTab({ d }: { d: ResourceData }) {
   const rows = skills.items.map((s) => ({ ...s, gap: Math.max(0, s.required - s.available), coverage: s.required ? Math.round((s.available / s.required) * 100) : 0 }))
   const req = rows.reduce((s, r) => s + r.required, 0), avail = rows.reduce((s, r) => s + r.available, 0), gap = rows.reduce((s, r) => s + r.gap, 0)
   const inTraining = trainingPlans.items.filter((t) => t.status !== 'Completed').reduce((s, t) => s + t.participants, 0)
-  const chartData = rows.map((r) => ({ name: r.category.replace(' (AWS/Azure)', ''), Required: r.required, Available: r.available, Gap: r.gap }))
+  const chartData = rows.map((r) => ({ name: axisLabel(r.category), full: r.category, Required: r.required, Available: r.available, Gap: r.gap }))
 
   return (
     <>
@@ -33,7 +37,7 @@ export default function SkillsTab({ d }: { d: ResourceData }) {
       </div>
 
       <div className="grid grid-cols-[1.3fr_1fr] gap-4">
-        <Card title="Skills Availability" subtitle="Click a row to edit required / available" action={<button className="btn-primary" onClick={() => setAddSkill(true)}><Plus size={14} /> Add Skill</button>}>
+        <Card title="Skills Availability" subtitle="Required = year-1 target of the capabilities needing the skill · available = onboarded today · click a row to edit" action={<button className="btn-primary" onClick={() => setAddSkill(true)}><Plus size={14} /> Add Skill</button>}>
           <Table compact rows={rows} onRowClick={(r) => setSkill(r)} columns={[
             { key: 'category', header: 'Skill Category', render: (r) => <span className="font-medium">{r.category}</span> },
             { key: 'owner', header: 'Owner' },
@@ -45,13 +49,13 @@ export default function SkillsTab({ d }: { d: ResourceData }) {
           ]} />
         </Card>
         <Card title="Capability Gap by Skill" headerRight={<CardLegend items={[{ label: 'Required', color: '#9CC3F7' }, { label: 'Available', color: CHART_COLORS.blue }, { label: 'Gap', color: CHART_COLORS.red }]} />}>
-          <div className="h-[260px]">
+          <div className="h-[300px]">
             <ResponsiveContainer>
               <BarChart data={chartData} margin={{ top: 14, right: 4, left: -24, bottom: 14 }} barGap={2} barCategoryGap="25%">
                 <CartesianGrid vertical={false} />
-                <XAxis dataKey="name" tickLine={false} axisLine={false} interval={0} tick={<WrapTick size={10} />} height={30} />
+                <XAxis dataKey="name" tickLine={false} axisLine={false} interval={0} tick={<WrapTick size={9.5} />} height={34} />
                 <YAxis tickLine={false} axisLine={false} />
-                <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} />
+                <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} labelFormatter={(_l, p) => String((p?.[0]?.payload as { full?: string })?.full ?? _l)} />
                 <Bar dataKey="Required" fill="#9CC3F7" radius={[3, 3, 0, 0]} />
                 <Bar dataKey="Available" fill={CHART_COLORS.blue} radius={[3, 3, 0, 0]} />
                 <Bar dataKey="Gap" fill={CHART_COLORS.red} radius={[3, 3, 0, 0]}><LabelList dataKey="Gap" position="top" style={{ fontSize: 11, fill: '#DC2626', fontWeight: 600 }} /></Bar>

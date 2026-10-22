@@ -109,6 +109,7 @@ export const REFERENCE = {
   technology: { device: 0.9, refreshYears: 3, licences: 0.035, apps: 0.038, cloud: 0.034, security: 0.014, support: 0.019, network: 0.01, hosting: 0.005, mode: 'escalate' as SimpleMode, escalationRate: 5 } as TechnologyInputs,
   corporate: { compliance: 3.5, financeAdmin: 29, legalTaxAudit: 11.5, insurance: 14.4, governance: 24, other: 9.6, mode: 'same' as SimpleMode, escalationRate: 5 } as CorporateInputs,
   oneTime: { entityLegal: 14.4, policies: 19, brandLaunch: 24, travelKt: 58, programme: 72, contingency: 19 } as OneTimeInputs,
+  /** Year 1 = the first ramp year (Nov 2026 – Oct 2027, labelled 2027); the centre starts from zero. */
   settings: { horizonYears: 5, firstYear: 2027, openingHeadcount: 0, attritionRate: 12, compMode: 'same' as EscalationMode, compEscalationRate: 9.9 } as ModelSettings,
 }
 /** India GCC plausibility ranges used by the model checks. */
@@ -142,12 +143,17 @@ export function referenceInputs(units: BusinessUnit[]): CostModelInputs {
   }
 }
 
-/** Demo seed: reference set, headcount from the business-unit FTE plan, SAP & Microsoft practices +10 % and shared services −10 % on compensation. */
+/**
+ * Demo seed (ENGIE IT GCC, Pune): reference set, exit headcount from the rolled-up business-unit plan (400 → 494;
+ * Year 1 = Nov 2026 – Oct 2027, opening headcount 0), Enterprise Applications and Data, Analytics & AI +10 % and
+ * Digital Workplace / IT Service Management −5 % on base compensation.
+ */
+export const COMP_PREMIUM: Record<string, number> = { 'bu-apps': 1.1, 'bu-data': 1.1, 'bu-dwp': 0.95, 'bu-itsm': 0.95 }
+const PREMIUM_BY_NAME: Record<string, number> = { 'Enterprise Applications': 1.1, 'Data, Analytics & AI': 1.1, 'Digital Workplace': 0.95, 'IT Service Management': 0.95 }
 export function seedCostModel(units: BusinessUnit[]): CostModelInputs {
   const m = referenceInputs(units)
-  const premium: Record<string, number> = { 'bu-sap': 1.1, 'bu-ms': 1.1, 'bu-fin': 0.9, 'bu-hr': 0.9 }
   for (const bu of units) {
-    const f = premium[bu.id] ?? (bu.kind === 'Shared Services' ? 0.9 : bu.name.startsWith('SAP') || bu.name.startsWith('Microsoft') ? 1.1 : 1)
+    const f = COMP_PREMIUM[bu.id] ?? PREMIUM_BY_NAME[bu.name] ?? 1
     if (f !== 1) m.units[bu.id] = { ...m.units[bu.id], comp: { ...clone(REFERENCE.comp), base: scaleArr(REFERENCE.comp.base, f) }, baseByYear: byYear(scaleArr(REFERENCE.comp.base, f), m.settings.compEscalationRate) }
   }
   m.realEstate.notes = 'Managed office in Pune (Kharadi / Hinjewadi shortlist) for the first three years, option to move to a conventional lease once the centre passes 400 seats.'
@@ -161,9 +167,9 @@ export function seedCostScenarios(units: BusinessUnit[]): CostScenario[] {
   const lean = flexDriver(flexDriver(base, 'baseSalary', -5), 'realEstate', -10)
   lean.realEstate.managed.seatShare = 65
   return [
-    { id: 'cs-base', name: 'Base plan', note: 'Business-unit FTE plan 320 → 450, managed office in Pune, compensation at reference with practice premiums.', savedAt: '2026-10-20', inputs: base },
-    { id: 'cs-accel', name: 'Accelerated ramp', note: 'Headcount +15 % across the horizon with 9.9 % annual compensation escalation.', savedAt: '2026-10-20', inputs: accel },
-    { id: 'cs-lean', name: 'Lean footprint', note: 'Base salaries −5 %, real-estate unit costs −10 % and 65 % seat ratio (hybrid working).', savedAt: '2026-10-20', inputs: lean },
+    { id: 'cs-base', name: 'Base plan', note: 'Business-unit headcount plan 400 → 494 (7 IT domains, Pune), managed office in Pune, compensation at reference with Enterprise Applications and Data, Analytics & AI premiums.', savedAt: '2027-02-20', inputs: base },
+    { id: 'cs-accel', name: 'Accelerated ramp', note: 'Headcount +15 % across the horizon with 9.9 % annual compensation escalation.', savedAt: '2027-02-20', inputs: accel },
+    { id: 'cs-lean', name: 'Lean footprint', note: 'Base salaries −5 %, real-estate unit costs −10 % and 65 % seat ratio (hybrid working).', savedAt: '2027-02-20', inputs: lean },
   ]
 }
 

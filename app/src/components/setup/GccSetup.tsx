@@ -1,8 +1,9 @@
 /**
- * GCC Setup – the first thing a program manager sees in Input view: who the GCC is for, what it
- * will do, how big it gets each year, which workstreams deliver it and who leads them.
+ * GCC Setup – the first thing a program manager sees in Input view: what the ENGIE IT GCC is for, how it is
+ * organised (business units = IT domains, each with its capabilities), how the Pune headcount ramps up
+ * (month by month in year 1, annually from year 2), which workstreams deliver it and who leads them.
  */
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import clsx from 'clsx'
 import { Plus, Trash2, Save, Check } from 'lucide-react'
 import { Card, Field, Input, Select, TextArea, FormGrid } from '../ui'
@@ -11,9 +12,9 @@ import { ProgramKpiEditor } from '../ProgramKpiEditor'
 import { useCollection, useStore, uid } from '../../store/useStore'
 import { seedProgramKpis, seedWorkstreamSummaries, type ProgramKpis, type WorkstreamSummary } from '../../data/shared'
 import { OWNERS, PROGRAMS, programDef, type Workstream } from '../../data/common'
-import { YEARS, YEAR_KEYS } from '../../data/businessUnits'
 import { useMoney } from '../../data/money'
-import { BusinessUnitGrid, useBusinessUnits } from '../footprint/BusinessUnits'
+import { OrgStructureEditor } from '../footprint/OrgStructure'
+import { HeadcountRampEditor } from '../footprint/HeadcountRamp'
 
 export interface GccProfile {
   id: 'profile'
@@ -27,8 +28,8 @@ export interface GccProfile {
 }
 export const seedProfile: GccProfile[] = [{
   id: 'profile',
-  purpose: 'Establish a captive Global Capability Centre in Pune that hosts SAP, Microsoft and Data & AI practices plus R&D and shared services, delivering 40% run-rate cost savings and access to deep technology talent.',
-  operatingModel: 'Captive GCC', entityType: 'Private limited company (wholly owned subsidiary)', officeStrategy: 'Leased Grade-A office, fit-out in two phases aligned to hiring waves', city: 'Pune', sponsor: 'Global COO', notes: '',
+  purpose: 'Establish the ENGIE IT GCC in Pune: a capability-led, business-aligned, global-in-scope IT centre covering seven IT domains (Infrastructure & Cloud, Digital Workplace, Cybersecurity & IAM, Enterprise Applications, Data, Analytics & AI, Integration & Engineering, IT Service Management), supporting all ENGIE businesses across Global, Europe, Americas and AMEA, with a phased transition to Pune in four waves from Nov 2026 to Apr 2027 reaching 400 IT headcount.',
+  operatingModel: 'Captive GCC', entityType: 'Private limited company (wholly owned ENGIE subsidiary)', officeStrategy: 'Leased Grade-A office in Pune, fit-out in two phases aligned to transition waves', city: 'Pune', sponsor: 'Group CIO', notes: '',
 }]
 const OPERATING_MODELS: GccProfile['operatingModel'][] = ['Captive GCC', 'Hybrid', 'Build-Operate-Transfer', 'Outsourced']
 const WS_STATUSES = ['On Track', 'At Risk', 'Delayed', 'Not Started', 'Completed'] as const
@@ -62,7 +63,7 @@ function ProgramProfileTab() {
   const money = (key: keyof ProgramKpis) => ({ type: 'number', step: 'any', value: m.inputValue(f[key] as number), onChange: (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [key]: m.toBase(parseFloat(e.target.value) || 0) }) }) as const
   return (
     <div className="grid grid-cols-[1.4fr_1fr] gap-4">
-      <Card title="About this GCC" subtitle="What the centre is for and how it will be set up">
+      <Card title="About the ENGIE IT GCC" subtitle="What the centre is for and how it will be set up">
         <FormGrid cols={2}>
           <Field label="Program name" className="col-span-2"><Input value={f.programName} onChange={(e) => setF({ ...f, programName: e.target.value })} /></Field>
           <Field label="Purpose – what you are planning to do" className="col-span-2"><TextArea value={p.purpose} onChange={(e) => setP({ ...p, purpose: e.target.value })} /></Field>
@@ -96,27 +97,6 @@ function ProgramProfileTab() {
   )
 }
 
-function GrowthTab() {
-  const { items } = useBusinessUnits()
-  const totals = useMemo(() => YEAR_KEYS.map((k) => items.filter((b) => b.status !== 'Out of Scope').reduce((s, r) => s + (r[k] || 0), 0)), [items])
-  return (
-    <div className="space-y-4">
-      <Card title="Headcount growth plan" subtitle="Planned people by year, rolled up from the business units below">
-        <div className="grid grid-cols-5 gap-3">
-          {YEARS.map((y, i) => (
-            <div key={y} className="rounded-lg border border-line px-3 py-2.5">
-              <div className="text-[11.5px] text-ink-500">{y}</div>
-              <div className="text-[22px] font-bold text-navy-900">{totals[i]}</div>
-              <div className="text-[11.5px] text-ink-500">{i === 0 ? 'starting headcount' : totals[i - 1] ? `+${totals[i] - totals[i - 1]} · ${Math.round(((totals[i] - totals[i - 1]) / totals[i - 1]) * 100)}% growth` : `+${totals[i]}`}</div>
-            </div>
-          ))}
-        </div>
-      </Card>
-      <BusinessUnitGrid />
-    </div>
-  )
-}
-
 function WorkstreamsTab() {
   const wss = useCollection<WorkstreamSummary>('workstreamSummaries', seedWorkstreamSummaries)
   const set = <K extends keyof WorkstreamSummary>(w: WorkstreamSummary, k: K, v: WorkstreamSummary[K]) => wss.update({ ...w, [k]: v })
@@ -146,11 +126,12 @@ function WorkstreamsTab() {
 
 export function GccSetup() {
   return (
-    <InputLayout title="GCC Setup" subtitle="Tell the Command Center about your GCC: what it is for, how big it gets each year, and who delivers it. Every other module builds on this."
+    <InputLayout title="GCC Setup" subtitle="Tell the Command Center about the ENGIE IT GCC: what it is for, how it is organised into business units and capabilities, how the Pune headcount ramps up, and who delivers it. Every other module builds on this."
       tabs={[
         { name: '1 · Program profile', content: <ProgramProfileTab /> },
-        { name: '2 · Business units & growth', content: <GrowthTab /> },
-        { name: '3 · Workstreams & leads', content: <WorkstreamsTab /> },
+        { name: '2 · Organisation structure', content: <OrgStructureEditor />, hint: 'Business units are the IT domains of the GCC; under each, add the capabilities / services with the GBU served, geography, country / entity, current delivery location, current and target Pune headcount, role / skill, transition type and wave. Headcount by year is derived from the capabilities.' },
+        { name: '3 · Headcount ramp-up', content: <HeadcountRampEditor />, hint: 'Year 1 is tracked month by month (cumulative Pune headcount from Nov 2026); from year 2 the plan carries annual exit targets per capability. Business-unit and program totals are derived from the capabilities.' },
+        { name: '4 · Workstreams & leads', content: <WorkstreamsTab /> },
       ]} />
   )
 }

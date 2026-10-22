@@ -6,15 +6,17 @@
 import { useMemo, type ReactNode } from 'react'
 import clsx from 'clsx'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from 'recharts'
-import { Users, GitBranch, Database, Building2, ShieldCheck, FileText, ClipboardCheck, AlertTriangle, BookOpen, ChevronRight, Plus, Rocket } from 'lucide-react'
+import { Users, GitBranch, Database, Building2, ShieldCheck, FileText, ClipboardCheck, AlertTriangle, BookOpen, ChevronRight, Plus, Rocket, Boxes, MapPin } from 'lucide-react'
 import { Card, Badge, Progress, Table, ViewAll, Legend, EmptyNote } from '../ui'
 import { tooltipStyle } from '../charts'
 import { CHART_COLORS, SERIES, TODAY } from '../../data/common'
 import type { RaidItem } from '../../data/shared'
 import { isOpen } from '../../data/shared'
+import { subUnitsOf, subY1 } from '../../data/businessUnits'
 import {
-  ktStats, projectKt, unitKt, projectReadiness, avgScore, assessmentScore, dimAverage, isTransitionRaid, raidLabel, raidLink, TRANSITION_RAID_LABELS, waveProgressColor, waveScope, waveUnits, waveProgress, waveHasStarted, waveGoLive, nextGoLive, isInTransition, projectStatusColor, readinessColor, fmtD, fmtLong, DIMENSIONS, TIMELINE_START, TIMELINE_END,
-  type Wave, type KtItem, type Dimension, type TransitionProject, type ReadinessAssessment,
+  ktStats, projectKt, unitKt, projectReadiness, avgScore, assessmentScore, dimAverage, isTransitionRaid, raidLabel, raidLink, TRANSITION_RAID_LABELS, waveProgressColor, waveScope, waveCapabilities, waveProjects, waveProgress, waveHasStarted, waveGoLive, nextGoLive, isInTransition, projectStatusColor, readinessColor, fmtD, fmtLong, DIMENSIONS, TIMELINE_START, TIMELINE_END,
+  projectAccounts, unitAccounts, accountStatusColor, ACCOUNT_STATUSES,
+  type Wave, type KtItem, type Dimension, type TransitionProject, type ReadinessAssessment, type TransitionAccount,
 } from '../../data/transition'
 import type { Tx } from './types'
 
@@ -84,13 +86,15 @@ export default function Overview({ tx }: { tx: Tx }) {
 /* 1. Business unit selector                                           */
 /* ================================================================== */
 export function UnitSelector({ tx, subtitle = 'Pick a business unit to see its transition projects, knowledge transfer, readiness and go-lives.' }: { tx: Tx; subtitle?: string }) {
-  const { units, unitNames, projects, kt, assessments, unit, setUnit } = tx
+  const { units, unitNames, subs, projects, accounts, kt, assessments, unit, setUnit } = tx
   const cards = useMemo(() => unitNames.map((name) => {
     const ps = projects.items.filter((p) => p.businessUnit === name)
     const u = units.find((b) => b.name === name)
+    const caps = u ? subUnitsOf(subs.items, u.id).length : 0
     const ra = assessments.items.filter((a) => ps.some((p) => p.id === a.projectId))
-    return { name, kind: u?.kind ?? '', color: unitColor(unitNames, name), projects: ps.length, inTransition: ps.filter(isInTransition).length, completed: ps.filter((p) => p.status === 'Completed').length, kt: unitKt(name, kt.items).pct, readiness: avgScore(ra), next: nextGoLive(ps) }
-  }), [unitNames, units, projects.items, kt.items, assessments.items])
+    const acc = unitAccounts(name, accounts.items)
+    return { name, kind: u ? `${caps} capabilit${caps === 1 ? 'y' : 'ies'} · ${u.y1} Pune HC` : '', color: unitColor(unitNames, name), projects: ps.length, inTransition: ps.filter(isInTransition).length, completed: ps.filter((p) => p.status === 'Completed').length, kt: unitKt(name, kt.items).pct, readiness: avgScore(ra), next: nextGoLive(ps), acc }
+  }), [unitNames, units, subs.items, projects.items, accounts.items, kt.items, assessments.items])
   return (
     <Card title="Transition by business unit" subtitle={subtitle} headerRight={
       <label className="flex items-center gap-2 rounded-lg border border-line bg-white px-3 py-1.5 min-w-[300px] cursor-pointer">
@@ -107,6 +111,7 @@ export function UnitSelector({ tx, subtitle = 'Pick a business unit to see its t
             <div className="mt-1.5 text-[20px] font-bold text-navy-900 leading-none">{c.projects}<span className="text-[11px] font-medium text-ink-500"> project{c.projects === 1 ? '' : 's'}</span></div>
             <div className="text-[10.5px] text-ink-500">{c.inTransition} in transition · {c.completed} completed</div>
             <div className="flex items-center gap-1.5 mt-1.5 text-[10.5px] whitespace-nowrap"><span className="text-green-600">KT {c.kt}%</span><span className="text-ink-400">·</span><span className={c.readiness >= 65 ? 'text-brand-600' : 'text-amber-600'}>ready {c.readiness}%</span></div>
+            <div className="text-[10.5px] text-teal-700 truncate">accounts onboarded {c.acc.onboarded} / {c.acc.total}</div>
             <div className="text-[10.5px] text-ink-500 truncate">{c.next ? `go-live ${fmtD(c.next)}` : 'no go-live pending'}</div>
           </button>
         ))}
@@ -119,8 +124,9 @@ export function UnitSelector({ tx, subtitle = 'Pick a business unit to see its t
 /* 2. Selected business unit deep dive                                 */
 /* ================================================================== */
 function UnitDeepDive({ tx }: { tx: Tx }) {
-  const { units, projects, waves, kt, assessments, gaps, raid, raidLinks, unit, open, openProject } = tx
+  const { units, subs, projects, accounts, waves, kt, assessments, gaps, raid, raidLinks, unit, open, openProject, setTab } = tx
   const u = units.find((b) => b.name === unit)
+  const caps = u ? subUnitsOf(subs.items, u.id) : []
   const sorted = sortWaves(waves.items)
   const ps = useMemo(() => projects.items.filter((p) => p.businessUnit === unit).sort((a, b) => a.wave - b.wave || a.goLiveDate.localeCompare(b.goLiveDate)), [projects.items, unit])
   const ra = useMemo(() => assessments.items.filter((a) => ps.some((p) => p.id === a.projectId)), [assessments.items, ps])
@@ -129,6 +135,10 @@ function UnitDeepDive({ tx }: { tx: Tx }) {
   const risks = raid.items.filter((r) => raidLink(r, raidLinks.items)?.businessUnit === unit).filter(isOpen)
   const next = nextGoLive(ps)
   const waveOf = (n: number) => sorted.find((w) => w.number === n)
+  const unitAcc = accounts.items.filter((a) => a.businessUnit === unit)
+  const acc = unitAccounts(unit, accounts.items)
+  const accRows = ps.map((p) => { const row: Record<string, string | number> = { name: p.name, id: p.id }; ACCOUNT_STATUSES.forEach((s) => { row[s] = unitAcc.filter((a) => a.projectId === p.id && a.status === s).length }); return row })
+  const accList = [...unitAcc].sort((a, b) => ACCOUNT_STATUSES.indexOf(a.status) - ACCOUNT_STATUSES.indexOf(b.status) || a.plannedDate.localeCompare(b.plannedDate))
 
   const ktRows = ps.map((p) => { const s = projectKt(p, kt.items); return { name: p.name, Done: s.done, Remaining: Math.max(0, s.planned - s.done), pct: s.pct, planned: s.planned } })
   const goLives = ps.filter((p) => p.status !== 'Completed').sort((a, b) => a.goLiveDate.localeCompare(b.goLiveDate))
@@ -139,15 +149,23 @@ function UnitDeepDive({ tx }: { tx: Tx }) {
       <Card>
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap"><h3 className="text-[18px] font-bold text-navy-900">{unit}</h3>{u && <Badge value={u.status} />}{u && <span className="text-[11.5px] text-ink-500">{u.kind} · owner {u.owner} · footprint {u.wave}</span>}</div>
+            <div className="flex items-center gap-2 flex-wrap"><h3 className="text-[18px] font-bold text-navy-900">{unit}</h3>{u && <Badge value={u.status} />}{u && <span className="text-[11.5px] text-ink-500">{u.kind} · owner {u.owner} · {caps.length} capabilities · {u.y1} Pune HC by end of year 1</span>}</div>
             {u?.description && <p className="text-[12.5px] text-ink-700 mt-0.5 max-w-3xl">{u.description}</p>}
+            {caps.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {caps.map((c) => { const cp = ps.filter((p) => p.subUnitId === c.id); return (
+                  <span key={c.id} className="inline-flex items-center gap-1.5 rounded-md border border-line bg-white px-2 py-1 text-[11px] text-ink-700" title={`${c.name} · GBU ${c.gbuServed} · ${c.geography} · from ${c.deliveryLocation} · ${c.transitionType} · ${c.wave} · ${c.currentHc} → ${subY1(c)} Pune HC`}>
+                    <WaveDot wave={waveOf(Number(c.wave.replace('Wave ', '')))} size={14} /><span className="font-medium text-ink-900">{c.name}</span><span className="text-ink-400">·</span><MapPin size={10} className="text-ink-400" />{c.deliveryLocation}<span className="text-ink-400">·</span>{subY1(c)} HC{cp.length > 0 && <><span className="text-ink-400">·</span><span style={{ color: projectStatusColor(cp[0].status) }}>{cp.length === 1 ? cp[0].status : `${cp.length} projects`}</span></>}
+                  </span>) })}
+              </div>
+            )}
           </div>
           <button className="btn-primary" onClick={() => open({ kind: 'project', item: null, businessUnit: unit })}><Plus size={14} /> Add project</button>
         </div>
         <div className="grid grid-cols-8 gap-3 mt-3">
-          <Mini label="Projects" value={ps.length} sub={`${ps.reduce((s, p) => s + p.ftes, 0)} FTEs transitioning`} />
-          <Mini label="In transition" value={ps.filter(isInTransition).length} sub={`${ps.filter((p) => p.status === 'Not Started').length} not started`} tone="text-brand-600" />
-          <Mini label="Completed" value={ps.filter((p) => p.status === 'Completed').length} sub={`${ps.filter((p) => p.status === 'Stabilizing').length} stabilizing`} tone="text-green-600" />
+          <Mini label="Projects" value={ps.length} sub={`${ps.reduce((s, p) => s + p.ftes, 0)} target Pune FTEs`} />
+          <Mini label="In transition" value={ps.filter(isInTransition).length} sub={`${ps.filter((p) => p.status === 'Completed').length} completed · ${ps.filter((p) => p.status === 'Not Started').length} not started`} tone="text-brand-600" />
+          <Mini label="Accounts onboarded" value={<>{acc.onboarded} <span className="text-[12px] text-ink-500">/ {acc.total}</span></>} sub={`${acc.live} live · ${acc.inKt} in KT · ${acc.planned} planned`} tone="text-teal-700" />
           <Mini label="Knowledge transfer" value={`${ks.pct}%`} sub={`${ks.done} / ${ks.planned} sessions`} tone="text-green-600" />
           <Mini label="Readiness" value={`${avgScore(ra)}%`} sub={`${ra.filter((a) => assessmentScore(a) >= tx.settings.readinessThreshold).length} of ${ra.length} projects ready`} tone={avgScore(ra) >= 65 ? 'text-brand-600' : 'text-amber-600'} />
           <Mini label="Open gaps" value={openGaps} sub={`${gaps.items.filter((g) => g.businessUnit === unit && g.status === 'Resolved').length} resolved`} tone={openGaps ? 'text-amber-600' : 'text-green-600'} />
@@ -159,11 +177,13 @@ function UnitDeepDive({ tx }: { tx: Tx }) {
       {/* projects table */}
       <Card title={`Transition projects – ${unit}`} subtitle={`${ps.length} projects · click a project name for the deep dive (KT items, readiness, gaps, milestones, risks)`}>
         <Table<TransitionProject> compact rows={ps} onRowClick={(p) => openProject(p.id)} empty="No transition projects for this business unit yet. Use “Add project” to create one." columns={[
-          { key: 'name', header: 'Project', render: (p) => <span className="block min-w-[200px]"><ProjectLink project={p} onClick={() => openProject(p.id)} /><span className="block text-[11px] text-ink-500 truncate max-w-[300px]" title={p.scopeSummary}>{p.scopeSummary}</span></span> },
+          { key: 'name', header: 'Project', render: (p) => <span className="block min-w-[190px]"><ProjectLink project={p} onClick={() => openProject(p.id)} /><span className="block text-[11px] text-ink-500 truncate max-w-[260px]" title={p.scopeSummary}>{p.scopeSummary}</span></span> },
+          { key: 'capability', header: 'Capability', render: (p) => <span className="block leading-snug text-[12px] min-w-[120px]"><span className="text-ink-900">{p.capability || '—'}</span><span className="block text-[10.5px] text-ink-500 whitespace-nowrap">from {p.deliveryLocation} · {p.gbu}</span></span> },
           { key: 'wave', header: 'Wave', render: (p) => <WaveDot wave={waveOf(p.wave)} size={22} /> },
           { key: 'status', header: 'Status', render: (p) => <StatusBadge value={p.status} /> },
           { key: 'progress', header: 'Progress', width: '120px', render: (p) => <span className="flex items-center gap-1.5"><Progress value={p.progress} color={projectStatusColor(p.status)} className="w-[64px]" /><span className="text-[12px] font-medium w-8 text-right">{p.progress}%</span></span> },
-          { key: 'kt', header: 'KT %', className: 'text-right', render: (p) => { const s = projectKt(p, kt.items); return <span className="font-medium" title={`${s.done} / ${s.planned} sessions`}>{s.pct}%</span> } },
+          { key: 'accounts', header: 'Accounts', className: 'whitespace-nowrap', render: (p) => { const a = projectAccounts(p, accounts.items); return <span className="text-[12px]" title={`${a.live} live · ${a.onboardedOnly} onboarded · ${a.inKt} in KT · ${a.planned} planned · ${a.onHold} on hold`}><b className="text-teal-700">{a.onboarded}</b> / {a.total}<span className="block text-[10.5px] text-ink-500">onboarded</span></span> } },
+          { key: 'kt', header: 'KT %', className: 'text-right', render: (p) => { const s = projectKt(p, kt.items); return <span className="font-medium" title={`${s.done} / ${s.planned} sessions · ${s.signed} of ${s.total} items signed off`}>{s.pct}%</span> } },
           { key: 'readiness', header: 'Readiness', render: (p) => { const s = projectReadiness(p, assessments.items); return <span className="inline-flex items-center justify-center w-11 h-5.5 rounded-md text-[11.5px] font-semibold text-white" style={{ background: readinessColor(s) }}>{s}%</span> } },
           { key: 'goLiveDate', header: 'Go-live', className: 'whitespace-nowrap', render: (p) => <span className={p.goLiveDate < TODAY && !['Completed', 'Stabilizing'].includes(p.status) ? 'text-red-600 font-medium' : ''}>{fmtD(p.goLiveDate)}</span> },
           { key: 'globalOwner', header: 'Global owner', className: 'whitespace-nowrap' },
@@ -172,6 +192,36 @@ function UnitDeepDive({ tx }: { tx: Tx }) {
           { key: 'c', header: '', render: () => <ChevronRight size={14} className="text-ink-400" /> },
         ]} />
       </Card>
+
+      {/* accounts */}
+      <div className="grid grid-cols-[1fr_1.3fr] gap-4">
+        <Card title={`Accounts onboarded by project – ${unit}`} subtitle={`${acc.onboarded} of ${acc.total} accounts onboarded (${acc.pct}%) · applications, services, business entities and platforms moving through the projects`} action={<ViewAll label="Accounts register" onClick={() => setTab('Accounts')} />}>
+          {accRows.length ? (
+            <>
+              <Legend items={ACCOUNT_STATUSES.map((s) => ({ label: s, color: accountStatusColor[s] }))} />
+              <div style={{ height: Math.max(120, accRows.length * 40 + 24) }} className="mt-1">
+                <ResponsiveContainer>
+                  <BarChart data={accRows} layout="vertical" margin={{ top: 4, right: 36, left: 0, bottom: 0 }} barCategoryGap="30%">
+                    <CartesianGrid horizontal={false} />
+                    <XAxis type="number" tickLine={false} axisLine={false} tick={{ fontSize: 10.5 }} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" width={160} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+                    <Tooltip {...tooltipStyle} cursor={{ fill: '#F3F6FB' }} formatter={(v, n) => [`${v} account${v === 1 ? '' : 's'}`, String(n)]} />
+                    {ACCOUNT_STATUSES.map((s, i) => <Bar key={s} isAnimationActive={false} dataKey={s} stackId="a" fill={accountStatusColor[s]} radius={i === ACCOUNT_STATUSES.length - 1 ? [0, 3, 3, 0] : undefined} />)}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          ) : <EmptyNote>No projects yet.</EmptyNote>}
+        </Card>
+        <Card title={`Accounts – ${unit}`} subtitle="Click an account to edit it, or the project for its deep dive" action={<button className="btn-secondary" onClick={() => open({ kind: 'account', item: null, businessUnit: unit })}><Plus size={13} /> Add account</button>}>
+          <div className={clsx(TIGHT, 'max-h-[300px] overflow-y-auto scroll-thin')}><Table<TransitionAccount> compact rows={accList} onRowClick={(a) => open({ kind: 'account', item: a })} empty="No accounts logged for this business unit yet." columns={[
+            { key: 'name', header: 'Account', render: (a) => <span className="block leading-snug min-w-[180px]"><span className="font-medium">{a.name}</span><span className="block text-[10.5px] text-ink-500">{a.type} · {a.gbu} · {a.geography}</span></span> },
+            { key: 'project', header: 'Project', render: (a) => { const p = ps.find((x) => x.id === a.projectId); return p ? <ProjectLink project={p} onClick={() => openProject(p.id)} className="text-[11.5px]" /> : <span className="text-ink-400">–</span> } },
+            { key: 'status', header: 'Status', render: (a) => <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11.5px]"><span className="w-2 h-2 rounded-full" style={{ background: accountStatusColor[a.status] }} />{a.status}</span> },
+            { key: 'date', header: 'Planned / onboarded', className: 'whitespace-nowrap', render: (a) => <span className="text-[11.5px]">{a.onboardedDate ? fmtD(a.onboardedDate) : <span className={a.plannedDate < TODAY && a.status !== 'On hold' ? 'text-red-600' : ''}>{fmtD(a.plannedDate)}</span>}</span> },
+          ]} /></div>
+        </Card>
+      </div>
 
       {/* charts */}
       <div className="grid grid-cols-[1.2fr_1fr_1fr] gap-4">
@@ -256,7 +306,7 @@ function ProgramCards({ tx }: { tx: Tx }) {
         <Card title="Transition Waves" subtitle="Scope = business units with projects in the wave" action={<ViewAll label="View Plan" onClick={() => setTab('Wave Plan')} />}>
           <div className={TIGHT}><Table<Wave> compact rows={sortedWaves} onRowClick={(w) => open({ kind: 'wave', item: w })} columns={[
             { key: 'number', header: 'Wave', render: (w) => <WaveDot wave={w} /> },
-            { key: 'scope', header: 'Scope (business units)', render: (w) => <span className="block max-w-[230px] leading-snug" title={waveUnits(w, projects.items).join(', ')}>{waveScope(w, projects.items) || <span className="text-ink-400">no projects</span>}</span> },
+            { key: 'scope', header: 'Scope (business units · capabilities)', render: (w) => <span className="block max-w-[250px] leading-snug" title={waveCapabilities(w, projects.items).join(', ')}>{waveScope(w, projects.items) || <span className="text-ink-400">no projects</span>}{waveCapabilities(w, projects.items).length > 0 && <span className="block text-[10.5px] text-ink-500">{waveCapabilities(w, projects.items).length} capabilities · {waveProjects(w, projects.items).reduce((s, p) => s + p.ftes, 0)} FTEs</span>}</span> },
             { key: 'startDate', header: 'Start Date', render: (w) => <span className="whitespace-nowrap">{fmtD(w.startDate)}</span> },
             { key: 'endDate', header: 'End Date', render: (w) => <span className="whitespace-nowrap">{fmtD(w.endDate)}</span> },
             { key: 'status', header: 'Status', render: (w) => <Badge value={w.status} /> },
@@ -335,7 +385,8 @@ function ProgramCards({ tx }: { tx: Tx }) {
               { icon: <FileText size={17} />, title: 'View Transition Plan', sub: 'Waves, business units, projects and milestones', go: () => setTab('Wave Plan') },
               { icon: <ClipboardCheck size={17} />, title: 'Update Readiness Assessment', sub: 'Score a project on the five dimensions', go: () => open({ kind: 'assessment', item: null, projectId: projects.items.find((p) => p.businessUnit === tx.unit)?.id }) },
               { icon: <AlertTriangle size={17} className="text-red-500" />, title: 'Log Issue / Risk', sub: 'Raise a transition risk for a business unit or project', go: () => open({ kind: 'raid', item: null, businessUnit: tx.unit }) },
-              { icon: <BookOpen size={17} />, title: 'View Knowledge Transfer Tracker', sub: 'KT completion by business unit and project', go: () => setTab('Knowledge Transfer') },
+              { icon: <BookOpen size={17} />, title: 'View Knowledge Transfer Tracker', sub: 'KT completed vs pending by business unit and project', go: () => setTab('KT Tracking') },
+              { icon: <Boxes size={17} className="text-teal-600" />, title: 'Accounts Onboarded', sub: 'Applications, services and entities onboarded per project', go: () => setTab('Accounts') },
             ].map((a) => (
               <button key={a.title} onClick={a.go} className="w-full flex items-center gap-3 rounded-lg bg-surface hover:bg-brand-50 px-3 py-2.5 text-left cursor-pointer transition-colors">
                 <span className="w-8 h-8 rounded-md bg-white border border-line text-brand-600 flex items-center justify-center shrink-0">{a.icon}</span>
@@ -352,7 +403,7 @@ function ProgramCards({ tx }: { tx: Tx }) {
 }
 
 /* ================================================================== */
-/* Gantt-like rows (waves or projects) on a fixed Sep '26 – Mar '27 window */
+/* Gantt-like rows (waves or projects) on a fixed Nov '26 – May '27 window */
 /* ================================================================== */
 export interface GanttRow { id: string; label: ReactNode; start: string; end: string; color: string; progress?: number; marker?: string; title?: string; onClick?: () => void }
 const DAY = 86400000

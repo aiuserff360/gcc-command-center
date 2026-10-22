@@ -25,7 +25,7 @@ export const WORKSTREAM_META: Record<Workstream, { icon: string; color: string; 
 
 export const OWNERS = ['A. Sharma', 'R. Mehta', 'S. Iyer', 'P. Rao', 'K. Nair', 'M. Khan', 'V. Reddy', 'D. Singh'] as const
 
-export const LOCATIONS = ['Bengaluru', 'Hyderabad', 'Pune', 'Chennai'] as const
+export const LOCATIONS = ['Pune', 'Bengaluru', 'Hyderabad', 'Chennai'] as const
 
 export type Status = 'On Track' | 'At Risk' | 'Delayed' | 'Pending' | 'Not Started' | 'Completed' | 'In Progress' | 'Open' | 'Closed' | 'Resolved' | 'Awaiting Decision' | 'Overdue'
 export type Impact = 'Critical' | 'High' | 'Medium' | 'Low'
@@ -63,7 +63,7 @@ export const fmtDateShort = (iso: string) => {
   const p = parts(iso)
   return p ? `${p.d} ${p.mo} ${p.y.slice(2)}` : iso ?? ''
 }
-export const TODAY = '2026-10-20'
+export const TODAY = '2027-02-22' // reporting date: 4 months into the Nov 2026 – Apr 2027 ramp
 
 /* ------------------------------------------------------------------ */
 /* Programs (the top-bar "GCC Program" selector). Each program keeps   */
@@ -83,9 +83,9 @@ export interface ProgramDef {
   sponsor: string
 }
 export const PROGRAMS: ProgramDef[] = [
-  { name: 'GCC Program - India', country: 'India', city: 'Pune', phase: 'Build', scale: 1, pctScale: 1, locations: ['Pune', 'Bengaluru', 'Hyderabad', 'Chennai'], sponsor: 'Global COO' },
-  { name: 'GCC Program - Poland', country: 'Poland', city: 'Kraków', phase: 'Design', scale: 0.55, pctScale: 0.42, locations: ['Kraków', 'Warsaw', 'Wrocław', 'Gdańsk'], sponsor: 'Global CFO' },
-  { name: 'GCC Program - Philippines', country: 'Philippines', city: 'Manila', phase: 'Transition', scale: 0.8, pctScale: 0.88, locations: ['Manila', 'Cebu', 'Clark', 'Davao'], sponsor: 'Global CIO' },
+  { name: 'ENGIE IT GCC - Pune', country: 'India', city: 'Pune', phase: 'Build', scale: 1, pctScale: 1, locations: ['Pune', 'Bengaluru', 'Hyderabad', 'Chennai'], sponsor: 'Group CIO' },
+  { name: 'ENGIE IT GCC - Kraków', country: 'Poland', city: 'Kraków', phase: 'Design', scale: 0.55, pctScale: 0.42, locations: ['Kraków', 'Warsaw', 'Wrocław', 'Gdańsk'], sponsor: 'Group CFO' },
+  { name: 'ENGIE IT GCC - Manila', country: 'Philippines', city: 'Manila', phase: 'Transition', scale: 0.8, pctScale: 0.88, locations: ['Manila', 'Cebu', 'Clark', 'Davao'], sponsor: 'Group CIO' },
 ]
 export const PROGRAM_NAMES = PROGRAMS.map((p) => p.name)
 export const programDef = (name: string) => PROGRAMS.find((p) => p.name === name) ?? PROGRAMS[0]

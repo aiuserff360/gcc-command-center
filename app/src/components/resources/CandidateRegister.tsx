@@ -34,7 +34,7 @@ export function CandidateRegister({ d, onOpen }: { d: ResourceData; onOpen: (pos
       .filter((c) => fReq === 'All' || reqLabel(c.positionId) === fReq)
       .filter((c) => fStage === 'All' || c.stage === fStage)
       .filter((c) => fStatus === 'All' || c.status === fStatus)
-      .filter((c) => !needle || c.name.toLowerCase().includes(needle) || (posById.get(c.positionId)?.role.toLowerCase().includes(needle) ?? false))
+      .filter((c) => !needle || c.name.toLowerCase().includes(needle) || (posById.get(c.positionId)?.role.toLowerCase().includes(needle) ?? false) || (posById.get(c.positionId)?.capability.toLowerCase().includes(needle) ?? false))
       .sort((a, b) => Number(isActiveCandidate(b)) - Number(isActiveCandidate(a)) || stageIndex(b.stage) - stageIndex(a.stage) || b.lastActivity.localeCompare(a.lastActivity))
   }, [candidates.items, fReq, fStage, fStatus, q, posById]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -46,7 +46,7 @@ export function CandidateRegister({ d, onOpen }: { d: ResourceData; onOpen: (pos
     <>
       <Card title="Candidates" subtitle={`${rows.length} of ${candidates.items.length} candidates · ${counts.active} in process · ${counts.offer} offers out · ${counts.joined} joined · stage and status can be changed inline`}
         action={<div className="flex items-center gap-2">
-          <label className="card px-2.5 py-1.5 flex items-center gap-1.5"><Search size={13} className="text-ink-400" /><input value={q} onChange={(e) => { setQ(e.target.value); setLimit(PAGE) }} placeholder="Search name or role" className="text-[13px] outline-none bg-transparent w-40" /></label>
+          <label className="card px-2.5 py-1.5 flex items-center gap-1.5"><Search size={13} className="text-ink-400" /><input value={q} onChange={(e) => { setQ(e.target.value); setLimit(PAGE) }} placeholder="Search name, role or capability" className="text-[13px] outline-none bg-transparent w-40" /></label>
           <FilterSelect label="Requisition" value={fReq} options={reqOptions} onChange={(v) => { setFReq(v); setLimit(PAGE) }} />
           <FilterSelect label="Stage" value={fStage} options={['All', ...CANDIDATE_STAGES]} onChange={(v) => { setFStage(v); setLimit(PAGE) }} />
           <FilterSelect label="Status" value={fStatus} options={['All', ...CANDIDATE_STATUSES]} onChange={(v) => { setFStatus(v); setLimit(PAGE) }} />
@@ -54,7 +54,7 @@ export function CandidateRegister({ d, onOpen }: { d: ResourceData; onOpen: (pos
         </div>}>
         <Table<Candidate> compact rows={rows.slice(0, limit)} columns={[
           { key: 'name', header: 'Candidate', className: 'whitespace-nowrap', render: (c) => <div><button className="text-ink-900 font-medium hover:text-brand-600 hover:underline cursor-pointer text-left" onClick={() => setCand(c)}>{c.name}</button><div className="text-[11px] text-ink-500">{c.source} · {c.roundsCompleted}/3 rounds</div></div> },
-          { key: 'positionId', header: 'Requisition', className: 'whitespace-nowrap', render: (c) => { const p = posById.get(c.positionId); return p ? <div><RoleLink label={p.role} onClick={() => onOpen(p.id)} /><div className="text-[11px] text-ink-500">{reqId(p)} · {buShort(p.businessUnit)}</div></div> : <span className="text-ink-400">{c.positionId}</span> } },
+          { key: 'positionId', header: 'Requisition', className: 'whitespace-nowrap', render: (c) => { const p = posById.get(c.positionId); return p ? <div><RoleLink label={p.role} onClick={() => onOpen(p.id)} /><div className="text-[11px] text-ink-500">{reqId(p)} · {buShort(p.businessUnit)} · {p.capability}</div></div> : <span className="text-ink-400">{c.positionId}</span> } },
           { key: 'stage', header: 'Stage', className: 'whitespace-nowrap', render: (c) => <select className={`${SELECT} bg-transparent w-[172px]`} value={c.stage} onChange={(e) => setStage(c, e.target.value as CandidateStage)}>{CANDIDATE_STAGES.map((s) => <option key={s}>{s}</option>)}</select> },
           { key: 'status', header: 'Status', className: 'whitespace-nowrap', render: (c) => <select className={`${SELECT} w-[118px] font-medium ${candidateBadge[c.status]}`} value={c.status} onChange={(e) => setStatus(c, e.target.value as CandidateStatus)}>{CANDIDATE_STATUSES.map((s) => <option key={s}>{s}</option>)}</select> },
           { key: 'nextStep', header: 'Next step / interview', render: (c) => <span className="text-ink-700 text-[12px] leading-snug">{c.nextStep || '—'}</span> },

@@ -10,7 +10,7 @@ import { CardLegend, MiniStat, CompactTable } from './widgets'
 import { ExitForm, RetentionActionForm, NumberGridForm } from './forms'
 
 export default function AttritionTab({ d }: { d: ResourceData }) {
-  const { attrition, exits, retentionActions, kpi, buNames, locations } = d
+  const { attrition, exits, retentionActions, kpi, buNames, capNames, locations } = d
   const [exit, setExit] = useState<ExitRecord | null>(null)
   const [addExit, setAddExit] = useState(false)
   const [act, setAct] = useState<RetentionAction | null>(null)
@@ -29,21 +29,21 @@ export default function AttritionTab({ d }: { d: ResourceData }) {
   return (
     <>
       <div className="grid grid-cols-5 gap-4">
-        <MiniStat label="Annualised attrition" value={`${latest?.ratePct ?? 0}%`} sub={`Benchmark ${latest?.benchmarkPct ?? 12}% · ${latest?.month ?? ''} 2026`} tone={(latest?.ratePct ?? 0) > (latest?.benchmarkPct ?? 12) ? 'text-red-600' : 'text-green-600'} />
-        <MiniStat label="Exits YTD" value={exitsYtd} sub={`of ${kpi.onboarded} onboarded`} />
-        <MiniStat label="Regretted exits YTD" value={regrettedYtd} sub={`${regrettedPct}% of register is regretted`} tone="text-red-600" />
+        <MiniStat label="Annualised attrition" value={`${latest?.ratePct ?? 0}%`} sub={`Benchmark ${latest?.benchmarkPct ?? 12}% (Pune IT GCC market) · ${latest?.month ?? ''}`} tone={(latest?.ratePct ?? 0) > (latest?.benchmarkPct ?? 12) ? 'text-red-600' : 'text-green-600'} />
+        <MiniStat label="Exits since ramp start" value={exitsYtd} sub={`of ${kpi.onboarded} onboarded · Nov 26 – ${kpi.reportingMonth}`} />
+        <MiniStat label="Regretted exits" value={regrettedYtd} sub={`${regrettedPct}% of register is regretted`} tone="text-red-600" />
         <MiniStat label="Avg tenure at exit" value={`${avgTenure} mo`} sub="Exit register" />
         <MiniStat label="Retention actions" value={retentionActions.items.filter((a) => a.status !== 'Completed').length} sub={`${retentionActions.items.filter((a) => a.status === 'Completed').length} completed`} tone="text-brand-600" />
       </div>
 
       <div className="grid grid-cols-[1.6fr_1fr] gap-4">
-        <Card title="Attrition Rate Trend (2026)" headerRight={<CardLegend items={[{ label: 'Attrition rate', color: CHART_COLORS.blue, dashed: true }, { label: 'Benchmark', color: CHART_COLORS.red, dashed: true }, { label: 'Exits', color: '#D6E4F7' }]} />}
+        <Card title="Attrition Rate Trend (year 1, month-wise)" headerRight={<CardLegend items={[{ label: 'Attrition rate', color: CHART_COLORS.blue, dashed: true }, { label: 'Benchmark', color: CHART_COLORS.red, dashed: true }, { label: 'Exits', color: '#D6E4F7' }]} />}
           action={<button className="link inline-flex items-center gap-1" onClick={() => setEditTrend(true)}><Pencil size={12} /> Update</button>}>
           <div className="h-[240px]">
             <ResponsiveContainer>
               <ComposedChart data={trend} margin={{ top: 10, right: 8, left: -16, bottom: 0 }}>
                 <CartesianGrid vertical={false} />
-                <XAxis dataKey="month" tickLine={false} axisLine={false} />
+                <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
                 <YAxis yAxisId="rate" tickLine={false} axisLine={false} domain={[0, 16]} tickFormatter={(v) => `${v}%`} />
                 <YAxis yAxisId="exits" orientation="right" tickLine={false} axisLine={false} domain={[0, 12]} hide />
                 <Tooltip {...tooltipStyle} formatter={(v, n) => [n === 'Exits' ? v : `${v}%`, String(n)]} />
@@ -72,7 +72,7 @@ export default function AttritionTab({ d }: { d: ResourceData }) {
             { key: 'name', header: 'Name', className: 'whitespace-nowrap', render: (r) => <span className="font-medium">{r.name}</span> },
             { key: 'role', header: 'Role' },
             { key: 'businessUnit', header: 'Business unit', className: 'whitespace-nowrap', render: (r) => <span title={r.businessUnit}>{buShort(r.businessUnit)}</span> },
-            { key: 'location', header: 'Location' },
+            { key: 'capability', header: 'Capability', className: 'whitespace-nowrap' },
             { key: 'exitDate', header: 'Exit Date', className: 'whitespace-nowrap', render: (r) => fmtDate(r.exitDate) },
             { key: 'tenureMonths', header: 'Tenure', className: 'text-right', render: (r) => `${r.tenureMonths} mo` },
             { key: 'reason', header: 'Reason', className: 'whitespace-nowrap' },
@@ -94,7 +94,7 @@ export default function AttritionTab({ d }: { d: ResourceData }) {
         </Card>
       </div>
 
-      <ExitForm open={addExit || !!exit} onClose={() => { setAddExit(false); setExit(null) }} value={exit} businessUnits={buNames} locations={locations} onSave={(e) => { if (exit) exits.update(e); else exits.add(e); setAddExit(false); setExit(null) }} onDelete={(id) => exits.remove(id)} />
+      <ExitForm open={addExit || !!exit} onClose={() => { setAddExit(false); setExit(null) }} value={exit} businessUnits={buNames} capNames={capNames} locations={locations} onSave={(e) => { if (exit) exits.update(e); else exits.add(e); setAddExit(false); setExit(null) }} onDelete={(id) => exits.remove(id)} />
       <RetentionActionForm open={addAct || !!act} onClose={() => { setAddAct(false); setAct(null) }} value={act} onSave={(a) => { if (act) retentionActions.update(a); else retentionActions.add(a); setAddAct(false); setAct(null) }} onDelete={(id) => retentionActions.remove(id)} />
       <NumberGridForm<AttritionMonth> open={editTrend} onClose={() => setEditTrend(false)} title="Attrition trend by month" rows={attrition.items} labelKey="month" fields={[{ key: 'ratePct', label: 'Rate %', step: 0.1 }, { key: 'benchmarkPct', label: 'Benchmark %', step: 0.1 }, { key: 'exits', label: 'Exits' }, { key: 'regretted', label: 'Regretted' }]} onSave={(rows) => attrition.setAll(rows)} />
     </>

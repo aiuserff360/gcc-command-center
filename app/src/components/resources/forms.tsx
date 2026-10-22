@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Modal, Field, Input, Select, FormGrid, TextArea, ConfirmDelete } from '../ui'
-import { OWNERS, MONTHS } from '../../data/common'
+import { OWNERS } from '../../data/common'
 import { uid } from '../../store/useStore'
+import { RAMP_MONTHS } from '../../data/businessUnits'
 import {
   RES_LOCATIONS, PRIORITIES, POSITION_STATUSES, GRADES, COST_BANDS, EXIT_REASONS, CANDIDATE_STAGES, CANDIDATE_STATUSES, CANDIDATE_SOURCES, NEXT_STEP, addDays, statusForStage, roundsForStage, reqId,
-  type Position, type Employee, type SkillRow, type HeadcountMonth, type ResourceSettings, type TrainingPlan, type ExitRecord, type RetentionAction, type LocationRow, type PeopleCostRow, type Candidate, type CandidateStage,
+  type Position, type Employee, type SkillRow, type ResourceSettings, type TrainingPlan, type ExitRecord, type RetentionAction, type LocationRow, type PeopleCostRow, type Candidate, type CandidateStage,
 } from '../../data/resources'
 import { TODAY } from '../../data/common'
 import { useMoney, type Money } from '../../data/money'
@@ -28,27 +29,42 @@ const Footer = ({ onClose, onSave, onDelete, saveLabel = 'Save' }: { onClose: ()
   </>
 )
 const first = (list: readonly string[], fallback: string) => list[0] ?? fallback
+/** Capability lookup for the business unit → capability selects (from the organisation structure). */
+export type CapNames = (bu: string) => readonly string[]
+const withCurrent = (current: string, options: readonly string[]) => (current && !options.includes(current) ? [current, ...options] : options)
+
+/** Business unit + capability pair of selects: changing the unit resets the capability to the unit's first one. */
+function BuCapFields<T extends { businessUnit: string; capability: string }>({ f, setF, businessUnits, capNames }: { f: T; setF: (v: T) => void; businessUnits: readonly string[]; capNames: CapNames }) {
+  const caps = capNames(f.businessUnit)
+  return (
+    <>
+      <Field label="Business unit"><Select options={withCurrent(f.businessUnit, businessUnits)} value={f.businessUnit} onChange={(e) => { const bu = e.target.value; setF({ ...f, businessUnit: bu, capability: first(capNames(bu), '') }) }} /></Field>
+      <Field label="Capability"><Select options={withCurrent(f.capability, caps)} value={f.capability} onChange={(e) => setF({ ...f, capability: e.target.value })} /></Field>
+    </>
+  )
+}
 
 /* ---------- Position (requisition) ---------- */
-export const blankPosition = (businessUnits: readonly string[], locations: readonly string[]): Position => ({ id: uid('pos'), role: '', businessUnit: first(businessUnits, ''), location: first(locations, RES_LOCATIONS[0]), priority: 'Medium', status: 'Open', openedOn: TODAY, targetDate: addDays(TODAY, 75), hiringManager: OWNERS[0], grade: 'L3', notes: '' })
-export function PositionForm({ open, onClose, value, onSave, onDelete, businessUnits, locations }: { open: boolean; onClose: () => void; value: Position | null; onSave: (p: Position) => void; onDelete?: (id: string) => void; businessUnits: readonly string[]; locations: readonly string[] }) {
+export const blankPosition = (businessUnits: readonly string[], capNames: CapNames, locations: readonly string[]): Position => {
+  const bu = first(businessUnits, '')
+  return { id: uid('pos'), role: '', businessUnit: bu, capability: first(capNames(bu), ''), location: first(locations, RES_LOCATIONS[0]), priority: 'Medium', status: 'Open', openedOn: TODAY, targetDate: addDays(TODAY, 45), hiringManager: OWNERS[0], grade: 'L3', notes: '' }
+}
+export function PositionForm({ open, onClose, value, onSave, onDelete, businessUnits, capNames, locations }: { open: boolean; onClose: () => void; value: Position | null; onSave: (p: Position) => void; onDelete?: (id: string) => void; businessUnits: readonly string[]; capNames: CapNames; locations: readonly string[] }) {
   const editing = !!value
-  const { f, txt } = useForm<Position>(value ?? blankPosition(businessUnits, locations), open)
-  const buOptions = f.businessUnit && !businessUnits.includes(f.businessUnit) ? [f.businessUnit, ...businessUnits] : businessUnits
-  const locOptions = f.location && !locations.includes(f.location) ? [f.location, ...locations] : locations
+  const { f, setF, txt } = useForm<Position>(value ?? blankPosition(businessUnits, capNames, locations), open)
   return (
     <Modal open={open} onClose={onClose} title={editing ? `Edit Requisition ${reqId(f)}` : 'Add Requisition'} footer={<Footer onClose={onClose} onSave={() => f.role.trim() && onSave(f)} onDelete={editing && onDelete ? () => { onDelete(f.id); onClose() } : undefined} saveLabel={editing ? 'Save changes' : 'Add requisition'} />}>
       <FormGrid cols={3}>
-        <Field label="Role" className="col-span-2"><Input {...txt('role')} placeholder="e.g. Senior Data Engineer" /></Field>
+        <Field label="Role / skill" className="col-span-2"><Input {...txt('role')} placeholder="e.g. SAP FI/CO Functional Consultant" /></Field>
         <Field label="Grade"><Select options={GRADES} {...txt('grade')} /></Field>
-        <Field label="Business unit"><Select options={buOptions} {...txt('businessUnit')} /></Field>
-        <Field label="Location"><Select options={locOptions} {...txt('location')} /></Field>
+        <BuCapFields f={f} setF={setF} businessUnits={businessUnits} capNames={capNames} />
+        <Field label="Location"><Select options={withCurrent(f.location, locations)} {...txt('location')} /></Field>
         <Field label="Priority"><Select options={PRIORITIES} {...txt('priority')} /></Field>
         <Field label="Stage / Status"><Select options={POSITION_STATUSES} {...txt('status')} /></Field>
         <Field label="Hiring manager"><Select options={OWNERS} {...txt('hiringManager')} /></Field>
         <Field label="Opened on"><Input type="date" {...txt('openedOn')} /></Field>
         <Field label="Target fill date"><Input type="date" {...txt('targetDate')} /></Field>
-        <Field label="Notes" className="col-span-2"><TextArea {...txt('notes')} placeholder="Sourcing notes, approvals, interview panel…" /></Field>
+        <Field label="Notes"><TextArea {...txt('notes')} placeholder="Sourcing notes, approvals, interview panel, KT from the source location…" /></Field>
       </FormGrid>
     </Modal>
   )
@@ -71,9 +87,9 @@ export function CandidateForm({ open, onClose, value, onSave, onDelete, position
     <Modal open={open} onClose={onClose} title={editing ? `Edit Candidate – ${f.name || 'unnamed'}` : 'Add Candidate'} footer={<Footer onClose={onClose} onSave={() => f.name.trim() && f.positionId && onSave(f)} onDelete={editing && onDelete ? () => { onDelete(f.id); onClose() } : undefined} saveLabel={editing ? 'Save changes' : 'Add candidate'} />}>
       <FormGrid cols={3}>
         <Field label="Requisition" className="col-span-2">
-          {positionId ? <Input value={pos ? `${reqId(pos)} · ${pos.role}` : positionId} readOnly className="bg-surface" /> : (
+          {positionId ? <Input value={pos ? `${reqId(pos)} · ${pos.role} (${pos.capability})` : positionId} readOnly className="bg-surface" /> : (
             <select className="input" value={f.positionId} onChange={(e) => setF({ ...f, positionId: e.target.value })}>
-              {positions.map((p) => <option key={p.id} value={p.id}>{reqId(p)} · {p.role} ({p.businessUnit})</option>)}
+              {positions.map((p) => <option key={p.id} value={p.id}>{reqId(p)} · {p.role} ({p.capability})</option>)}
             </select>
           )}
         </Field>
@@ -83,7 +99,7 @@ export function CandidateForm({ open, onClose, value, onSave, onDelete, position
         <Field label="Current stage"><Select options={CANDIDATE_STAGES} value={f.stage} onChange={(e) => setStage(e.target.value as CandidateStage)} /></Field>
         <Field label="Status"><Select options={CANDIDATE_STATUSES} {...txt('status')} /></Field>
         <Field label="Last activity"><Input type="date" {...txt('lastActivity')} /></Field>
-        <Field label="Next step / interview date" className="col-span-3"><Input {...txt('nextStep')} placeholder="e.g. Round 2 technical / case study · 2026-10-27" /></Field>
+        <Field label="Next step / interview date" className="col-span-3"><Input {...txt('nextStep')} placeholder="e.g. Round 2 technical / case study · 2027-03-02" /></Field>
         <Field label="Notes" className="col-span-3"><TextArea {...txt('notes')} placeholder="Interview feedback, compensation expectations, notice period…" /></Field>
       </FormGrid>
     </Modal>
@@ -91,21 +107,22 @@ export function CandidateForm({ open, onClose, value, onSave, onDelete, position
 }
 
 /* ---------- Employee ---------- */
-export const blankEmployee = (businessUnits: readonly string[], locations: readonly string[]): Employee => ({ id: uid('emp'), name: '', role: '', businessUnit: first(businessUnits, ''), location: first(locations, RES_LOCATIONS[0]), grade: 'L3', allocationPct: 100, costBand: 'Band B', annualCostL: 14, startDate: TODAY })
-export function EmployeeForm({ open, onClose, value, onSave, onDelete, businessUnits, locations }: { open: boolean; onClose: () => void; value: Employee | null; onSave: (e: Employee) => void; onDelete?: (id: string) => void; businessUnits: readonly string[]; locations: readonly string[] }) {
+export const blankEmployee = (businessUnits: readonly string[], capNames: CapNames, locations: readonly string[]): Employee => {
+  const bu = first(businessUnits, '')
+  return { id: uid('emp'), name: '', role: '', businessUnit: bu, capability: first(capNames(bu), ''), location: first(locations, RES_LOCATIONS[0]), grade: 'L3', allocationPct: 100, costBand: 'Band B', annualCostL: 15, startDate: TODAY }
+}
+export function EmployeeForm({ open, onClose, value, onSave, onDelete, businessUnits, capNames, locations }: { open: boolean; onClose: () => void; value: Employee | null; onSave: (e: Employee) => void; onDelete?: (id: string) => void; businessUnits: readonly string[]; capNames: CapNames; locations: readonly string[] }) {
   const editing = !!value
   const m = useMoney()
-  const { f, num, txt, cnv } = useForm<Employee>(value ?? blankEmployee(businessUnits, locations), open)
-  const buOptions = f.businessUnit && !businessUnits.includes(f.businessUnit) ? [f.businessUnit, ...businessUnits] : businessUnits
-  const locOptions = f.location && !locations.includes(f.location) ? [f.location, ...locations] : locations
+  const { f, setF, num, txt, cnv } = useForm<Employee>(value ?? blankEmployee(businessUnits, capNames, locations), open)
   return (
     <Modal open={open} onClose={onClose} title={editing ? 'Edit Employee' : 'Add Employee'} footer={<Footer onClose={onClose} onSave={() => f.name.trim() && onSave(f)} onDelete={editing && onDelete ? () => { onDelete(f.id); onClose() } : undefined} saveLabel={editing ? 'Save changes' : 'Add employee'} />}>
       <FormGrid cols={3}>
         <Field label="Name"><Input {...txt('name')} placeholder="Full name" /></Field>
-        <Field label="Role"><Input {...txt('role')} placeholder="e.g. Data Engineer" /></Field>
+        <Field label="Role"><Input {...txt('role')} placeholder="e.g. Cloud Engineer (Azure)" /></Field>
         <Field label="Grade"><Select options={GRADES} {...txt('grade')} /></Field>
-        <Field label="Business unit"><Select options={buOptions} {...txt('businessUnit')} /></Field>
-        <Field label="Location"><Select options={locOptions} {...txt('location')} /></Field>
+        <BuCapFields f={f} setF={setF} businessUnits={businessUnits} capNames={capNames} />
+        <Field label="Location"><Select options={withCurrent(f.location, locations)} {...txt('location')} /></Field>
         <Field label="Allocation %"><Input {...num('allocationPct')} min={0} max={100} /></Field>
         <Field label="Cost band"><Select options={COST_BANDS} {...txt('costBand')} /></Field>
         <Field label={`Annual cost (${m.lakhUnitLabel})`}><Input {...cnv('annualCostL', (l) => lakhInput(l, m), (d) => lakhToBase(d, m))} /></Field>
@@ -123,7 +140,7 @@ export function SkillForm({ open, onClose, value, onSave, onDelete }: { open: bo
   return (
     <Modal open={open} onClose={onClose} title={editing ? 'Edit Skill Category' : 'Add Skill Category'} width="max-w-lg" footer={<Footer onClose={onClose} onSave={() => f.category.trim() && onSave(f)} onDelete={editing && onDelete ? () => { onDelete(f.id); onClose() } : undefined} />}>
       <FormGrid cols={2}>
-        <Field label="Skill category" className="col-span-2"><Input {...txt('category')} placeholder="e.g. SAP S/4HANA" /></Field>
+        <Field label="Skill category" className="col-span-2"><Input {...txt('category')} placeholder="e.g. SAP S/4HANA functional / technical" /></Field>
         <Field label="Required"><Input {...num('required')} /></Field>
         <Field label="Available"><Input {...num('available')} /></Field>
         <Field label="Capability owner"><Select options={OWNERS} {...txt('owner')} /></Field>
@@ -153,19 +170,20 @@ export function TrainingForm({ open, onClose, value, onSave, onDelete, skills }:
 }
 
 /* ---------- Exit record ---------- */
-export const blankExit = (businessUnits: readonly string[], locations: readonly string[]): ExitRecord => ({ id: uid('ex'), name: '', role: '', businessUnit: first(businessUnits, ''), location: first(locations, RES_LOCATIONS[0]), exitDate: TODAY, reason: EXIT_REASONS[0], regretted: false, tenureMonths: 6 })
-export function ExitForm({ open, onClose, value, onSave, onDelete, businessUnits, locations }: { open: boolean; onClose: () => void; value: ExitRecord | null; onSave: (e: ExitRecord) => void; onDelete?: (id: string) => void; businessUnits: readonly string[]; locations: readonly string[] }) {
+export const blankExit = (businessUnits: readonly string[], capNames: CapNames, locations: readonly string[]): ExitRecord => {
+  const bu = first(businessUnits, '')
+  return { id: uid('ex'), name: '', role: '', businessUnit: bu, capability: first(capNames(bu), ''), location: first(locations, RES_LOCATIONS[0]), exitDate: TODAY, reason: EXIT_REASONS[0], regretted: false, tenureMonths: 3 }
+}
+export function ExitForm({ open, onClose, value, onSave, onDelete, businessUnits, capNames, locations }: { open: boolean; onClose: () => void; value: ExitRecord | null; onSave: (e: ExitRecord) => void; onDelete?: (id: string) => void; businessUnits: readonly string[]; capNames: CapNames; locations: readonly string[] }) {
   const editing = !!value
-  const { f, setF, num, txt } = useForm<ExitRecord>(value ?? blankExit(businessUnits, locations), open)
-  const buOptions = f.businessUnit && !businessUnits.includes(f.businessUnit) ? [f.businessUnit, ...businessUnits] : businessUnits
-  const locOptions = f.location && !locations.includes(f.location) ? [f.location, ...locations] : locations
+  const { f, setF, num, txt } = useForm<ExitRecord>(value ?? blankExit(businessUnits, capNames, locations), open)
   return (
     <Modal open={open} onClose={onClose} title={editing ? 'Edit Exit' : 'Record Exit'} footer={<Footer onClose={onClose} onSave={() => f.name.trim() && onSave(f)} onDelete={editing && onDelete ? () => { onDelete(f.id); onClose() } : undefined} />}>
       <FormGrid cols={3}>
         <Field label="Name"><Input {...txt('name')} /></Field>
         <Field label="Role"><Input {...txt('role')} /></Field>
-        <Field label="Business unit"><Select options={buOptions} {...txt('businessUnit')} /></Field>
-        <Field label="Location"><Select options={locOptions} {...txt('location')} /></Field>
+        <Field label="Location"><Select options={withCurrent(f.location, locations)} {...txt('location')} /></Field>
+        <BuCapFields f={f} setF={setF} businessUnits={businessUnits} capNames={capNames} />
         <Field label="Exit date"><Input type="date" {...txt('exitDate')} /></Field>
         <Field label="Tenure (months)"><Input {...num('tenureMonths')} /></Field>
         <Field label="Reason"><Select options={EXIT_REASONS} {...txt('reason')} /></Field>
@@ -227,33 +245,7 @@ export function PeopleCostForm({ open, onClose, value, onSave }: { open: boolean
   )
 }
 
-/* ---------- Monthly headcount actuals ---------- */
-export function HeadcountActualsForm({ open, onClose, rows, onSave }: { open: boolean; onClose: () => void; rows: HeadcountMonth[]; onSave: (rows: HeadcountMonth[]) => void }) {
-  const [list, setList] = useState<HeadcountMonth[]>(rows)
-  useEffect(() => { if (open) setList(rows) }, [open, rows])
-  const set = (i: number, key: keyof HeadcountMonth, v: string) => setList(list.map((r, j) => (j === i ? { ...r, [key]: parseFloat(v) || 0 } : r)))
-  const cols: { key: keyof HeadcountMonth; label: string }[] = [{ key: 'planned', label: 'Planned' }, { key: 'actual', label: 'Actual' }, { key: 'target', label: 'Target' }, { key: 'plannedUtil', label: 'Plan util. %' }, { key: 'actualUtil', label: 'Actual util. %' }]
-  return (
-    <Modal open={open} onClose={onClose} title="Update monthly headcount actuals" width="max-w-3xl" footer={<Footer onClose={onClose} onSave={() => { onSave(list); onClose() }} />}>
-      <p className="text-[12px] text-ink-500 mb-3">Planned / Actual / Target FTE headcount at month end (2026) and ramp-up utilisation. The FTEs Onboarded KPI reads the current month's actual.</p>
-      <div className="overflow-x-auto scroll-thin">
-        <table className="w-full tbl border-separate border-spacing-0">
-          <thead><tr><th className="th">Month</th>{cols.map((c) => <th key={c.key} className="th text-right">{c.label}</th>)}</tr></thead>
-          <tbody>
-            {list.map((r, i) => (
-              <tr key={r.id}>
-                <td className="td font-medium">{MONTHS[i] ?? r.month}</td>
-                {cols.map((c) => <td key={c.key} className="td text-right py-1"><input type="number" className="input w-24 py-1 text-right ml-auto" value={r[c.key] as number} onChange={(e) => set(i, c.key, e.target.value)} /></td>)}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Modal>
-  )
-}
-
-/* ---------- Generic numeric grid editor (headcount by business unit, time to hire, forecast…) ---------- */
+/* ---------- Generic numeric grid editor (time to hire, attrition trend…) ---------- */
 export function NumberGridForm<T extends { id: string }>({ open, onClose, title, rows, labelKey, fields, onSave, hint }: {
   open: boolean; onClose: () => void; title: string; rows: T[]; labelKey: keyof T; fields: { key: keyof T; label: string; step?: number }[]; onSave: (rows: T[]) => void; hint?: string
 }) {
@@ -284,11 +276,13 @@ export function SettingsForm({ open, onClose, value, onSave }: { open: boolean; 
   return (
     <Modal open={open} onClose={onClose} title="Resource plan settings" width="max-w-lg" footer={<Footer onClose={onClose} onSave={() => { onSave(f); onClose() }} />}>
       <FormGrid cols={2}>
-        <Field label="FTE target (plan)"><Input {...num('fteTarget')} /></Field>
-        <Field label="Current reporting month"><Select options={MONTHS} {...txt('currentMonth')} /></Field>
+        <Field label="Pune FTE target (year 1)"><Input {...num('fteTarget')} /></Field>
+        <Field label="Reporting month"><Select options={RAMP_MONTHS} {...txt('currentMonth')} /></Field>
         <Field label="Avg. time to hire (months)"><Input {...num('avgTimeToHireMonths')} /></Field>
         <Field label="Time to hire target (months)"><Input {...num('timeToHireTargetMonths')} /></Field>
         <Field label="Seats per FTE (seat ratio)"><Input {...num('seatRatio')} /></Field>
+        <Field label="Accelerated scenario (+%)"><Input {...num('acceleratedPct')} /></Field>
+        <Field label="Conservative scenario (−%)"><Input {...num('conservativePct')} /></Field>
       </FormGrid>
     </Modal>
   )

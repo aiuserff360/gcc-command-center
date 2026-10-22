@@ -30,14 +30,14 @@ export default function LocationTab({ d }: { d: ResourceData }) {
     <>
       <div className="grid grid-cols-5 gap-4">
         <MiniStat label="Locations" value={locationMix.items.length} sub={single ? `${base} only for now` : 'Active GCC sites'} />
-        <MiniStat label="FTEs" value={total} sub={single ? `All in ${base}` : 'Across all locations'} />
+        <MiniStat label="FTEs onboarded" value={total} sub={single ? `All in ${base} · ${kpi.onboarded} per headcount actuals` : 'Across all locations'} />
         <MiniStat label="Seats" value={seats} sub={`${seats ? Math.round((total / seats) * 100) : 0}% seat utilisation`} />
         <MiniStat label="Seats needed at target" value={seatsNeeded} sub={`${settings.fteTarget} FTEs × ${settings.seatRatio} seat ratio`} tone={seatsNeeded > seats ? 'text-amber-600' : 'text-green-600'} />
         <MiniStat label="Open positions" value={rows.reduce((s, r) => s + r.openPositions, 0)} sub={single ? `All hiring in ${base}` : 'Across locations'} tone="text-red-600" />
       </div>
 
       <div className="grid grid-cols-[1.6fr_1fr] gap-4">
-        <Card title="Location Mix" subtitle={single ? `The GCC is a single-site centre in ${base}. Add a second location when the footprint expands – positions and employees can then be assigned to it.` : 'Click a row to edit FTEs, seats and cost index'} action={<button className="btn-primary" onClick={() => setAdding(true)}><Plus size={14} /> Add Location</button>}>
+        <Card title="Location Mix" subtitle={single ? `The ENGIE IT GCC is a single-site centre in ${base}. Add a second location when the footprint expands – positions and employees can then be assigned to it.` : 'Click a row to edit FTEs, seats and cost index'} action={<button className="btn-primary" onClick={() => setAdding(true)}><Plus size={14} /> Add Location</button>}>
           <Table compact rows={rows} onRowClick={(r) => setLoc(r)} columns={[
             { key: 'name', header: 'Location', render: (r) => <span className="inline-flex items-center gap-2 font-medium"><span className="w-2.5 h-2.5 rounded-full" style={{ background: r.color }} />{r.name}</span> },
             { key: 'office', header: 'Office / Campus', render: (r) => <span className="text-ink-500">{r.office}</span> },

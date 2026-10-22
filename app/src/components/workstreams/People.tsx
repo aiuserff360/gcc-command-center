@@ -41,7 +41,7 @@ export function PeopleView({ ws }: { ws: Workstream }) {
       acts: acts.filter((a) => a.workstream === ws && a.responsible === sn && a.status !== 'Completed'),
     }
   }
-  const newItem = (): TeamMember => ({ id: uid('tm'), name: '', role: '', workstream: ws, location: 'Bengaluru', allocation: 100, startDate: TODAY, type: 'Internal', functionArea: '', responsibilities: '', reportsTo: lead?.name })
+  const newItem = (): TeamMember => ({ id: uid('tm'), name: '', role: '', workstream: ws, location: 'Pune', allocation: 100, startDate: TODAY, type: 'Internal', functionArea: '', responsibilities: '', reportsTo: lead?.name })
   const people = members.map((m) => m.name)
 
   const Person = ({ title, name, role, note, icon, tone }: { title: string; name: string; role?: string; note?: string; icon: React.ReactNode; tone: string }) => (

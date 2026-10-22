@@ -20,7 +20,7 @@ import {
 } from '../data/governance'
 import { seedProjects, seedRaidLinks, type TransitionProject, type RaidLink } from '../data/transition'
 import { useBusinessUnits } from '../components/footprint/BusinessUnits'
-import { UNIT_ALL, isUnit, matchUnit, raidUnitName, unitHealth, type UnitData } from '../components/governance/units'
+import { UNIT_ALL, isUnit, matchUnit, raidUnitName, unitHealth, shortUnit, type UnitData } from '../components/governance/units'
 import { UnitFilter, UnitChip, UnitChips, UnitSelect, UnitToggles, UnitTagsCell, ProjectSelect } from '../components/governance/UnitFilter'
 import UnitOverview, { Link as UnitLink } from '../components/governance/UnitOverview'
 import { BuRaciMatrix } from '../components/governance/RaciTables'
@@ -491,7 +491,7 @@ export default function Governance() {
                   <div key={l} className="flex items-center justify-between text-[12.5px]"><span className="inline-flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: c }} />{l}</span><b>{controlsInUnit.filter((x) => x.status === l).length}</b></div>
                 ))}
               </div>
-              <div className="mt-3 pt-3 border-t border-line text-[12px] text-ink-500">By business unit: {unitNames.map((n) => `${n.replace('R&D – ', 'R&D ').replace(' Practice', '').replace(' Shared Services', ' SS')} ${controlsC.items.filter((c) => c.businessUnits.includes(n)).length}`).join(' · ')} · program-wide {controlsC.items.filter((c) => !c.businessUnits.length).length}</div>
+              <div className="mt-3 pt-3 border-t border-line text-[12px] text-ink-500">By business unit: {unitNames.map((n) => `${shortUnit(n)} ${controlsC.items.filter((c) => c.businessUnits.includes(n)).length}`).join(' · ')} · program-wide {controlsC.items.filter((c) => !c.businessUnits.length).length}</div>
               <div className="mt-3 pt-3 border-t border-line text-[12px] text-ink-500">Delegation of authority: Workstream Lead &lt; {money.fmtLakh(5)} · Program Director &lt; {money.fmtLakh(25)} · Steering Committee above {money.fmtLakh(25)} or &gt; 10 days schedule impact.</div>
             </Card>
           </div>

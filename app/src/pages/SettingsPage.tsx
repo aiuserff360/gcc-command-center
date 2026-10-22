@@ -12,7 +12,7 @@ import { seedUsers, seedLookups, seedNotificationSettings, USER_ROLES, MODULES, 
 import { useMoney } from '../data/money'
 
 const TABS = ['Program', 'Workstreams & Owners', 'Users & Roles', 'Lookup Values', 'Notifications', 'Data & Reset']
-const PROGRAMS = ['GCC Program - India', 'GCC Program - Poland', 'GCC Program - Philippines']
+const PROGRAMS = ['ENGIE IT GCC - Pune', 'ENGIE IT GCC - Kraków', 'ENGIE IT GCC - Manila']
 
 export default function SettingsPage() {
   const [tab, setTab] = useState(TABS[0])

@@ -71,7 +71,7 @@ function ValueOutput() {
   const [savingEdit, setSavingEdit] = useState<SavingsInitiative | null>(null)
   const [settingsEdit, setSettingsEdit] = useState(false)
   const [signOff, setSignOff] = useState<BenefitItem | null>(null)
-  const newBenefit = (): BenefitItem => ({ id: uid('bn'), code: `B-${String(benefitsC.items.length + 1).padStart(3, '0')}`, benefitArea: view === 'All Benefit Areas' ? 'Cost Savings (Ops)' : (view as BenefitArea), lever: '', targetCr: 0, forecastCr: 0, realizedCr: 0, owner: 'L. Moreau', workstream: 'Finance & Procurement', status: 'Not Started', measurementMethod: '', baseline: '', frequency: 'Monthly', signedOff: false })
+  const newBenefit = (): BenefitItem => ({ id: uid('bn'), code: `B-${String(benefitsC.items.length + 1).padStart(3, '0')}`, benefitArea: view === 'All Benefit Areas' ? 'Cost Savings (Ops)' : (view as BenefitArea), lever: '', targetCr: 0, forecastCr: 0, realizedCr: 0, owner: 'T. Moreau', workstream: 'Technology & Infrastructure', status: 'Not Started', measurementMethod: '', baseline: '', frequency: 'Monthly', signedOff: false })
   const newSaving = (): SavingsInitiative => ({ id: uid('si'), initiative: '', category: 'Labour Arbitrage', annualisedSavingCr: 0, oneTimeCostCr: 0, start: TODAY, status: 'Planned', owner: 'V. Reddy' })
 
   const cumulativeData = useMemo(() => monthlyC.items.map((m) => ({ month: m.month, Target: disp(m.targetCr), Forecast: disp(m.forecastCr), Realized: m.realizedCr === undefined ? undefined : disp(m.realizedCr) })), [monthlyC.items, money.currency, money.rate]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -83,7 +83,7 @@ function ValueOutput() {
       <div className="grid grid-cols-5 gap-4 mb-4">
         <KpiTile tone="navy" icon={<Target size={22} className="text-brand-600" />} value={fmt(k.targetBenefitsCr)} label="Target Benefits (Annual)" sub={<>Business case · {BENEFIT_AREAS.length} benefit areas</>} />
         <KpiTile tone="green" icon={<TrendingUp size={22} />} value={fmt(k.projectedBenefitsCr)} label="Projected Benefits" sub={<span className="text-green-600">{pct(k.projectedBenefitsCr, k.targetBenefitsCr)}% of target</span>} trend="up" />
-        <KpiTile tone="teal" icon={<Coins size={22} />} value={fmt(realizedToDate)} label="Realized to Date" sub={<>{pct(realizedToDate, k.targetBenefitsCr)}% of target · as of {latestMonth?.month ?? 'Oct 26'}</>} />
+        <KpiTile tone="teal" icon={<Coins size={22} />} value={fmt(realizedToDate)} label="Realized to Date" sub={<>{pct(realizedToDate, k.targetBenefitsCr)}% of target · as of {latestMonth?.month ?? 'Feb 27'}</>} />
         <KpiTile tone="blue" icon={<PiggyBank size={22} />} value={`${vs.runRateSavingsPct}%`} label="Cost Savings Run-rate" sub={<>vs <b>{vs.targetRunRateSavingsPct}%</b> target by Year 5</>} />
         <KpiTile tone="green" icon={<CheckCircle2 size={22} />} value={<>{onTrack} <span className="text-[16px] text-ink-500 font-semibold">of {benefitsC.items.length}</span></>} label="Benefits On Track" sub={<><span className="text-amber-600">{benefitsC.items.filter((b) => b.status === 'At Risk').length} At Risk</span> | <span className="text-red-600">{benefitsC.items.filter((b) => b.status === 'Delayed').length} Delayed</span></>} />
       </div>
@@ -105,7 +105,7 @@ function ValueOutput() {
                     <Area isAnimationActive={false} type="monotone" dataKey="Realized" stroke={CHART_COLORS.green} fill={CHART_COLORS.green} fillOpacity={0.12} strokeWidth={2.5} dot={{ r: 2.5, fill: CHART_COLORS.green }} connectNulls={false} />
                     <Line isAnimationActive={false} type="monotone" dataKey="Forecast" stroke={CHART_COLORS.blueLight} strokeWidth={2} dot={false} />
                     <Line isAnimationActive={false} type="monotone" dataKey="Target" stroke="#94A3B8" strokeWidth={2} strokeDasharray="5 4" dot={false} />
-                    <ReferenceLine x="Oct 26" stroke="#CBD5E1" strokeDasharray="3 3" label={{ value: 'Today', position: 'top', fontSize: 10.5, fill: '#6B7280' }} />
+                    <ReferenceLine x={latestMonth?.month ?? 'Feb 27'} stroke="#CBD5E1" strokeDasharray="3 3" label={{ value: 'Today', position: 'top', fontSize: 10.5, fill: '#6B7280' }} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>

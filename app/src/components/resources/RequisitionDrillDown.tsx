@@ -1,13 +1,14 @@
 /**
- * Requisition drill-down – a slide-over opened from any blue role link. Shows the requisition details, the stage it
- * is at, how many people applied, the application pipeline (counts per round, conversion %, funnel) and the candidate
- * list with next-stage / reject actions. Candidates, the requisition itself and its removal are all editable from here.
+ * Requisition drill-down – a slide-over opened from any blue role link. Shows the requisition details (business unit,
+ * capability, GBU served, geography, where the work transitions from), the stage it is at, how many people applied,
+ * the application pipeline (counts per round, conversion %, funnel) and the candidate list with next-stage / reject
+ * actions. Candidates, the requisition itself and its removal are all editable from here.
  */
 import { useEffect, useMemo, useState } from 'react'
 import { X, Plus, Pencil, ChevronRight, Ban, RotateCcw, Trash2 } from 'lucide-react'
 import { Badge, FilterSelect } from '../ui'
-import { fmtDate } from '../../data/common'
-import { isOpenPosition, positionDaysOpen, reqId, pipelineFor, requisitionStage, isActiveCandidate, CANDIDATE_STATUSES, type Candidate } from '../../data/resources'
+import { fmtDate, TODAY } from '../../data/common'
+import { isOpenPosition, positionDaysOpen, reqId, pipelineFor, requisitionStage, isActiveCandidate, sourceLabel, CANDIDATE_STATUSES, type Candidate } from '../../data/resources'
 import type { ResourceData } from './useResourceData'
 import { Funnel, CompactTable, candidateBadge } from './widgets'
 import { CandidateForm, PositionForm } from './forms'
@@ -22,7 +23,7 @@ function Detail({ label, value, wide }: { label: string; value: React.ReactNode;
 }
 
 export function RequisitionDrillDown({ d, positionId, onClose }: { d: ResourceData; positionId: string | null; onClose: () => void }) {
-  const { positions, candidates, candidatesFor, advanceCandidate, closeCandidate, reopenCandidate, buNames, locations } = d
+  const { positions, candidates, candidatesFor, advanceCandidate, closeCandidate, reopenCandidate, buNames, capNames, subFor, locations } = d
   const p = positions.items.find((x) => x.id === positionId)
   const [editPos, setEditPos] = useState(false)
   const [cand, setCand] = useState<Candidate | null>(null)
@@ -45,6 +46,7 @@ export function RequisitionDrillDown({ d, positionId, onClose }: { d: ResourceDa
     .sort((a, b) => Number(isActiveCandidate(b)) - Number(isActiveCandidate(a)) || pipeline.findIndex((s) => s.stage === b.stage) - pipeline.findIndex((s) => s.stage === a.stage) || b.lastActivity.localeCompare(a.lastActivity)), [list, fStatus, pipeline])
 
   if (!positionId || !p) return null
+  const sub = subFor(p.businessUnit, p.capability)
   const stage = requisitionStage(list)
   const active = list.filter(isActiveCandidate).length
   const offers = list.filter((c) => c.status === 'Offer').length
@@ -61,10 +63,11 @@ export function RequisitionDrillDown({ d, positionId, onClose }: { d: ResourceDa
         {/* header */}
         <div className="bg-white border-b border-line px-6 py-4 flex items-start justify-between gap-4">
           <div>
-            <div className="text-[11.5px] text-ink-500">{reqId(p)} · {p.businessUnit}</div>
+            <div className="text-[11.5px] text-ink-500">{reqId(p)} · {p.businessUnit} · {p.capability}</div>
             <h3 className="text-[20px] font-bold text-navy-900 leading-tight">{p.role}</h3>
-            <div className="flex items-center gap-2 mt-1.5">
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               <Badge value={p.priority} /><Badge value={p.status} className={candidateBadge[p.status]} />
+              {sub && <Badge value={sourceLabel(sub)} className={sub.transitionType === 'Build' ? 'bg-teal-50 text-teal-700' : 'bg-violet-50 text-violet-700'} />}
               <span className="text-[12px] text-ink-500">Stage: <b className="text-ink-900">{stage}</b> · {list.length} applied · {active} in process{offers ? ` · ${offers} offer${offers > 1 ? 's' : ''} out` : ''}</span>
             </div>
           </div>
@@ -81,17 +84,22 @@ export function RequisitionDrillDown({ d, positionId, onClose }: { d: ResourceDa
           <div className="card px-5 py-4">
             <div className="grid grid-cols-6 gap-x-4 gap-y-3">
               <Detail label="Business unit" value={p.businessUnit} />
+              <Detail label="Capability / service" value={p.capability} />
+              <Detail label="Source" value={sub ? sourceLabel(sub) : <span className="text-ink-500 font-normal">Capability not in the structure</span>} />
+              <Detail label="GBU served" value={sub?.gbuServed ?? '—'} />
+              <Detail label="Geography" value={sub ? `${sub.geography} · ${sub.countryEntity}` : '—'} />
+              <Detail label="Wave" value={sub?.wave ?? '—'} />
               <Detail label="Location" value={p.location} />
               <Detail label="Priority" value={<Badge value={p.priority} />} />
               <Detail label="Hiring manager" value={p.hiringManager} />
               <Detail label="Grade" value={p.grade} />
               <Detail label="Status" value={<Badge value={p.status} className={candidateBadge[p.status]} />} />
+              <Detail label="Stage it is at" value={stage} />
               <Detail label="Opened" value={fmtDate(p.openedOn)} />
               <Detail label="Days open" value={isOpenPosition(p) ? `${positionDaysOpen(p)} days` : '—'} />
-              <Detail label="Target fill date" value={<span className={p.targetDate < '2026-10-20' && isOpenPosition(p) ? 'text-red-600' : ''}>{fmtDate(p.targetDate)}</span>} />
-              <Detail label="Stage it is at" value={stage} />
+              <Detail label="Target fill date" value={<span className={p.targetDate < TODAY && isOpenPosition(p) ? 'text-red-600' : ''}>{fmtDate(p.targetDate)}</span>} />
               <Detail label="Applied" value={`${list.length} candidate${list.length === 1 ? '' : 's'}`} />
-              <Detail label="Notes" value={<span className="text-ink-700 font-normal">{p.notes || '—'}</span>} />
+              <Detail label="Notes" wide value={<span className="text-ink-700 font-normal">{p.notes || (sub ? `${sub.roleSkill} · knowledge transfer ${sub.transitionType === 'Build' ? 'not required (build)' : `from ${sub.deliveryLocation}`}` : '—')}</span>} />
             </div>
           </div>
 
@@ -143,7 +151,7 @@ export function RequisitionDrillDown({ d, positionId, onClose }: { d: ResourceDa
           </div>
         </div>
 
-        <PositionForm open={editPos} onClose={() => setEditPos(false)} value={p} businessUnits={buNames} locations={locations} onSave={(np) => { positions.update(np); setEditPos(false) }} onDelete={() => { list.forEach((c) => candidates.remove(c.id)); positions.remove(p.id); onClose() }} />
+        <PositionForm open={editPos} onClose={() => setEditPos(false)} value={p} businessUnits={buNames} capNames={capNames} locations={locations} onSave={(np) => { positions.update(np); setEditPos(false) }} onDelete={() => { list.forEach((c) => candidates.remove(c.id)); positions.remove(p.id); onClose() }} />
         <CandidateForm open={addCand || !!cand} onClose={() => { setAddCand(false); setCand(null) }} value={cand} positions={positions.items} positionId={p.id}
           onSave={(c) => { if (cand) candidates.update(c); else candidates.add(c); setAddCand(false); setCand(null) }} onDelete={(id) => candidates.remove(id)} />
       </aside>
